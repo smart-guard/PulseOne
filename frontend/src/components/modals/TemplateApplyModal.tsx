@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import alarmTemplatesApi, {
   AlarmTemplate,
   DataPoint,
@@ -19,6 +20,7 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
   onSuccess
 }) => {
   const [dataPoints, setDataPoints] = useState<DataPoint[]>([]);
+    const { t } = useTranslation(['deviceTemplates', 'common']);
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -118,7 +120,7 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
         onClose();
       }
     } catch (error) {
-      alert('템플릿 적용 중 오류가 발생했습니다.');
+      alert('An error occurred while applying the template.');
     } finally {
       setApplying(false);
     }
@@ -137,7 +139,7 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
       setSimulationResult(result);
     } catch (error) {
       console.error('Simulation failed', error);
-      alert('시뮬레이션 중 오류가 발생했습니다.');
+      alert('An error occurred during simulation.');
     } finally {
       setSimulating(false);
     }
@@ -163,8 +165,8 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
               <i className="fas fa-magic"></i>
             </div>
             <div className="tam-title-group">
-              <h3 className="tam-title">템플릿 적용: <span className="highlight">{template.name}</span></h3>
-              <p className="tam-subtitle">이 템플릿을 대량으로 적용할 대상을 선택하고 규칙을 생성합니다.</p>
+              <h3 className="tam-title">Apply Template: <span className="highlight">{template.name}</span></h3>
+              <p className="tam-subtitle">{t('labels.selectTargetsToBulkapplyThisTemplateAndCreateRules', {ns: 'deviceTemplates'})}</p>
             </div>
           </div>
           <button className="tam-close-btn" onClick={onClose}>&times;</button>
@@ -175,14 +177,14 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
           {/* Step 1: Device Sidebar */}
           <div className="tam-sidebar">
             <div className="tam-sidebar-header">
-              <i className="fas fa-server"></i> 장치 선택
+              <i className="fas fa-server"></i> Device Selection
             </div>
             <div className="tam-device-list">
               <button
                 className={`tam-device-item ${selectedDevice === 'all' ? 'active' : ''}`}
                 onClick={() => setSelectedDevice('all')}
               >
-                <span>전체 장치</span>
+                <span>{t('labels.allDevices', {ns: 'deviceTemplates'})}</span>
                 <span className="count">{compatibleDataPoints.length}</span>
               </button>
               {devices.map(dev => (
@@ -206,13 +208,13 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
               <i className="fas fa-search"></i>
               <input
                 type="text"
-                placeholder="데이터포인트명 또는 주소로 검색..."
+                placeholder="Search by data point name or address..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
               {filteredDataPoints.length > 0 && (
                 <div className="tam-selection-info">
-                  {filteredDataPoints.length}개 항목 발견
+                  {filteredDataPoints.length} item(s) found
                 </div>
               )}
             </div>
@@ -228,16 +230,16 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
                         onChange={(e) => handleSelectAll(e.target.checked)}
                       />
                     </th>
-                    <th>데이터포인트 상세</th>
-                    <th>장비</th>
-                    <th>타입</th>
+                    <th>{t('labels.dataPointDetails', {ns: 'deviceTemplates'})}</th>
+                    <th>{t('labels.device', {ns: 'deviceTemplates'})}</th>
+                    <th>{t('table.type', {ns: 'deviceTemplates'})}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={4} className="tam-empty">데이터를 불러오는 중...</td></tr>
+                    <tr><td colSpan={4} className="tam-empty">{t('labels.loadingData', {ns: 'deviceTemplates'})}</td></tr>
                   ) : filteredDataPoints.length === 0 ? (
-                    <tr><td colSpan={4} className="tam-empty">조건에 맞는 데이터포인트가 없습니다.</td></tr>
+                    <tr><td colSpan={4} className="tam-empty">{t('labels.noDataPointsMatchTheCondition', {ns: 'deviceTemplates'})}</td></tr>
                   ) : (
                     filteredDataPoints.map(dp => (
                       <tr
@@ -259,7 +261,7 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
                             {dp.name}
                             {appliedDataPointIds.has(dp.id) && (
                               <span className="tam-badge low" style={{ marginLeft: '8px', fontSize: '10px' }}>
-                                이미 적용됨
+                                Already Applied
                               </span>
                             )}
                           </div>
@@ -279,21 +281,21 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
           <div className="tam-panel">
             <div className="tam-panel-content">
               <div className="tam-panel-section">
-                <div className="tam-panel-label">선택 요약</div>
+                <div className="tam-panel-label">{t('labels.selectionSummary', {ns: 'deviceTemplates'})}</div>
                 <div className="tam-summary-card">
                   <div className="tam-summary-row">
-                    <span>선택된 포인트</span>
+                    <span>{t('labels.selectedPoints', {ns: 'deviceTemplates'})}</span>
                     <span className="tam-count-big">{selectedIds.length}</span>
                   </div>
                   <div className="tam-summary-divider" />
                   <div className="tam-summary-row mini">
-                    <span>템플릿 심각도</span>
+                    <span>{t('labels.templateSeverity', {ns: 'deviceTemplates'})}</span>
                     <span className={`tam-badge ${getSeverityBadgeClass(template.severity)}`}>
                       {template.severity.toUpperCase()}
                     </span>
                   </div>
                   <div className="tam-summary-row mini">
-                    <span>로직 유형</span>
+                    <span>{t('labels.logicType', {ns: 'deviceTemplates'})}</span>
                     <span className="val">{template.condition_type.toUpperCase()}</span>
                   </div>
                 </div>
@@ -322,9 +324,9 @@ const TemplateApplyModal: React.FC<TemplateApplyModalProps> = ({
                     }}
                   >
                     {simulating ? (
-                      <><i className="fas fa-spinner fa-spin"></i> 계산 중...</>
+                      <><i className="fas fa-spinner fa-spin"></i> Calculating...</>
                     ) : (
-                      <><i className="fas fa-calculator"></i> 적용 시뮬레이션 (7일 예측)</>
+                      <><i className="fas fa-calculator"></i> Apply Simulation (7-day forecast)</>
                     )}
                   </button>
                 ) : (

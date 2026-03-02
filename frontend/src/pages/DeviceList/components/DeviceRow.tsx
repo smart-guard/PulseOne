@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Device } from '../../../api/services/deviceApi';
 
 interface DeviceRowProps {
@@ -26,6 +27,7 @@ const DeviceRow: React.FC<DeviceRowProps> = ({
     onRestore,
     onMove,
 }) => {
+    const { t } = useTranslation(['devices']);
     const getProtocolBadgeClass = (protocolType: string) => {
         const protocol = protocolType?.toUpperCase() || 'UNKNOWN';
         switch (protocol) {
@@ -63,12 +65,12 @@ const DeviceRow: React.FC<DeviceRowProps> = ({
         const status = (device.collector_status?.status || 'unknown').toLowerCase();
 
         let label = status;
-        if (status === 'running') label = '운영';
-        else if (status === 'paused') label = '일시정지';
-        else if (status === 'stopped') label = '정지';
-        else if (status === 'error') label = '오류';
-        else if (status === 'initializing') label = '초기화';
-        else if (status === 'unknown') label = '미확인';
+        if (status === 'running') label = 'Running';
+        else if (status === 'paused') label = 'Paused';
+        else if (status === 'stopped') label = 'Stopped';
+        else if (status === 'error') label = t('devices:filter.error');
+        else if (status === 'initializing') label = 'Initializing';
+        else if (status === 'unknown') label = 'Unknown';
 
         return { status, label };
     };
@@ -99,7 +101,7 @@ const DeviceRow: React.FC<DeviceRowProps> = ({
             <div className="device-list-template-cell">
                 <div className="device-list-cell-text">
                     <div style={{ fontWeight: 600, fontSize: '13px', color: device.template_name ? 'var(--neutral-900)' : 'var(--neutral-400)' }}>
-                        {device.template_name || '수동 등록'}
+                        {device.template_name || t('devices:manualRegister')}
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginTop: '2px' }}>
                         {device.manufacturer || '-'} / {device.model || '-'}
@@ -128,7 +130,7 @@ const DeviceRow: React.FC<DeviceRowProps> = ({
                     </div>
                     <div>
                         <span className={getStatusBadgeClass(device.connection_status)}>
-                            {device.connection_status === 'connected' ? '연결' : '끊김'}
+                            {device.connection_status === 'connected' ? t('devices:filter.connected') : t('devices:filter.disconnected')}
                         </span>
                     </div>
                 </div>
@@ -143,26 +145,26 @@ const DeviceRow: React.FC<DeviceRowProps> = ({
             <div className="device-list-actions-cell">
                 <div className="device-list-row-actions">
                     {isDeleted ? (
-                        <button className="mgmt-btn-icon success" onClick={onRestore} title="디바이스 복구">
+                        <button className="mgmt-btn-icon success" onClick={onRestore} title={t('devices:restore.confirmTitle')}>
                             <i className="fas fa-undo"></i>
                         </button>
                     ) : (
                         <>
-                            <button className="mgmt-btn-icon" onClick={onMove} title="그룹 이동">
+                            <button className="mgmt-btn-icon" onClick={onMove} title={t('devices:moveGroup')}>
                                 <i className="fas fa-exchange-alt"></i>
                             </button>
 
                             {(device.collector_status?.status === 'running' || device.collector_status?.status === 'paused') ? (
                                 <>
-                                    <button className="mgmt-btn-icon error" onClick={onStopWorker} title="워커 정지">
+                                    <button className="mgmt-btn-icon error" onClick={onStopWorker} title={t('devices:worker.stop')}>
                                         <i className="fas fa-stop"></i>
                                     </button>
-                                    <button className="mgmt-btn-icon warning" onClick={onRestartWorker} title="워커 재시작">
+                                    <button className="mgmt-btn-icon warning" onClick={onRestartWorker} title={t('devices:worker.restart')}>
                                         <i className="fas fa-sync-alt"></i>
                                     </button>
                                 </>
                             ) : (
-                                <button className="mgmt-btn-icon success" onClick={onStartWorker} title="워커 시작">
+                                <button className="mgmt-btn-icon success" onClick={onStartWorker} title={t('devices:worker.start')}>
                                     <i className="fas fa-play"></i>
                                 </button>
                             )}

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlarmRule } from '../../api/services/alarmApi';
 import '../../styles/alarm-settings.css';
 import '../../styles/notification-grid.css';
@@ -12,18 +13,19 @@ interface AlarmDetailModalProps {
 }
 
 const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
-    'temperature': '온도', 'pressure': '압력', 'flow': '유량', 'level': '레벨', 'vibration': '진동', 'electrical': '전기', 'safety': '안전', 'general': '일반'
+    'temperature': 'Temperature', 'pressure': 'Pressure', 'flow': 'Flow Rate', 'level': 'Level', 'vibration': 'Vibration', 'electrical': 'Electrical', 'safety': 'Safety', 'general': 'General'
 };
 
 const SCRIPT_PATTERNS = [
-    { id: 'threshold_above', label: '단순 상한값', icon: '📈' },
-    { id: 'threshold_below', label: '단순 하한값', icon: '📉' },
-    { id: 'moving_avg', label: '이동 평균', icon: '📊' },
-    { id: 'hysteresis', label: '히스테리시스', icon: '➰' },
-    { id: 'rate_of_change', label: '급격한 변화량', icon: '⚡' }
+    { id: 'threshold_above', label: 'Upper Threshold', icon: '📈' },
+    { id: 'threshold_below', label: 'Lower Threshold', icon: '📉' },
+    { id: 'moving_avg', label: 'Moving Average', icon: '📊' },
+    { id: 'hysteresis', label: 'Hysteresis', icon: '➰' },
+    { id: 'rate_of_change', label: 'Rate of Change', icon: '⚡' }
 ];
 
 const AlarmDetailModal: React.FC<AlarmDetailModalProps> = ({ rule, onClose, onEdit }) => {
+    const { t } = useTranslation(['alarms', 'common']);
     if (!rule) return null;
 
     const getSeverityBadgeClass = (s: string) => {
@@ -38,9 +40,9 @@ const AlarmDetailModal: React.FC<AlarmDetailModalProps> = ({ rule, onClose, onEd
     };
 
     const getTargetDisplay = () => {
-        if (rule.target_type === 'device') return rule.device_name || `디바이스 #${rule.target_id}`;
+        if (rule.target_type === 'device') return rule.device_name || `Device #${rule.target_id}`;
         // Prefer data_point_name provided by backend join
-        return (rule as any).data_point_name || rule.target_display || `데이터포인트 #${rule.target_id}`;
+        return (rule as any).data_point_name || rule.target_display || `DataPoint #${rule.target_id}`;
     };
 
     const renderSentencePills = (pills: { text: string; highlight?: boolean }[]) => (
@@ -59,11 +61,11 @@ const AlarmDetailModal: React.FC<AlarmDetailModalProps> = ({ rule, onClose, onEd
     const generateSentence = () => {
         const targetName = getTargetDisplay();
         const pills: { text: string; highlight?: boolean }[] = [];
-        pills.push({ text: "만약" });
+        pills.push({ text: "If" });
         pills.push({ text: `[${targetName}]`, highlight: true });
-        pills.push({ text: "의" });
-        pills.push({ text: rule.alarm_type === 'analog' ? '아날로그' : '상태', highlight: true });
-        pills.push({ text: "값이" });
+        pills.push({ text: "of" });
+        pills.push({ text: rule.alarm_type === 'analog' ? 'Analog' : 'State', highlight: true });
+        pills.push({ text: "value" });
 
         if (rule.alarm_type === 'analog') {
             const val = rule.high_limit || rule.trigger_condition || "...";
@@ -72,7 +74,7 @@ const AlarmDetailModal: React.FC<AlarmDetailModalProps> = ({ rule, onClose, onEd
             pills.push({ text: `[${rule.trigger_condition || '...'}]`, highlight: true });
         }
 
-        pills.push({ text: "이면 알람을 발생합니다." });
+        pills.push({ text: "triggers an alarm." });
         return pills;
     };
 
@@ -80,7 +82,7 @@ const AlarmDetailModal: React.FC<AlarmDetailModalProps> = ({ rule, onClose, onEd
         <div className="modal-overlay">
             <div className="modal modal-xl">
                 <div className="modal-header">
-                    <h2 className="modal-title">알람 규칙 상세 정보: {rule.name}</h2>
+                    <h2 className="modal-title">Alarm Rule Details: {rule.name}</h2>
                     <button className="close-button" onClick={onClose}><i className="fas fa-times"></i></button>
                 </div>
                 <div className="modal-content">
@@ -90,16 +92,16 @@ const AlarmDetailModal: React.FC<AlarmDetailModalProps> = ({ rule, onClose, onEd
 
                             {/* Section 1: Basic Information - Exact mirror of form */}
                             <div className="form-section">
-                                <div className="section-title">기본 정보</div>
+                                <div className="section-title">{t('modals.basicInfo', {ns: 'alarms'})}</div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">규칙 이름</label>
+                                    <label className="form-label">{t('settings.ruleName', {ns: 'alarms'})}</label>
                                     <div className="detail-read-value" style={{ fontSize: '15px', fontWeight: 600, padding: '8px 12px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-100)' }}>{rule.name}</div>
                                 </div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">카테고리 / 심각도</label>
+                                    <label className="form-label">{t('labels.categorySeverity', {ns: 'alarms'})}</label>
                                     <div style={{ display: 'flex', gap: '8px', padding: '4px 0' }}>
                                         <span className="badge neutral" style={{ background: 'var(--neutral-100)', color: 'var(--neutral-700)' }}>
-                                            {CATEGORY_DISPLAY_NAMES[rule.category || ''] || '일반'}
+                                            {CATEGORY_DISPLAY_NAMES[rule.category || ''] || 'General'}
                                         </span>
                                         <span className={`badge severity-badge ${getSeverityBadgeClass(rule.severity)}`}>
                                             {rule.severity.toUpperCase()}
@@ -107,40 +109,40 @@ const AlarmDetailModal: React.FC<AlarmDetailModalProps> = ({ rule, onClose, onEd
                                     </div>
                                 </div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">설명</label>
+                                    <label className="form-label">{t('detail.description', {ns: 'alarms'})}</label>
                                     <div className="detail-read-value" style={{ minHeight: '60px', padding: '8px 12px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-100)', color: 'var(--neutral-600)', lineHeight: '1.5' }}>
-                                        {rule.description || '설명이 없습니다.'}
+                                        {rule.description || 'No description available.'}
                                     </div>
                                 </div>
                                 <div className="detail-item-group">
-                                    <label className="form-label">태그</label>
+                                    <label className="form-label">{t('detail.tags', {ns: 'alarms'})}</label>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', padding: '4px 0' }}>
                                         {rule.tags && rule.tags.length > 0 ? rule.tags.map(t => (
                                             <span key={t} className="tag-item" style={{ background: 'var(--primary-50)', color: 'var(--primary-700)', border: '1px solid var(--primary-100)' }}>{t}</span>
-                                        )) : <span style={{ color: 'var(--neutral-400)', fontStyle: 'italic' }}>태그 없음</span>}
+                                        )) : <span style={{ color: 'var(--neutral-400)', fontStyle: 'italic' }}>{t('detail.noTags', {ns: 'alarms'})}</span>}
                                     </div>
                                 </div>
                             </div>
 
                             {/* Section 2: Target Selection - Exact mirror of form */}
                             <div className="form-section">
-                                <div className="section-title">타겟 설정</div>
+                                <div className="section-title">{t('labels.targetSettings', {ns: 'alarms'})}</div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">타겟 타입</label>
+                                    <label className="form-label">{t('detail.targetType', {ns: 'alarms'})}</label>
                                     <div style={{ display: 'flex', gap: '8px', padding: '4px 0' }}>
                                         {['data_point', 'device', 'virtual_point'].map(t => (
                                             <span key={t} className={`logic-pill ${rule.target_type === t ? 'active' : ''}`} style={{ cursor: 'default', opacity: rule.target_type === t ? 1 : 0.4 }}>
-                                                {t === 'data_point' ? '데이터포인트' : t === 'device' ? '디바이스' : '가상포인트'}
+                                                {t === 'data_point' ? 'Data Point' : t === 'device' ? 'Device' : 'Virtual Point'}
                                             </span>
                                         ))}
                                     </div>
                                 </div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">타겟 그룹</label>
+                                    <label className="form-label">{t('detail.targetGroup', {ns: 'alarms'})}</label>
                                     <div className="detail-read-value" style={{ padding: '8px 12px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-100)' }}>{rule.target_group || '-'}</div>
                                 </div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">선택된 대상</label>
+                                    <label className="form-label">{t('detail.selectedTarget', {ns: 'alarms'})}</label>
                                     <div className="detail-read-value" style={{ padding: '8px 12px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-100)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <i className={`fas ${rule.target_type === 'device' ? 'fa-server' : 'fa-microchip'}`} style={{ color: 'var(--primary-500)' }}></i>
                                         {getTargetDisplay()}
@@ -150,11 +152,11 @@ const AlarmDetailModal: React.FC<AlarmDetailModalProps> = ({ rule, onClose, onEd
 
                             {/* Section 3: Condition Settings - Exact mirror of form */}
                             <div className="form-section">
-                                <div className="section-title">조건 설정</div>
+                                <div className="section-title">{t('labels.conditionSettings', {ns: 'alarms'})}</div>
                                 <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
                                     {['analog', 'digital', 'script'].map(t => (
                                         <span key={t} className={`logic-pill ${rule.alarm_type === t ? 'active' : ''}`} style={{ cursor: 'default', opacity: rule.alarm_type === t ? 1 : 0.4 }}>
-                                            {t === 'analog' ? '아날로그' : t === 'digital' ? '디지털' : '스크립트'}
+                                            {t === 'analog' ? 'Analog' : t === 'digital' ? 'Digital' : 'Script'}
                                         </span>
                                     ))}
                                 </div>
@@ -170,13 +172,13 @@ const AlarmDetailModal: React.FC<AlarmDetailModalProps> = ({ rule, onClose, onEd
                                             </div>
                                         ))}
                                         <div className="form-group">
-                                            <label className="form-label">DEADBAND</label>
+                                            <label className="form-label">{t('labels.deadband', {ns: 'alarms'})}</label>
                                             <div className="detail-read-value" style={{ textAlign: 'center', background: '#fff', border: '1px solid var(--neutral-200)', borderRadius: '4px', padding: '4px 0' }}>
                                                 {rule.deadband ?? '-'}
                                             </div>
                                         </div>
                                         <div className="form-group">
-                                            <label className="form-label">ROC LIMIT</label>
+                                            <label className="form-label">{t('labels.rocLimit', {ns: 'alarms'})}</label>
                                             <div className="detail-read-value" style={{ textAlign: 'center', background: '#fff', border: '1px solid var(--neutral-200)', borderRadius: '4px', padding: '4px 0' }}>
                                                 {rule.rate_of_change ?? '-'}
                                             </div>
@@ -186,11 +188,11 @@ const AlarmDetailModal: React.FC<AlarmDetailModalProps> = ({ rule, onClose, onEd
 
                                 {rule.alarm_type === 'digital' && (
                                     <div className="detail-item-group">
-                                        <label className="form-label">트리거 조건</label>
+                                        <label className="form-label">{t('labels.triggerCondition', {ns: 'alarms'})}</label>
                                         <div className="detail-read-value" style={{ padding: '8px 12px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-100)', fontWeight: 600, color: 'var(--primary-600)' }}>
-                                            {rule.trigger_condition === 'on_true' ? '값이 True일 때 (1)' :
-                                                rule.trigger_condition === 'on_false' ? '값이 False일 때 (0)' :
-                                                    rule.trigger_condition === 'on_change' ? '상태가 변할 때' : '연결 끊김'}
+                                            {rule.trigger_condition === 'on_true' ? 'When value is True (1)' :
+                                                rule.trigger_condition === 'on_false' ? 'When value is False (0)' :
+                                                    rule.trigger_condition === 'on_change' ? 'When state changes' : 'Connection lost'}
                                         </div>
                                     </div>
                                 )}
@@ -213,12 +215,12 @@ const AlarmDetailModal: React.FC<AlarmDetailModalProps> = ({ rule, onClose, onEd
 
                             {/* Section 4: Notifications & Actions - Exact mirror of form */}
                             <div className="form-section">
-                                <div className="section-title">알림 및 조치</div>
+                                <div className="section-title">{t('detail.notificationActions', {ns: 'alarms'})}</div>
                                 <div className="notification-grid" style={{ pointerEvents: 'none' }}>
                                     <div className={`checkbox-group ${rule.auto_acknowledge ? 'active' : ''}`} style={{ height: '52px', background: rule.auto_acknowledge ? 'var(--primary-50)' : 'var(--neutral-50)' }}>
                                         <label className="checkbox-label">
                                             <i className={`fas ${rule.auto_acknowledge ? 'fa-check-circle' : 'fa-circle'}`} style={{ color: rule.auto_acknowledge ? 'var(--primary-500)' : 'var(--neutral-300)' }}></i>
-                                            자동 확인 (Auto Ack)
+                                            Auto Acknowledge (Auto Ack)
                                         </label>
                                     </div>
                                     <div className={`checkbox-group ${rule.auto_clear ? 'active' : ''}`} style={{ height: '52px', background: rule.auto_clear ? 'var(--primary-50)' : 'var(--neutral-50)' }}>
@@ -251,7 +253,7 @@ const AlarmDetailModal: React.FC<AlarmDetailModalProps> = ({ rule, onClose, onEd
                 <div className="modal-footer" style={{ borderTop: '1px solid var(--neutral-100)', padding: '20px 32px' }}>
                     <div className="footer-left"></div>
                     <div className="footer-right" style={{ display: 'flex', gap: '12px' }}>
-                        <button type="button" className="btn btn-secondary" style={{ minWidth: '100px' }} onClick={onClose}>닫기</button>
+                        <button type="button" className="btn btn-secondary" style={{ minWidth: '100px' }} onClick={onClose}>{t('close', {ns: 'common'})}</button>
                         <button type="button" className="btn btn-primary" style={{ minWidth: '100px' }} onClick={() => onEdit(rule)}>수정하기</button>
                     </div>
                 </div>

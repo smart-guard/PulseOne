@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DeviceApiService, Device } from '../../../api/services/deviceApi';
 
 interface DeviceRtuMonitorTabProps {
@@ -48,6 +49,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
   mode
 }) => {
   const [metrics, setMetrics] = useState<CommunicationMetrics[]>([]);
+    const { t } = useTranslation(['devices', 'common']);
   const [statistics, setStatistics] = useState<RtuStatistics | null>(null);
   const [diagnostics, setDiagnostics] = useState<NetworkDiagnostics | null>(null);
   const [isMonitoring, setIsMonitoring] = useState(false);
@@ -90,9 +92,9 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
         color: '#6b7280' 
       }}>
         <i className="fas fa-info-circle" style={{ fontSize: '3rem', marginBottom: '1rem' }}></i>
-        <h3 style={{ margin: '0 0 0.5rem 0', color: '#374151' }}>RTU 디바이스가 아닙니다</h3>
+        <h3 style={{ margin: '0 0 0.5rem 0', color: '#374151' }}>{t('labels.notAnRtuDevice', {ns: 'devices'})}</h3>
         <p style={{ margin: 0, textAlign: 'center' }}>
-          이 탭은 Modbus RTU 프로토콜을 사용하는 디바이스에서만 표시됩니다.
+          This tab is only shown for devices using the Modbus RTU protocol.
         </p>
       </div>
     );
@@ -116,7 +118,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
           setDiagnostics(data.data?.diagnostics);
           console.log('RTU 통계 로드 완료:', data.data);
         } else {
-          throw new Error(data.error || '통계 로드 실패');
+          throw new Error(data.error || 'Failed to load statistics');
         }
       } else {
         // 시뮬레이션 데이터
@@ -146,7 +148,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
       }
     } catch (err) {
       console.error('통계 로드 실패:', err);
-      setError(err instanceof Error ? err.message : '통계를 불러올 수 없습니다');
+      setError(err instanceof Error ? err.message : 'Failed to load statistics');
     }
   }, [device?.id]);
 
@@ -193,7 +195,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
     console.log('RTU 모니터링 중지');
   }, []);
 
-  // 통신 테스트 실행
+  // Communication Test 실행
   const runCommunicationTest = async () => {
     if (!device?.id) return;
 
@@ -201,27 +203,27 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
       setIsLoading(true);
       setError(null);
       
-      console.log(`RTU 통신 테스트 실행: device_id=${device.id}`);
+      console.log(`RTU Communication Test 실행: device_id=${device.id}`);
       const response = await DeviceApiService.testDeviceConnection(device.id);
       
       if (response.success && response.data) {
         const result = response.data;
         const message = result.test_successful 
-          ? `연결 성공! 응답시간: ${result.response_time_ms}ms`
-          : `연결 실패: ${result.error_message}`;
+          ? `Connected! Response time: ${result.response_time_ms}ms`
+          : `Connection failed: ${result.error_message}`;
         
         alert(message);
-        console.log('RTU 통신 테스트 결과:', result);
+        console.log('RTU Communication Test 결과:', result);
         
         // 테스트 후 통계 갱신
         await loadStatistics();
       } else {
-        throw new Error(response.error || '통신 테스트 실패');
+        throw new Error(response.error || 'Communication test failed');
       }
     } catch (err) {
-      console.error('통신 테스트 실패:', err);
-      setError('통신 테스트 중 오류가 발생했습니다');
-      alert(`통신 테스트 실패: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      console.error('Communication Test 실패:', err);
+      setError('Error during communication test');
+      alert(`Communication test failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -354,7 +356,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
             disabled={isLoading}
           >
             <i className={`fas ${isMonitoring ? 'fa-stop' : 'fa-play'}`}></i>
-            {isMonitoring ? '모니터링 중지' : '모니터링 시작'}
+            {isMonitoring ? 'Stop Monitoring' : 'Start Monitoring'}
           </button>
           
           <select
@@ -362,10 +364,10 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
             onChange={(e) => setTimeRange(e.target.value as typeof timeRange)}
             disabled={isMonitoring}
           >
-            <option value="1min">1분</option>
-            <option value="5min">5분</option>
-            <option value="15min">15분</option>
-            <option value="1hour">1시간</option>
+            <option value="1min">1 min</option>
+            <option value="5min">5 min</option>
+            <option value="15min">15 min</option>
+            <option value="1hour">1 hr</option>
           </select>
           
           <button
@@ -374,7 +376,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
             disabled={isLoading}
           >
             <i className="fas fa-vial"></i>
-            통신 테스트
+            Communication Test
           </button>
         </div>
         
@@ -382,17 +384,17 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
           {isMonitoring && metrics.length > 0 && (
             <>
               <div className="stat-item">
-                <label>현재 응답시간</label>
+                <label>{t('labels.currentResponse', {ns: 'devices'})}</label>
                 <span className="stat-value">{metrics[metrics.length - 1]?.responseTime || 0}ms</span>
               </div>
               <div className="stat-item">
-                <label>평균 응답시간</label>
+                <label>{t('labels.avgResponse', {ns: 'devices'})}</label>
                 <span className="stat-value">
                   {Math.round(metrics.reduce((sum, m) => sum + m.responseTime, 0) / metrics.length)}ms
                 </span>
               </div>
               <div className="stat-item">
-                <label>성공률</label>
+                <label>{t('status.successRate', {ns: 'devices'})}</label>
                 <span className="stat-value success">
                   {Math.round((metrics.filter(m => m.successful).length / metrics.length) * 100)}%
                 </span>
@@ -405,15 +407,15 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
       {/* 실시간 차트 */}
       <div className="chart-container">
         <div className="chart-header">
-          <h4>응답시간 추이</h4>
+          <h4>{t('labels.responseTimeTrend', {ns: 'devices'})}</h4>
           <div className="chart-legend">
             <div className="legend-item">
               <div className="legend-color line"></div>
-              <span>응답시간</span>
+              <span>{t('status.responseTime', {ns: 'devices'})}</span>
             </div>
             <div className="legend-item">
               <div className="legend-color error"></div>
-              <span>통신 실패</span>
+              <span>{t('labels.commFailure', {ns: 'devices'})}</span>
             </div>
           </div>
         </div>
@@ -428,7 +430,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
         {metrics.length === 0 && !isMonitoring && (
           <div className="chart-empty">
             <i className="fas fa-chart-line"></i>
-            <p>모니터링을 시작하면 실시간 데이터가 표시됩니다</p>
+            <p>{t('labels.startMonitoringToSeeRealtimeData', {ns: 'devices'})}</p>
           </div>
         )}
       </div>
@@ -436,14 +438,14 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
       {/* 최근 통신 로그 */}
       {metrics.length > 0 && (
         <div className="communication-log">
-          <h4>최근 통신 기록</h4>
+          <h4>{t('labels.recentCommunicationRecords', {ns: 'devices'})}</h4>
           <div className="log-table">
             <div className="log-header">
-              <div>시간</div>
-              <div>상태</div>
-              <div>응답시간</div>
-              <div>송신</div>
-              <div>수신</div>
+              <div>{t('logTab.time', {ns: 'devices'})}</div>
+              <div>{t('tabs.status', {ns: 'devices'})}</div>
+              <div>{t('status.responseTime', {ns: 'devices'})}</div>
+              <div>TX</div>
+              <div>RX</div>
             </div>
             <div className="log-body">
               {metrics.slice(-10).reverse().map((metric, index) => (
@@ -453,7 +455,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
                   </div>
                   <div className={`log-status ${metric.successful ? 'success' : 'error'}`}>
                     <i className={`fas ${metric.successful ? 'fa-check' : 'fa-times'}`}></i>
-                    {metric.successful ? '성공' : metric.errorCode || '실패'}
+                    {metric.successful ? 'OK' : metric.errorCode || 'Failed'}
                   </div>
                   <div className="log-response-time">
                     {metric.responseTime}ms
@@ -486,7 +488,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
               </div>
               <div className="stat-content">
                 <div className="stat-value">{statistics.totalRequests.toLocaleString()}</div>
-                <div className="stat-label">총 요청</div>
+                <div className="stat-label">{t('status.totalRequests', {ns: 'devices'})}</div>
               </div>
             </div>
             
@@ -496,7 +498,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
               </div>
               <div className="stat-content">
                 <div className="stat-value success">{statistics.successfulRequests.toLocaleString()}</div>
-                <div className="stat-label">성공한 요청</div>
+                <div className="stat-label">{t('status.success', {ns: 'devices'})}</div>
               </div>
             </div>
             
@@ -506,7 +508,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
               </div>
               <div className="stat-content">
                 <div className="stat-value error">{statistics.failedRequests.toLocaleString()}</div>
-                <div className="stat-label">실패한 요청</div>
+                <div className="stat-label">Failed</div>
               </div>
             </div>
             
@@ -516,7 +518,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
               </div>
               <div className="stat-content">
                 <div className="stat-value">{statistics.averageResponseTime}ms</div>
-                <div className="stat-label">평균 응답시간</div>
+                <div className="stat-label">{t('labels.avgResponse', {ns: 'devices'})}</div>
               </div>
             </div>
             
@@ -526,7 +528,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
               </div>
               <div className="stat-content">
                 <div className="stat-value">{(statistics.throughput / 1024).toFixed(1)}KB/s</div>
-                <div className="stat-label">처리량</div>
+                <div className="stat-label">{t('status.throughput', {ns: 'devices'})}</div>
               </div>
             </div>
             
@@ -536,7 +538,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
               </div>
               <div className="stat-content">
                 <div className="stat-value error">{statistics.errorRate.toFixed(1)}%</div>
-                <div className="stat-label">오류율</div>
+                <div className="stat-label">{t('labels.errorRate', {ns: 'devices'})}</div>
               </div>
             </div>
           </div>
@@ -544,36 +546,36 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
           {/* 상세 통계 */}
           <div className="detailed-stats">
             <div className="stats-section">
-              <h4>응답시간 통계</h4>
+              <h4>{t('labels.responseTimeStats', {ns: 'devices'})}</h4>
               <div className="stats-table">
                 <div className="stats-row">
-                  <span>평균:</span>
+                  <span>{t('labels.avg', {ns: 'devices'})}</span>
                   <span>{statistics.averageResponseTime}ms</span>
                 </div>
                 <div className="stats-row">
-                  <span>최소:</span>
+                  <span>{t('labels.min', {ns: 'devices'})}</span>
                   <span>{statistics.minResponseTime}ms</span>
                 </div>
                 <div className="stats-row">
-                  <span>최대:</span>
+                  <span>{t('labels.max', {ns: 'devices'})}</span>
                   <span>{statistics.maxResponseTime}ms</span>
                 </div>
               </div>
             </div>
 
             <div className="stats-section">
-              <h4>연결 정보</h4>
+              <h4>{t('labels.connectionInfo', {ns: 'devices'})}</h4>
               <div className="stats-table">
                 <div className="stats-row">
-                  <span>연결 유지 시간:</span>
+                  <span>{t('labels.connectionUptime', {ns: 'devices'})}</span>
                   <span>{statistics.connectionUptime}</span>
                 </div>
                 <div className="stats-row">
-                  <span>마지막 통신:</span>
+                  <span>{t('labels.lastComm', {ns: 'devices'})}</span>
                   <span>{new Date(statistics.lastCommunication).toLocaleString()}</span>
                 </div>
                 <div className="stats-row">
-                  <span>성공률:</span>
+                  <span>{t('labels.successRate', {ns: 'devices'})}</span>
                   <span className="success">
                     {((statistics.successfulRequests / statistics.totalRequests) * 100).toFixed(2)}%
                   </span>
@@ -584,25 +586,25 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
             {/* 프로토콜 정보 */}
             {protocolInfo && (
               <div className="stats-section">
-                <h4>프로토콜 정보</h4>
+                <h4>{t('labels.protocolInfo', {ns: 'devices'})}</h4>
                 <div className="stats-table">
                   <div className="stats-row">
-                    <span>프로토콜:</span>
+                    <span>{t('labels.protocol', {ns: 'devices'})}</span>
                     <span>{protocolInfo.display_name || protocolInfo.name}</span>
                   </div>
                   <div className="stats-row">
-                    <span>프로토콜 ID:</span>
+                    <span>{t('labels.protocolId', {ns: 'devices'})}</span>
                     <span>{protocolInfo.id}</span>
                   </div>
                   {protocolInfo.default_port && (
                     <div className="stats-row">
-                      <span>기본 포트:</span>
+                      <span>{t('labels.defaultPort', {ns: 'devices'})}</span>
                       <span>{protocolInfo.default_port}</span>
                     </div>
                   )}
                   {protocolInfo.category && (
                     <div className="stats-row">
-                      <span>카테고리:</span>
+                      <span>{t('labels.category', {ns: 'devices'})}</span>
                       <span>{protocolInfo.category}</span>
                     </div>
                   )}
@@ -616,7 +618,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
       <div className="stats-actions">
         <button className="btn btn-secondary" onClick={loadStatistics}>
           <i className="fas fa-sync-alt"></i>
-          통계 새로고침
+          Refresh Stats
         </button>
       </div>
     </div>
@@ -629,7 +631,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
         <>
           {/* 오류 통계 */}
           <div className="error-stats">
-            <h4>통신 오류 분석</h4>
+            <h4>{t('labels.commErrorAnalysis', {ns: 'devices'})}</h4>
             <div className="error-grid">
               <div className="error-card">
                 <div className="error-icon">
@@ -637,7 +639,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
                 </div>
                 <div className="error-content">
                   <div className="error-count">{diagnostics.timeoutErrors}</div>
-                  <div className="error-label">타임아웃 오류</div>
+                  <div className="error-label">{t('labels.timeoutError', {ns: 'devices'})}</div>
                 </div>
               </div>
               
@@ -647,7 +649,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
                 </div>
                 <div className="error-content">
                   <div className="error-count">{diagnostics.crcErrors}</div>
-                  <div className="error-label">CRC 오류</div>
+                  <div className="error-label">{t('labels.crcError', {ns: 'devices'})}</div>
                 </div>
               </div>
               
@@ -657,7 +659,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
                 </div>
                 <div className="error-content">
                   <div className="error-count">{diagnostics.framingErrors}</div>
-                  <div className="error-label">프레이밍 오류</div>
+                  <div className="error-label">{t('labels.framingError', {ns: 'devices'})}</div>
                 </div>
               </div>
               
@@ -667,7 +669,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
                 </div>
                 <div className="error-content">
                   <div className="error-count">{diagnostics.overrunErrors}</div>
-                  <div className="error-label">오버런 오류</div>
+                  <div className="error-label">{t('labels.overrunError', {ns: 'devices'})}</div>
                 </div>
               </div>
               
@@ -677,16 +679,16 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
                 </div>
                 <div className="error-content">
                   <div className="error-count">{diagnostics.parityErrors}</div>
-                  <div className="error-label">패리티 오류</div>
+                  <div className="error-label">{t('labels.parityError', {ns: 'devices'})}</div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 최근 오류 정보 */}
+          {/* Recent Errors 정보 */}
           {diagnostics.lastErrorTime && (
             <div className="last-error">
-              <h4>최근 오류</h4>
+              <h4>{t('labels.recentErrors', {ns: 'devices'})}</h4>
               <div className="error-info">
                 <div className="error-time">
                   <i className="fas fa-clock"></i>
@@ -700,17 +702,17 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
             </div>
           )}
 
-          {/* 네트워크 상태 */}
+          {/* Network Status */}
           <div className="network-health">
-            <h4>네트워크 상태</h4>
+            <h4>{t('labels.networkStatus', {ns: 'devices'})}</h4>
             <div className="health-indicators">
               <div className="health-indicator">
                 <div className="indicator-icon success">
                   <i className="fas fa-wifi"></i>
                 </div>
                 <div className="indicator-content">
-                  <div className="indicator-label">신호 품질</div>
-                  <div className="indicator-value">양호</div>
+                  <div className="indicator-label">{t('labels.signalQuality', {ns: 'devices'})}</div>
+                  <div className="indicator-value">{t('labels.good', {ns: 'devices'})}</div>
                 </div>
               </div>
               
@@ -719,7 +721,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
                   <i className="fas fa-exclamation-triangle"></i>
                 </div>
                 <div className="indicator-content">
-                  <div className="indicator-label">오류율</div>
+                  <div className="indicator-label">{t('labels.errorRate', {ns: 'devices'})}</div>
                   <div className="indicator-value">
                     {((diagnostics.crcErrors + diagnostics.timeoutErrors + 
                        diagnostics.framingErrors + diagnostics.overrunErrors + 
@@ -732,26 +734,26 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
 
           {/* 권장사항 */}
           <div className="recommendations">
-            <h4>개선 권장사항</h4>
+            <h4>{t('labels.improvementRecommendations', {ns: 'devices'})}</h4>
             <div className="recommendation-list">
               {diagnostics.timeoutErrors > 20 && (
                 <div className="recommendation-item">
                   <i className="fas fa-lightbulb"></i>
-                  <span>타임아웃 오류가 많습니다. Response Timeout 값을 늘려보세요.</span>
+                  <span>Many Timeout Errors detected. Try increasing the Response Timeout value.</span>
                 </div>
               )}
               
               {diagnostics.crcErrors > 10 && (
                 <div className="recommendation-item">
                   <i className="fas fa-lightbulb"></i>
-                  <span>CRC 오류가 발생하고 있습니다. 배선 상태를 확인하세요.</span>
+                  <span>CRC Error가 발생하고 있습니다. 배선 상태를 확인하세요.</span>
                 </div>
               )}
               
               {diagnostics.framingErrors > 5 && (
                 <div className="recommendation-item">
                   <i className="fas fa-lightbulb"></i>
-                  <span>프레이밍 오류가 있습니다. Baud Rate 설정을 확인하세요.</span>
+                  <span>Framing Error가 있습니다. Baud Rate 설정을 확인하세요.</span>
                 </div>
               )}
               

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ManufactureApiService } from '../api/services/manufactureApi';
 import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
@@ -13,6 +14,7 @@ import { useConfirmContext } from '../components/common/ConfirmProvider';
 import '../styles/management.css';
 
 const ManufacturerManagementPage: React.FC = () => {
+    const { t } = useTranslation(['manufacturers', 'common']);
     const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -63,7 +65,7 @@ const ManufacturerManagementPage: React.FC = () => {
                 setTotalCount(response.data.pagination?.total_count || 0);
             }
         } catch (err) {
-            setError('제조사 정보를 불러오는 중 오류가 발생했습니다.');
+            setError(t('manufacturers:loading'));
         } finally {
             setLoading(false);
         }
@@ -96,9 +98,9 @@ const ManufacturerManagementPage: React.FC = () => {
 
     const handleRestore = async (m: Manufacturer) => {
         const confirmed = await confirm({
-            title: '제조사 복구 확인',
-            message: `'${m.name}' 제조사를 복구하시겠습니까?`,
-            confirmText: '복구',
+            title: t('manufacturers:confirm.restoreTitle'),
+            message: t('manufacturers:confirm.restoreMsg', { name: m.name }),
+            confirmText: t('manufacturers:confirm.restoreText'),
             confirmButtonType: 'primary'
         });
 
@@ -107,9 +109,9 @@ const ManufacturerManagementPage: React.FC = () => {
                 const res = await ManufactureApiService.restoreManufacturer(m.id);
                 if (res.success) {
                     await confirm({
-                        title: '복구 완료',
-                        message: '제조사가 성공적으로 복구되었습니다.',
-                        confirmText: '확인',
+                        title: t('manufacturers:confirm.restoreSuccessTitle'),
+                        message: t('manufacturers:confirm.restoreSuccessMsg'),
+                        confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'primary'
                     });
@@ -118,18 +120,18 @@ const ManufacturerManagementPage: React.FC = () => {
                     loadStats();
                 } else {
                     await confirm({
-                        title: '복구 실패',
-                        message: res.message || '복구에 실패했습니다.',
-                        confirmText: '확인',
+                        title: t('manufacturers:confirm.restoreFailTitle'),
+                        message: res.message || 'Restoration failed.',
+                        confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'danger'
                     });
                 }
             } catch (err: any) {
                 await confirm({
-                    title: '오류 발생',
-                    message: err.message || '복구 중 오류가 발생했습니다.',
-                    confirmText: '확인',
+                    title: t('manufacturers:confirm.errorTitle'),
+                    message: err.message || 'Error occurred.',
+                    confirmText: 'OK',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -139,9 +141,9 @@ const ManufacturerManagementPage: React.FC = () => {
 
     const handleDelete = async (m: Manufacturer) => {
         const confirmed = await confirm({
-            title: '제조사 삭제 확인',
-            message: `'${m.name}' 제조사를 삭제하시겠습니까? 연결된 모델이 있는 경우 삭제할 수 없습니다.`,
-            confirmText: '삭제',
+            title: t('manufacturers:confirm.deleteTitle'),
+            message: t('manufacturers:confirm.deleteMsg', { name: m.name }),
+            confirmText: t('manufacturers:confirm.deleteText'),
             confirmButtonType: 'danger'
         });
 
@@ -150,9 +152,9 @@ const ManufacturerManagementPage: React.FC = () => {
                 const res = await ManufactureApiService.deleteManufacturer(m.id);
                 if (res.success) {
                     await confirm({
-                        title: '삭제 완료',
-                        message: '제조사가 성공적으로 삭제되었습니다.',
-                        confirmText: '확인',
+                        title: t('manufacturers:confirm.deleteSuccessTitle'),
+                        message: t('manufacturers:confirm.deleteSuccessMsg'),
+                        confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'primary'
                     });
@@ -160,18 +162,18 @@ const ManufacturerManagementPage: React.FC = () => {
                     loadStats();
                 } else {
                     await confirm({
-                        title: '삭제 실패',
-                        message: res.message || '삭제에 실패했습니다.',
-                        confirmText: '확인',
+                        title: t('manufacturers:confirm.deleteFailTitle'),
+                        message: res.message || 'Delete failed.',
+                        confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'danger'
                     });
                 }
             } catch (err: any) {
                 await confirm({
-                    title: '오류 발생',
-                    message: err.message || '삭제 중 오류가 발생했습니다.',
-                    confirmText: '확인',
+                    title: t('manufacturers:confirm.errorTitle'),
+                    message: err.message || 'Error occurred.',
+                    confirmText: 'OK',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -182,20 +184,20 @@ const ManufacturerManagementPage: React.FC = () => {
     return (
         <ManagementLayout>
             <PageHeader
-                title="제조사 관리"
-                description="하드웨어 제조사 정보를 관리합니다. 모델 상세 관리는 '디바이마스터 모델' 페이지에서 가능합니다."
+                title={t('manufacturers:title')}
+                description={t('manufacturers:description')}
                 icon="fas fa-industry"
                 actions={
                     <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreate}>
-                        <i className="fas fa-plus"></i> 새 제조사 등록
+                        <i className="fas fa-plus"></i> {t('manufacturers:register')}
                     </button>
                 }
             />
 
             <div className="mgmt-stats-panel">
-                <StatCard label="전체 제조사" value={stats.total_manufacturers} type="primary" />
-                <StatCard label="전체 모델" value={stats.total_models} type="success" />
-                <StatCard label="제조사 국가" value={stats.total_countries} type="neutral" />
+                <StatCard label={t('manufacturers:stats.totalManufacturers')} value={stats.total_manufacturers} type="primary" />
+                <StatCard label={t('manufacturers:stats.totalModels')} value={stats.total_models} type="success" />
+                <StatCard label={t('manufacturers:stats.countries')} value={stats.total_countries} type="neutral" />
             </div>
 
             <FilterBar
@@ -203,12 +205,12 @@ const ManufacturerManagementPage: React.FC = () => {
                 onSearchChange={setSearchTerm}
                 filters={[
                     {
-                        label: '상태',
+                        label: t('manufacturers:filter.status'),
                         value: selectedStatus,
                         options: [
-                            { label: '전체', value: 'all' },
-                            { label: '활성', value: 'active' },
-                            { label: '비활성', value: 'inactive' }
+                            { label: t('manufacturers:filter.all'), value: 'all' },
+                            { label: t('manufacturers:filter.active'), value: 'active' },
+                            { label: t('manufacturers:filter.inactive'), value: 'inactive' }
                         ],
                         onChange: setSelectedStatus
                     }
@@ -228,21 +230,21 @@ const ManufacturerManagementPage: React.FC = () => {
                                     checked={includeDeleted}
                                     onChange={(e) => setIncludeDeleted(e.target.checked)}
                                 />
-                                삭제된 제조사 보기
+                                {t('manufacturers:showDeleted')}
                             </label>
                         </div>
                         <div className="mgmt-view-toggle">
                             <button
                                 className={`mgmt-btn-icon ${viewMode === 'card' ? 'active' : ''}`}
                                 onClick={() => setViewMode('card')}
-                                title="카드 보기"
+                                title={t('manufacturers:cardView')}
                             >
                                 <i className="fas fa-th-large"></i>
                             </button>
                             <button
                                 className={`mgmt-btn-icon ${viewMode === 'table' ? 'active' : ''}`}
                                 onClick={() => setViewMode('table')}
-                                title="리스트 보기"
+                                title={t('manufacturers:listView')}
                             >
                                 <i className="fas fa-list"></i>
                             </button>
@@ -260,15 +262,15 @@ const ManufacturerManagementPage: React.FC = () => {
                                     <div className="mgmt-card-title">
                                         <h4 className="mgmt-clickable-name" onClick={() => handleViewDetail(m.id)}>{m.name}</h4>
                                         <div style={{ display: 'flex', gap: '5px' }}>
-                                            {!!m.is_deleted && <span className="mgmt-badge danger">삭제됨</span>}
+                                            {!!m.is_deleted && <span className="mgmt-badge danger">{t('manufacturers:badge.deleted')}</span>}
                                             <span className={`mgmt-badge ${m.is_active ? 'success' : 'neutral'}`}>
-                                                {m.is_active ? '활성' : '비활성'}
+                                                {m.is_active ? t('manufacturers:badge.active') : t('manufacturers:badge.inactive')}
                                             </span>
                                         </div>
                                     </div>
                                 </div>
                                 <div className="mgmt-card-body">
-                                    <p>{m.description || '제조사 설명이 없습니다.'}</p>
+                                    <p>{m.description || t('manufacturers:noDescription')}</p>
                                     <div className="mgmt-card-meta">
                                         <span className="mgmt-clickable-name" onClick={() => handleOpenModels(m)}>
                                             <i className="fas fa-microchip"></i> {m.model_count || 0} Models
@@ -280,11 +282,11 @@ const ManufacturerManagementPage: React.FC = () => {
                                     <div className="card-actions">
                                         {m.is_deleted ? (
                                             <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => handleRestore(m)}>
-                                                <i className="fas fa-undo"></i> 복구하기
+                                                <i className="fas fa-undo"></i> {t('manufacturers:restore')}
                                             </button>
                                         ) : (
                                             <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => handleViewDetail(m.id)}>
-                                                상세보기
+                                                {t('manufacturers:detail')}
                                             </button>
                                         )}
                                     </div>
@@ -297,11 +299,11 @@ const ManufacturerManagementPage: React.FC = () => {
                         <table className="mgmt-table">
                             <thead>
                                 <tr>
-                                    <th>제조사명</th>
-                                    <th>설명</th>
-                                    <th>모델 수</th>
-                                    <th>국가</th>
-                                    <th>상태</th>
+                                    <th>{t('manufacturers:table.name')}</th>
+                                    <th>{t('manufacturers:table.description')}</th>
+                                    <th>{t('manufacturers:table.modelCount')}</th>
+                                    <th>{t('manufacturers:table.country')}</th>
+                                    <th>{t('manufacturers:table.status')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -347,9 +349,9 @@ const ManufacturerManagementPage: React.FC = () => {
                                         </td>
                                         <td>
                                             <div style={{ display: 'flex', gap: '5px' }}>
-                                                {!!m.is_deleted && <span className="mgmt-badge danger">삭제됨</span>}
+                                                {!!m.is_deleted && <span className="mgmt-badge danger">{t('manufacturers:badge.deleted')}</span>}
                                                 <span className={`mgmt-badge ${m.is_active ? 'success' : 'neutral'}`}>
-                                                    {m.is_active ? '활성' : '비활성'}
+                                                    {m.is_active ? t('manufacturers:badge.active') : t('manufacturers:badge.inactive')}
                                                 </span>
                                             </div>
                                         </td>

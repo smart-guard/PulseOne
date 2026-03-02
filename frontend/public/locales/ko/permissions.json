@@ -1,0 +1,57 @@
+{
+    "title": "권한 관리",
+    "description": "역할(Role) 기반 접근 제어를 관리합니다.",
+    "newRole": "새 역할 추가",
+    "newPermission": "권한 추가",
+    "tabs": {
+        "roles": "역할 목록",
+        "permissions": "권한 목록",
+        "assignment": "역할 배분"
+    },
+    "table": {
+        "name": "이름",
+        "description": "설명",
+        "users": "사용자 수",
+        "permissions": "권한 수",
+        "created": "생성일",
+        "actions": "작업"
+    },
+    "badge": {
+        "admin": "관리자",
+        "operator": "운영자",
+        "viewer": "조회자"
+    },
+    "confirm": {
+        "deleteRoleTitle": "역할 삭제 확인",
+        "deleteRoleMsg": "역할 '{{name}}'을 삭제하시겠습니까?",
+        "deleteText": "삭제"
+    },
+    "loading": "데이터를 불러오는 중...",
+    "noData": "등록된 데이터가 없습니다.",
+    "roleModal": {
+        "name": "역할명",
+        "description": "설명",
+        "permissions": "권한 설정"
+    },
+    "labels": {
+        "users": "Users",
+        "userDetails": "User Details",
+        "fullName": "Full Name",
+        "email": "이메일",
+        "contact": "Contact",
+        "department": "부서",
+        "accountStatus": "Account Status",
+        "assignedRole": "Assigned Role",
+        "activePermissionPolicy": "Active Permission Policy",
+        "siteAccess": "Site Access",
+        "fullAccessSystemAdmin": "Full Access (System Admin)",
+        "companyTenant": "Company (Tenant)",
+        "selectACompany": "Select a company",
+        "username": "사용자명",
+        "phoneNumber": "Phone Number",
+        "systemRole": "System Role",
+        "selectARole": "Select a role",
+        "detailedPermissions": "Detailed Permissions",
+        "noSitesRegistered": "No sites registered."
+    }
+}

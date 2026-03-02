@@ -1,6 +1,6 @@
 // ============================================================================
 // frontend/src/components/common/DataPointSelectionTable.tsx
-// 🔥 데이터포인트 선택 테이블 - 재사용 가능한 독립 컴포넌트
+// 🔥 Data Point 선택 테이블 - 재사용 가능한 독립 컴포넌트
 // ============================================================================
 
 import React from 'react';
@@ -100,7 +100,7 @@ const DataPointSelectionTable: React.FC<DataPointSelectionTableProps> = ({
           style={{
             display: 'grid',
             gridTemplateColumns: compact 
-                ? '40px 2fr 1.5fr 1.5fr 100px'   // 컴팩트: 데이터포인트 살짝 줄임
+                ? '40px 2fr 1.5fr 1.5fr 100px'   // 컴팩트: Data Point 살짝 줄임
                 : '50px 3fr 2fr 2fr 1.5fr',       // 일반: 더 균형잡힌 비율
             background: '#f8fafc',
             borderBottom: '1px solid #e5e7eb',
@@ -123,10 +123,10 @@ const DataPointSelectionTable: React.FC<DataPointSelectionTableProps> = ({
             )}
           </div>
           <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            데이터포인트
+            Data Point
           </div>
           <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            디바이스
+            Device
           </div>
           <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             사이트
@@ -148,7 +148,7 @@ const DataPointSelectionTable: React.FC<DataPointSelectionTableProps> = ({
               style={{
                 display: 'grid',
                 gridTemplateColumns: compact 
-                    ? '40px 2fr 1.5fr 1.5fr 100px'   // 컴팩트: 데이터포인트 살짝 줄임
+                    ? '40px 2fr 1.5fr 1.5fr 100px'   // 컴팩트: Data Point 살짝 줄임
                     : '50px 3fr 2fr 2fr 1.5fr',       // 일반: 더 균형잡힌 비율
                 borderBottom: '1px solid #f1f5f9',
                 transition: 'background-color 0.2s ease',
@@ -173,7 +173,7 @@ const DataPointSelectionTable: React.FC<DataPointSelectionTableProps> = ({
                 />
               </div>
 
-              {/* 데이터포인트 정보 */}
+              {/* Data Point 정보 */}
               <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden' }}>
                 <div 
                   style={{ 
@@ -204,7 +204,7 @@ const DataPointSelectionTable: React.FC<DataPointSelectionTableProps> = ({
                 </div>
               </div>
 
-              {/* 디바이스 */}
+              {/* Device */}
               <div style={{ 
                 padding: '12px 16px', 
                 display: 'flex', 
@@ -262,7 +262,7 @@ const DataPointSelectionTable: React.FC<DataPointSelectionTableProps> = ({
             color: '#6b7280',
             fontSize: '14px'
           }}>
-            선택할 수 있는 데이터포인트가 없습니다.
+            선택할 수 있는 Data Point가 없습니다.
           </div>
         )}
       </div>

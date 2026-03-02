@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import UserApiService, { User, CreateUserRequest, UpdateUserRequest } from '../../../api/services/userApi';
 import { roleApi, Role } from '../../../api/services/roleApi';
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
@@ -19,6 +20,7 @@ export const UserModal: React.FC<UserModalProps> = ({
 }) => {
     const { confirm } = useConfirmContext();
     const [loading, setLoading] = useState(false);
+    const { t } = useTranslation(['permissions', 'common']);
     const [formData, setFormData] = useState<Partial<User>>({
         username: '',
         email: '',
@@ -139,9 +141,9 @@ export const UserModal: React.FC<UserModalProps> = ({
         if (!user) return;
 
         const confirmed = await confirm({
-            title: '사용자 삭제',
-            message: `'${user.full_name}' 사용자를 삭제(비활성화)하시겠습니까? 삭제된 사용자는 '삭제된 사용자 보기' 필터를 통해 복구할 수 있습니다.`,
-            confirmText: '삭제',
+            title: 'Delete User',
+            message: `'${user.full_name}' user will be deactivated. Deleted users will be in the 'Deleted users' section and can be restored later.`,
+            confirmText: 'Delete',
             confirmButtonType: 'danger'
         });
 
@@ -169,7 +171,7 @@ export const UserModal: React.FC<UserModalProps> = ({
             <div className="mgmt-modal-container user-modal">
                 <div className="mgmt-modal-header">
                     <div className="mgmt-modal-title">
-                        <h2>{user ? '사용자 정보 수정' : '새 사용자 등록'}</h2>
+                        <h2>{user ? 'Edit User Info' : 'Register New User'}</h2>
                     </div>
                     <button className="mgmt-close-btn" onClick={onClose} disabled={loading}>
                         <i className="fas fa-times"></i>
@@ -181,12 +183,12 @@ export const UserModal: React.FC<UserModalProps> = ({
                         <div className="mgmt-modal-form-grid">
                             {/* Left Column: Basic Info */}
                             <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
+                                <h3><i className="fas fa-info-circle"></i> Basic Info</h3>
 
                                 {/* Tenant Selection (Visible if multiple tenants available) */}
                                 {tenants.length > 1 && (
                                     <div className="mgmt-modal-form-group">
-                                        <label className="required">소속 회사 (Tenant)</label>
+                                        <label className="required">{t('labels.companyTenant', {ns: 'permissions'})}</label>
                                         <select
                                             className="form-control"
                                             value={formData.tenant_id || ''}
@@ -194,7 +196,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                             disabled={!!user || loading}
                                             required
                                         >
-                                            <option value="">회사를 선택하세요</option>
+                                            <option value="">{t('labels.selectACompany', {ns: 'permissions'})}</option>
                                             {tenants.map(t => (
                                                 <option key={t.id} value={t.id}>{t.company_name} ({t.company_code})</option>
                                             ))}
@@ -203,31 +205,31 @@ export const UserModal: React.FC<UserModalProps> = ({
                                 )}
 
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">아이디</label>
+                                    <label className="required">{t('labels.username', {ns: 'permissions'})}</label>
                                     <input
                                         type="text"
                                         className="form-control"
                                         value={formData.username}
                                         onChange={(e) => handleInputChange('username', e.target.value)}
-                                        placeholder="사용자 아이디 (예: admin01)"
+                                        placeholder="Username (e.g. admin01)"
                                         required
                                         disabled={!!user || loading}
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">성함</label>
+                                    <label className="required">{t('labels.fullName', {ns: 'permissions'})}</label>
                                     <input
                                         type="text"
                                         className="form-control"
                                         value={formData.full_name}
                                         onChange={(e) => handleInputChange('full_name', e.target.value)}
-                                        placeholder="홍길동"
+                                        placeholder="Full name"
                                         required
                                         disabled={loading}
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>휴대폰 번호</label>
+                                    <label>{t('labels.phoneNumber', {ns: 'permissions'})}</label>
                                     <input
                                         type="tel"
                                         className="form-control"
@@ -238,7 +240,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">이메일</label>
+                                    <label className="required">{t('labels.email', {ns: 'permissions'})}</label>
                                     <input
                                         type="email"
                                         className="form-control"
@@ -250,13 +252,13 @@ export const UserModal: React.FC<UserModalProps> = ({
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>부서</label>
+                                    <label>{t('labels.department', {ns: 'permissions'})}</label>
                                     <input
                                         type="text"
                                         className="form-control"
                                         value={formData.department || ''}
                                         onChange={(e) => handleInputChange('department', e.target.value)}
-                                        placeholder="운영팀 / 제조1과"
+                                        placeholder="Operations / Manufacturing Dept."
                                         disabled={loading}
                                     />
                                 </div>
@@ -264,26 +266,26 @@ export const UserModal: React.FC<UserModalProps> = ({
 
                             {/* Right Column: Roles & Permissions */}
                             <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-shield-alt"></i> 권한 및 계정 설정</h3>
+                                <h3><i className="fas fa-shield-alt"></i> Access & Account Settings</h3>
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">시스템 역할</label>
+                                    <label className="required">{t('labels.systemRole', {ns: 'permissions'})}</label>
                                     <select
                                         className="form-control"
                                         value={formData.role}
                                         onChange={(e) => handleInputChange('role', e.target.value)}
                                         disabled={loading}
                                     >
-                                        <option value="">역할을 선택하세요</option>
+                                        <option value="">{t('labels.selectARole', {ns: 'permissions'})}</option>
                                         {roles.map(role => (
                                             <option key={role.id} value={role.id}>
-                                                {role.name} {role.is_system ? '(시스템)' : ''}
+                                                {role.name} {role.is_system ? '(System)' : ''}
                                             </option>
                                         ))}
                                     </select>
                                 </div>
 
                                 <div className="mgmt-modal-form-group" style={{ marginTop: '12px' }}>
-                                    <label>상세 권한 정책</label>
+                                    <label>{t('labels.detailedPermissions', {ns: 'permissions'})}</label>
                                     <div className="permissions-grid" style={{ maxHeight: '150px', overflowY: 'auto' }}>
                                         {availablePermissions.length > 0 ? (
                                             availablePermissions.map(perm => (
@@ -299,19 +301,19 @@ export const UserModal: React.FC<UserModalProps> = ({
                                             ))
                                         ) : (
                                             <div style={{ gridColumn: '1 / -1', color: '#999', fontSize: '13px', textAlign: 'center', padding: '10px' }}>
-                                                정의된 권한이 없습니다.
+                                                No permissions defined.
                                             </div>
                                         )}
                                     </div>
-                                    <p className="mgmt-modal-form-hint">역할에 포함되지 않은 추가 권한을 부여할 때 사용합니다.</p>
+                                    <p className="mgmt-modal-form-hint">Use this to grant additional permissions not included in the role.</p>
                                 </div>
 
                                 {/* Site Access Selection */}
                                 <div className="mgmt-modal-form-group" style={{ marginTop: '12px' }}>
-                                    <label>사이트 접근 권한 ({filteredSites.length})</label>
+                                    <label>Site Access ({filteredSites.length})</label>
                                     <div className="permissions-grid" style={{ maxHeight: '100px', overflowY: 'auto' }}>
                                         {filteredSites.length === 0 ? (
-                                            <span style={{ color: '#999', fontSize: '13px' }}>등록된 사이트가 없습니다.</span>
+                                            <span style={{ color: '#999', fontSize: '13px' }}>{t('labels.noSitesRegistered', {ns: 'permissions'})}</span>
                                         ) : (
                                             filteredSites.map(site => (
                                                 <label key={site.id} className="permission-item" title={site.name}>

@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import exportGatewayApi, { ExportLog, ExportLogStatistics, ExportTarget, Gateway } from '../api/services/exportGatewayApi';
 import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
@@ -38,6 +39,7 @@ interface FilterOptions {
 const ExportHistory: React.FC = () => {
     // 1. State Management
     const [logs, setLogs] = useState<ExportLog[]>([]);
+    const { t } = useTranslation(['dataExport', 'common']);
     const [statistics, setStatistics] = useState<ExportLogStatistics | null>(null);
     const [targets, setTargets] = useState<ExportTarget[]>([]);
     const [gateways, setGateways] = useState<Gateway[]>([]);
@@ -141,11 +143,11 @@ const ExportHistory: React.FC = () => {
                     pagination.updateTotalCount(items.length);
                 }
             } else {
-                throw new Error(response.message || '로그 조회 실패');
+                throw new Error(response.message || 'Log query failed');
             }
         } catch (err) {
             console.error('Export Log Fetch Error:', err);
-            setError(err instanceof Error ? err.message : '로그를 불러오는데 실패했습니다.');
+            setError(err instanceof Error ? err.message : 'Failed to load logs.');
             if (!Array.isArray(logs)) setLogs([]);
         } finally {
             setIsInitialLoading(false);
@@ -290,8 +292,8 @@ const ExportHistory: React.FC = () => {
         <ManagementLayout>
             <div className="export-history" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 <PageHeader
-                    title="내보내기 이력"
-                    description="외부 시스템으로 전송된 데이터의 성공/실패 이력을 조회합니다."
+                    title={t('title', { ns: 'dataExport' })}
+                    description={t('pageDescription', { ns: 'dataExport' })}
                     icon="fas fa-history"
                     actions={
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -316,7 +318,7 @@ const ExportHistory: React.FC = () => {
                                     {autoRefresh ? (
                                         <><i className="fas fa-circle-notch fa-spin" style={{ marginRight: '4px', fontSize: '10px' }}></i>{countdown}s</>
                                     ) : (
-                                        <><i className="fas fa-pause" style={{ marginRight: '4px', fontSize: '10px', color: 'var(--neutral-400)' }}></i>정지</>
+                                        <><i className="fas fa-pause" style={{ marginRight: '4px', fontSize: '10px', color: 'var(--neutral-400)' }}></i>{t('pause', { ns: 'common' })}</>
                                     )}
                                 </span>
                                 {/* toggle button */}
@@ -331,7 +333,7 @@ const ExportHistory: React.FC = () => {
                                         transition: 'all 0.15s ease',
                                     }}
                                     onClick={() => setAutoRefresh(v => !v)}
-                                    title={autoRefresh ? '자동 새로고침 중지' : '자동 새로고침 시작'}
+                                    title={autoRefresh ? 'Stop Auto-refresh' : 'Start Auto-refresh'}
                                 >
                                     <i className={`fas ${autoRefresh ? 'fa-pause' : 'fa-play'}`}></i>
                                 </button>
@@ -343,7 +345,7 @@ const ExportHistory: React.FC = () => {
                                 disabled={isRefreshing || isInitialLoading}
                             >
                                 <i className={`fas fa-sync-alt ${isRefreshing ? 'fa-spin' : ''}`}></i>
-                                새로고침
+                                {t('refresh', { ns: 'common' })}
                             </button>
                         </div>
                     }
@@ -352,19 +354,19 @@ const ExportHistory: React.FC = () => {
                 {/* Summary Cards */}
                 <div className="mgmt-stats-panel">
                     <StatCard
-                        title="총 시도"
+                        title={t('stats.totalAttempts', { ns: 'dataExport' })}
                         value={computedStats.total}
                         icon="fas fa-list"
                         type="primary"
                     />
                     <StatCard
-                        title="성공"
+                        title={t('stats.success', { ns: 'dataExport' })}
                         value={computedStats.success}
                         icon="fas fa-check-circle"
                         type="success"
                     />
                     <StatCard
-                        title="실패"
+                        title={t('stats.failure', { ns: 'dataExport' })}
                         value={computedStats.failure}
                         icon="fas fa-times-circle"
                         type="error"
@@ -391,36 +393,36 @@ const ExportHistory: React.FC = () => {
                     })}
                     filters={[
                         {
-                            label: '게이트웨이',
+                            label: t('filter.gateway', { ns: 'dataExport' }),
                             value: filters.gateway_id,
                             onChange: (v) => handleFilterChange({ gateway_id: v }),
                             flexWeight: 0.7,
-                            minWidth: '7em',
+                            minWidth: '5em',
                             options: [
-                                { label: '전체', value: 'all' },
+                                { label: 'All', value: 'all' },
                                 ...gateways.map(g => ({ label: g.name, value: g.id.toString() }))
                             ]
                         },
                         {
-                            label: '상태',
+                            label: t('filter.status', { ns: 'dataExport' }),
                             value: filters.status,
                             onChange: (v) => handleFilterChange({ status: v }),
                             flexWeight: 0.5,
-                            minWidth: '7.5em',
+                            minWidth: '5em',
                             options: [
-                                { label: '전체', value: 'all' },
-                                { label: '성공', value: 'success' },
-                                { label: '실패', value: 'failure' }
+                                { label: 'All', value: 'all' },
+                                { label: 'Success', value: 'success' },
+                                { label: 'Failure', value: 'failure' }
                             ]
                         },
                         {
-                            label: '타겟 유형',
+                            label: t('filter.type', { ns: 'dataExport' }),
                             value: filters.target_type,
                             onChange: (v) => handleFilterChange({ target_type: v }),
-                            flexWeight: 0.6,
-                            minWidth: '8.5em',
+                            flexWeight: 0.5,
+                            minWidth: '5em',
                             options: [
-                                { label: '전체', value: 'all' },
+                                { label: 'All', value: 'all' },
                                 { label: 'HTTP', value: 'http' },
                                 { label: 'MQTT', value: 'mqtt' },
                                 { label: 'S3', value: 's3' },
@@ -428,20 +430,20 @@ const ExportHistory: React.FC = () => {
                             ]
                         },
                         {
-                            label: '타겟 명',
+                            label: t('filter.name', { ns: 'dataExport' }),
                             value: filters.target_id,
                             onChange: (v) => handleFilterChange({ target_id: v }),
                             flexWeight: 0.7,
-                            minWidth: '7em',
+                            minWidth: '5em',
                             options: [
-                                { label: '전체', value: 'all' },
-                                ...targets.map(t => ({ label: t.name, value: t.id.toString() }))
+                                { label: 'All', value: 'all' },
+                                ...targets.map(tgt => ({ label: tgt.name, value: tgt.id.toString() }))
                             ]
                         }
                     ]}
                     leftActions={
                         <div className="mgmt-filter-group date-range-group">
-                            <label style={{ flexShrink: 0 }}>기간</label>
+                            <label style={{ flexShrink: 0 }}>{t('filter.period', { ns: 'dataExport' })}</label>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                                 <div
                                     className="shadow-datepicker"
@@ -487,9 +489,10 @@ const ExportHistory: React.FC = () => {
                         <button
                             className="mgmt-btn mgmt-btn-primary"
                             onClick={() => { pagination.goToPage(1); fetchLogs(); fetchStatistics(); }}
+                            title={t('search', { ns: 'common' })}
+                            style={{ padding: '0 12px' }}
                         >
                             <i className="fas fa-search"></i>
-                            조회
                         </button>
                     }
                 />
@@ -507,7 +510,7 @@ const ExportHistory: React.FC = () => {
                         <div className="mgmt-header-info">
                             <h3 className="mgmt-title" style={{ fontSize: '18px' }}>
                                 <i className="fas fa-list-ul" style={{ color: 'var(--primary-500)' }}></i>
-                                전송 이력 ({computedStats.total.toLocaleString()})
+                                {t('title', { ns: 'dataExport' })} ({computedStats.total.toLocaleString()})
                             </h3>
                         </div>
                     </div>
@@ -515,7 +518,7 @@ const ExportHistory: React.FC = () => {
                     {isInitialLoading ? (
                         <div className="mgmt-loading">
                             <i className="fas fa-spinner fa-spin"></i>
-                            <p>데이터를 불러오는 중입니다...</p>
+                            <p>{t('loading', { ns: 'common' })}</p>
                         </div>
                     ) : (
                         <>
@@ -524,12 +527,12 @@ const ExportHistory: React.FC = () => {
                                     <thead>
                                         <tr>
                                             <th className="col-id">ID</th>
-                                            <th className="col-status">상태</th>
-                                            <th className="col-time">발생 시간</th>
-                                            <th className="col-target">타겟 시스템</th>
-                                            <th className="col-settings">설정 정보</th>
-                                            <th>메시지 (SOURCE)</th>
-                                            <th className="col-response">응답</th>
+                                            <th className="col-status">{t('table.status', { ns: 'dataExport' })}</th>
+                                            <th className="col-time">{t('table.occurredAt', { ns: 'dataExport' })}</th>
+                                            <th className="col-target">{t('table.targetSystem', { ns: 'dataExport' })}</th>
+                                            <th className="col-settings">{t('table.configInfo', { ns: 'dataExport' })}</th>
+                                            <th>{t('table.messageSource', { ns: 'dataExport' })}</th>
+                                            <th className="col-response">{t('table.response', { ns: 'dataExport' })}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -538,7 +541,7 @@ const ExportHistory: React.FC = () => {
                                                 <td colSpan={7} className="text-center" style={{ padding: '80px 0' }}>
                                                     <div className="text-muted">
                                                         <i className="fas fa-inbox" style={{ fontSize: '48px', marginBottom: '16px', display: 'block', opacity: 0.3 }}></i>
-                                                        데이터가 없습니다.
+                                                        {t('noData', { ns: 'common' })}
                                                     </div>
                                                 </td>
                                             </tr>

@@ -46,6 +46,44 @@ router.post('/bulk', async (req, res) => {
 });
 
 /**
+ * POST /api/devices/:deviceId/data-points/validate-address
+ * Phase 5: Modbus 주소 검증 (실시간 validation 피드백용)
+ * Body: { "address_string": "4:40001" } 또는 { "address": "40001" }
+ */
+router.post('/validate-address', async (req, res) => {
+    try {
+        const raw = req.body.address_string || req.body.address || '';
+        if (!raw) return res.status(400).json({ success: false, message: 'address_string 필수' });
+        const result = _parseModbusAddress(raw);
+        res.json({ success: true, data: result });
+    } catch (err) {
+        res.status(400).json({ success: false, message: err.message });
+    }
+});
+
+function _parseModbusAddress(raw) {
+    const str = String(raw).trim();
+    let fc = null, addr = null;
+    if (str.includes(':')) {
+        const parts = str.split(':');
+        fc = parseInt(parts[0]);
+        addr = parseInt(parts[1]);
+    } else {
+        const num = parseInt(str);
+        if (num >= 10001 && num <= 19999) { fc = 1; addr = num - 10000; }
+        else if (num >= 20001 && num <= 29999) { fc = 2; addr = num - 20000; }
+        else if (num >= 30001 && num <= 39999) { fc = 3; addr = num - 30000; }
+        else if (num >= 40001 && num <= 49999) { fc = 4; addr = num - 40000; }
+        else if (num >= 0 && num <= 9999) { fc = 1; addr = num; }
+        else throw new Error(`인식할 수 없는 주소: ${str}`);
+    }
+    const fcMap = { 1: 'DO (Coil)', 2: 'DI (Discrete Input)', 3: 'IR (Input Register)', 4: 'HR (Holding Register)' };
+    if (!fcMap[fc]) throw new Error(`지원하지 않는 function code: ${fc}`);
+    if (addr < 0 || addr > 65535) throw new Error(`주소 범위 초과: ${addr}`);
+    return { valid: true, original: str, function_code: fc, register_type: fcMap[fc], register_address: addr };
+}
+
+/**
  * POST /api/devices/:deviceId/data-points/:pointId/write
  * 데이터포인트 제어값 쓰기 → 감사 로그 기록 → Redis Pub → Collector → 실제 장비
  * Body: { "value": "75" }
@@ -54,6 +92,16 @@ router.post('/:pointId/write', async (req, res) => {
     try {
         const { deviceId, pointId } = req.params;
         const { value } = req.body;
+
+        // ── 0. RBAC: viewer는 제어 금지 ──────────────────────────
+        const userRole = req.user?.role;
+        if (userRole === 'viewer') {
+            return res.status(403).json({
+                success: false,
+                message: '제어 권한이 없습니다 (viewer 역할은 쓰기가 허용되지 않습니다)',
+                error_code: 'CONTROL_PERMISSION_DENIED'
+            });
+        }
 
         if (value === undefined || value === null || value === '') {
             return res.status(400).json({ success: false, message: 'value is required' });

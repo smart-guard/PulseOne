@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import Pagination from '../../components/common/Pagination';
 import { isBlobValue, getBlobDownloadUrl } from '../../utils/dataUtils';
 
@@ -45,15 +46,15 @@ const RealtimeDataTable: React.FC<RealtimeDataTableProps> = ({
     return (
         <div className="realtime-data">
             <h4>
-                ⚡ 실시간 데이터 ({filteredDataPoints.length}개)
+                ⚡ Real-time Data ({filteredDataPoints.length})
             </h4>
 
             {filteredDataPoints.length === 0 ? (
                 selectedNode && ['device', 'master', 'slave'].includes(selectedNode.type) ?
                     renderEmptyDeviceMessage(selectedNode) : (
                         <div className="empty-state">
-                            <p style={{ margin: '0 0 8px 0' }}>표시할 데이터가 없습니다</p>
-                            <small>왼쪽 트리에서 디바이스를 선택하거나 필터를 조정해보세요</small>
+                            <p style={{ margin: '0 0 8px 0' }}>No data to display</p>
+                            <small>Select a device from the left tree or adjust the filter</small>
                         </div>
                     )
             ) : (
@@ -68,12 +69,12 @@ const RealtimeDataTable: React.FC<RealtimeDataTableProps> = ({
                                 style={{ cursor: 'pointer' }}
                             />
                         </div>
-                        <div className="header-cell">포인트명</div>
-                        <div className="header-cell">디바이스</div>
-                        <div className="header-cell">현재값</div>
-                        <div className="header-cell">품질</div>
-                        <div className="header-cell">타입</div>
-                        <div className="header-cell">시간</div>
+                        <div className="header-cell">Point Name</div>
+                        <div className="header-cell">Device</div>
+                        <div className="header-cell">Current Value</div>
+                        <div className="header-cell">Quality</div>
+                        <div className="header-cell">Type</div>
+                        <div className="header-cell">Time</div>
                     </div>
 
                     {/* 테이블 바디 */}

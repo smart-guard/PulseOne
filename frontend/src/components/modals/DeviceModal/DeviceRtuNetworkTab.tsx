@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DeviceApiService } from '../../../api/services/deviceApi';
 import DeviceRtuScanDialog from './DeviceRtuScanDialog';
 import { Device } from './types';
@@ -45,6 +46,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
   // 상태 관리
   // ========================================================================
   const [slaveDevices, setSlaveDevices] = useState<RtuSlaveDevice[]>([]);
+    const { t } = useTranslation(['devices', 'common']);
   const [masterDevice, setMasterDevice] = useState<RtuMasterInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -177,7 +179,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
         setSlaveDevices(slaves);
         console.log(`슬래이브 디바이스 ${slaves.length}개 로드 완료`);
       } else {
-        throw new Error(response.error || '슬래이브 디바이스 조회 실패');
+        throw new Error(response.error || 'Failed to fetch slave devices');
       }
     } catch (error) {
       console.error('슬래이브 디바이스 로드 실패:', error);
@@ -204,7 +206,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
 
         // RTU 디바이스인지 확인
         if (!isRtuDevice(master)) {
-          throw new Error('마스터 디바이스가 RTU 프로토콜이 아닙니다');
+          throw new Error('Master device is not RTU protocol');
         }
 
         const config = parseRtuConfig(master);
@@ -221,7 +223,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
 
         console.log('마스터 디바이스 정보 로드 완료');
       } else {
-        throw new Error(response.error || '마스터 디바이스 조회 실패');
+        throw new Error(response.error || 'Failed to fetch master device');
       }
     } catch (error) {
       console.error('마스터 디바이스 로드 실패:', error);
@@ -254,11 +256,11 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
           )
         );
       } else {
-        throw new Error(response.error || '디바이스 상태 변경 실패');
+        throw new Error(response.error || 'Failed to change device status');
       }
     } catch (error) {
       console.error('슬래이브 토글 실패:', error);
-      alert(`상태 변경 실패: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert(`Status change failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -286,15 +288,15 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
         const result = response.data;
         alert(
           result.test_successful
-            ? `연결 성공! 응답시간: ${result.response_time_ms}ms`
-            : `연결 실패: ${result.error_message}`
+            ? `Connection successful! Response time: ${result.response_time_ms}ms`
+            : `Connection failed: ${result.error_message}`
         );
       } else {
-        alert(`테스트 실패: ${response.error}`);
+        alert(`Test failed: ${response.error}`);
       }
     } catch (error) {
       console.error('연결 테스트 실패:', error);
-      alert(`연결 테스트 오류: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      alert(`Connection test error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -320,11 +322,11 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
 
   const getStatusBadge = (status: string) => {
     const statusMap = {
-      connected: { color: '#059669', bg: '#dcfce7', text: '연결됨' },
-      disconnected: { color: '#dc2626', bg: '#fef2f2', text: '연결끊김' },
-      connecting: { color: '#d97706', bg: '#fef3c7', text: '연결중' },
-      error: { color: '#dc2626', bg: '#fef2f2', text: '오류' },
-      unknown: { color: '#6b7280', bg: '#f3f4f6', text: '알수없음' }
+      connected: { color: '#059669', bg: '#dcfce7', text: 'Connected' },
+      disconnected: { color: '#dc2626', bg: '#fef2f2', text: 'Disconnected' },
+      connecting: { color: '#d97706', bg: '#fef3c7', text: 'Connecting' },
+      error: { color: '#dc2626', bg: '#fef2f2', text: 'Error' },
+      unknown: { color: '#6b7280', bg: '#f3f4f6', text: 'Unknown' }
     };
 
     const style = statusMap[status as keyof typeof statusMap] || statusMap.unknown;
@@ -359,10 +361,10 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
       const diffMs = now.getTime() - date.getTime();
       const diffMinutes = Math.floor(diffMs / (1000 * 60));
 
-      if (diffMinutes < 1) return '방금 전';
-      if (diffMinutes < 60) return `${diffMinutes}분 전`;
-      if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)}시간 전`;
-      return `${Math.floor(diffMinutes / 1440)}일 전`;
+      if (diffMinutes < 1) return 'just now';
+      if (diffMinutes < 60) return `${diffMinutes} min ago`;
+      if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)} hr ago`;
+      return `${Math.floor(diffMinutes / 1440)} day ago`;
     } catch {
       return timestamp;
     }
@@ -393,10 +395,10 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
           color: '#dc2626'
         }}>
           <i className="fas fa-exclamation-triangle" style={{ fontSize: '2rem', marginBottom: '1rem' }}></i>
-          <p>RTU 디바이스가 아닙니다</p>
+          <p>{t('labels.notAnRtuDevice1', {ns: 'devices'})}</p>
           {protocolInfo && (
             <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.5rem' }}>
-              현재 프로토콜: {protocolInfo.display_name || protocolInfo.name} (ID: {protocolInfo.id})
+              Current protocol: {protocolInfo.display_name || protocolInfo.name} (ID: {protocolInfo.id})
             </p>
           )}
         </div>
@@ -422,7 +424,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
           color: '#374151'
         }}>
           <i className="fas fa-microchip"></i>
-          RTU {isMaster ? '마스터' : '슬래이브'} 정보
+          RTU {isMaster ? 'Master' : 'Slave'} Info
           {protocolInfo && (
             <span style={{
               fontSize: '0.75rem',
@@ -455,7 +457,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               fontSize: '0.75rem',
               fontWeight: '500',
               color: '#6b7280'
-            }}>슬래이브 ID</label>
+            }}>{t('basicInfo.slaveId', {ns: 'devices'})}</label>
             <div style={{
               fontSize: '0.875rem',
               fontWeight: '600',
@@ -478,7 +480,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               fontSize: '0.75rem',
               fontWeight: '500',
               color: '#6b7280'
-            }}>시리얼 포트</label>
+            }}>{t('labels.serialPort', {ns: 'devices'})}</label>
             <div style={{
               fontSize: '0.875rem',
               fontWeight: '600',
@@ -501,7 +503,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               fontSize: '0.75rem',
               fontWeight: '500',
               color: '#6b7280'
-            }}>마스터 디바이스 ID</label>
+            }}>{t('labels.masterDeviceId', {ns: 'devices'})}</label>
             <div style={{
               fontSize: '0.875rem',
               fontWeight: '600',
@@ -524,7 +526,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               fontSize: '0.75rem',
               fontWeight: '500',
               color: '#6b7280'
-            }}>통신 상태</label>
+            }}>{t('labels.commStatus', {ns: 'devices'})}</label>
             <div>
               {getStatusBadge(device.connection_status || 'unknown')}
             </div>
@@ -534,7 +536,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
         {/* 통신 파라미터 표시 */}
         <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#f0f9ff', borderRadius: '0.5rem', border: '1px solid #bae6fd' }}>
           <div style={{ fontSize: '0.75rem', color: '#0c4a6e', marginBottom: '0.5rem' }}>
-            <strong>통신 파라미터:</strong>
+            <strong>{t('labels.commParameters', {ns: 'devices'})}</strong>
           </div>
           <div style={{ fontSize: '0.75rem', color: '#0c4a6e' }}>
             {config.baud_rate} bps, {config.data_bits}N{config.stop_bits}, Parity: {config.parity}, Role: {config.device_role}
@@ -542,7 +544,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
         </div>
       </div>
 
-      {/* 통신 통계 */}
+      {/* Communication Stats */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h3 style={{
           display: 'flex',
@@ -554,7 +556,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
           color: '#374151'
         }}>
           <i className="fas fa-chart-bar"></i>
-          통신 통계
+          Communication Stats
         </h3>
 
         <div style={{
@@ -597,7 +599,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               <div style={{
                 fontSize: '0.625rem',
                 color: '#6b7280'
-              }}>평균 응답시간</div>
+              }}>{t('labels.avgResponseTime', {ns: 'devices'})}</div>
             </div>
           </div>
 
@@ -636,7 +638,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               <div style={{
                 fontSize: '0.625rem',
                 color: '#6b7280'
-              }}>통신 오류</div>
+              }}>{t('labels.commErrors', {ns: 'devices'})}</div>
             </div>
           </div>
 
@@ -675,7 +677,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               <div style={{
                 fontSize: '0.625rem',
                 color: '#6b7280'
-              }}>성공률</div>
+              }}>{t('status.successRate', {ns: 'devices'})}</div>
             </div>
           </div>
         </div>
@@ -700,7 +702,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               color: '#374151'
             }}>
               <i className="fas fa-sitemap"></i>
-              연결된 슬래이브 디바이스 ({slaveDevices.length})
+              Connected Slave Devices ({slaveDevices.length})
             </h3>
             <div style={{ display: 'flex', gap: '0.75rem' }}>
               <button
@@ -789,8 +791,8 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                 fontSize: '1.125rem',
                 fontWeight: '600',
                 color: '#374151'
-              }}>연결된 슬래이브가 없습니다</h4>
-              <p>스캔을 실행하여 새로운 슬래이브 디바이스를 찾아보세요</p>
+              }}>{t('labels.noConnectedSlaves', {ns: 'devices'})}</h4>
+              <p>{t('labels.runAScanToDiscoverNewSlaveDevices', {ns: 'devices'})}</p>
               <button
                 style={{
                   display: 'inline-flex',
@@ -851,7 +853,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                       fontSize: '0.75rem',
                       color: '#6b7280'
                     }}>
-                      슬래이브 ID: {slave.slave_id} • {slave.device_type}
+                      Slave ID: {slave.slave_id} • {slave.device_type}
                     </div>
                   </div>
 
@@ -882,7 +884,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                       alignItems: 'center',
                       fontSize: '0.75rem'
                     }}>
-                      <span style={{ color: '#6b7280' }}>응답시간</span>
+                      <span style={{ color: '#6b7280' }}>{t('status.responseTime', {ns: 'devices'})}</span>
                       <span style={{ fontWeight: '600', color: '#1f2937' }}>{slave.response_time || '--'}ms</span>
                     </div>
                     <div style={{
@@ -919,7 +921,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                         color: 'white'
                       }}
                       onClick={() => handleTestConnection(slave)}
-                      title="연결 테스트"
+                      title="Connection Test"
                     >
                       <i className="fas fa-plug"></i>
                     </button>
@@ -930,7 +932,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                       width: '44px',
                       height: '24px',
                       cursor: 'pointer'
-                    }} title={slave.is_enabled ? '비활성화' : '활성화'}>
+                    }} title={slave.is_enabled ? 'Disable' : 'Enable'}>
                       <input
                         type="checkbox"
                         checked={slave.is_enabled}
@@ -1064,7 +1066,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                   color: '#6b7280',
                   textAlign: 'center'
                 }}>
-                  마지막 통신: {formatLastSeen(masterDevice.last_communication)}
+                  Last comm: {formatLastSeen(masterDevice.last_communication)}
                 </div>
               </div>
 
@@ -1101,7 +1103,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               color: '#6b7280'
             }}>
               <i className="fas fa-unlink" style={{ fontSize: '2rem', marginBottom: '1rem', color: '#dc2626' }}></i>
-              <p>마스터 디바이스를 찾을 수 없습니다</p>
+              <p>{t('labels.masterDeviceNotFound', {ns: 'devices'})}</p>
             </div>
           )}
         </div>

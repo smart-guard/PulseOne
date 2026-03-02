@@ -1,0 +1,92 @@
+{
+    "title": "네트워크 설정",
+    "description": "시스템 네트워크 인터페이스 및 연결 설정을 관리합니다.",
+    "save": "설정 저장",
+    "saving": "저장 중...",
+    "test": "연결 테스트",
+    "testing": "테스트 중...",
+    "refresh": "새로고침",
+    "sections": {
+        "ethernet": "이더넷 설정",
+        "wifi": "Wi-Fi 설정",
+        "dns": "DNS 설정",
+        "proxy": "프록시 설정",
+        "advanced": "고급 설정"
+    },
+    "fields": {
+        "interface": "인터페이스",
+        "ipAddress": "IP 주소",
+        "subnetMask": "서브넷 마스크",
+        "gateway": "게이트웨이",
+        "dns1": "기본 DNS",
+        "dns2": "보조 DNS",
+        "ssid": "SSID (네트워크명)",
+        "dhcp": "DHCP 자동 할당",
+        "static": "고정 IP 설정",
+        "proxyHost": "프록시 서버",
+        "proxyPort": "포트"
+    },
+    "tabs": {
+        "interface": "인터페이스",
+        "dns": "DNS / 프록시",
+        "firewall": "방화벽",
+        "monitoring": "모니터링"
+    },
+    "status": {
+        "connected": "연결됨",
+        "disconnected": "연결 끊김",
+        "testing": "테스트 중",
+        "success": "연결 성공",
+        "failed": "연결 실패",
+        "active": "활성",
+        "inactive": "비활성"
+    },
+    "confirm": {
+        "saveTitle": "설정 저장 확인",
+        "saveMsg": "변경된 네트워크 설정을 저장하시겠습니까?",
+        "saveText": "저장",
+        "saveDoneTitle": "저장 완료",
+        "saveDoneMsg": "네트워크 설정이 성공적으로 저장되었습니다.",
+        "noChangesTitle": "변경 사항 없음",
+        "noChangesMsg": "수정된 설정 내용이 없습니다."
+    },
+    "loading": "네트워크 정보를 불러오는 중...",
+    "scan": {
+        "start": "스캔 시작",
+        "status": "상태"
+    },
+    "interface": {
+        "title": "네트워크 인터페이스"
+    },
+    "action": {
+        "enable": "활성화",
+        "disable": "비활성화"
+    },
+    "field": {
+        "ipAddress": "IP 주소",
+        "subnetMask": "서브넷 마스크",
+        "gateway": "게이트웨이",
+        "macAddress": "MAC 주소",
+        "speed": "속도",
+        "received": "수신",
+        "sent": "송신"
+    },
+    "labels": {
+        "networkInterface": "네트워크 인터페이스",
+        "mtu": "MTU",
+        "usingDhcpAutoConfiguration": "Using DHCP auto configuration",
+        "ruleName": "Rule Name",
+        "action": "작업",
+        "protocol": "프로토콜",
+        "source": "Source",
+        "destination": "Destination",
+        "priority": "우선순위",
+        "vpnConnection": "VPN Connection",
+        "serverAddress": "Server Address",
+        "localIp": "Local IP",
+        "remoteIp": "Remote IP",
+        "encryption": "Encryption",
+        "autoConnect": "Auto Connect",
+        "lastConnected": "Last Connected"
+    }
+}

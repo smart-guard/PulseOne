@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { virtualPointsApi } from '../../api/services/virtualPointsApi';
 import { useConfirmContext } from '../common/ConfirmProvider';
 
@@ -20,7 +21,7 @@ interface VirtualPointCardProps {
 const evaluateExpression = (expression: string, testInputs: Record<string, any> = {}): any => {
   try {
     if (!expression || expression.trim() === '') {
-      throw new Error('수식이 비어있습니다');
+      throw new Error('Formula is empty');
     }
 
     let code = expression;
@@ -42,12 +43,12 @@ const evaluateExpression = (expression: string, testInputs: Record<string, any> 
     const result = func(Math);
 
     if (typeof result === 'number' && !isFinite(result)) {
-      throw new Error('계산 결과가 유효하지 않습니다 (무한대 또는 NaN)');
+      throw new Error('Calculation result is invalid (Infinity or NaN)');
     }
 
     return result;
   } catch (error) {
-    throw new Error('수식 계산 실패: ' + (error as Error).message);
+    throw new Error('Formula calculation failed: ' + (error as Error).message);
   }
 };
 
@@ -87,6 +88,7 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
   onRefresh
 }) => {
   const { confirm } = useConfirmContext();
+    const { t } = useTranslation(['virtualPoints', 'common']);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
@@ -104,7 +106,7 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
-      '온도': '#ef4444', '압력': '#3b82f6', '유량': '#10b981', '전력': '#f59e0b',
+      'temperature': '#ef4444', 'pressure': '#3b82f6', 'flow': '#10b981', 'power': '#f59e0b',
       'Custom': '#14b8a6', 'calculation': '#8b5cf6'
     };
     return colors[category] || '#6b7280';
@@ -138,9 +140,9 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
       const endTime = performance.now();
       const executionTime = Math.round((endTime - startTime) * 100) / 100;
       const inputsText = Object.entries(testInputs).map(([k, v]) => `${k}=${v}`).join(', ');
-      alert(`테스트 성공!\n결과: ${formatValue(result, virtualPoint.unit)}\n입력: ${inputsText}\n실행시간: ${executionTime}ms`);
+      alert(`Test Success!\nResult: ${formatValue(result, virtualPoint.unit)}\nInput: ${inputsText}\nExecution time: ${executionTime}ms`);
     } catch (error) {
-      alert(`테스트 실패:\n${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+      alert(`Test Failed:\n${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally { setIsTesting(false); }
   };
 
@@ -153,7 +155,7 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
     e.stopPropagation();
     if (!virtualPoint.is_enabled || isExecuting) return;
     try { await onExecute(virtualPoint.id); if (onRefresh) await onRefresh(); }
-    catch (error) { alert('실행 실패: ' + (error instanceof Error ? error.message : '오류')); }
+    catch (error) { alert('Execution failed: ' + (error instanceof Error ? error.message : 'Error')); }
   };
 
   const handleEdit = (e: React.MouseEvent) => { e.stopPropagation(); onEdit(virtualPoint); };
@@ -162,10 +164,10 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
     e.stopPropagation();
 
     const isConfirmed = await confirm({
-      title: '가상 포인트 삭제',
-      message: `"${virtualPoint.name}" 가상 포인트를 삭제하시겠습니까?\n삭제된 항목은 '삭제된 항목 보기' 필터를 통해 복원할 수 있습니다.`,
-      confirmText: '삭제하기',
-      cancelText: '취소',
+      title: 'Delete Virtual Point',
+      message: `Delete virtual point "${virtualPoint.name}"?\nDeleted items can be restored via the 'Show Deleted' filter.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
       confirmButtonType: 'danger'
     });
 
@@ -176,16 +178,16 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
         if (onRefresh) await onRefresh();
 
         await confirm({
-          title: '삭제 완료',
-          message: '가상포인트가 성공적으로 삭제되었습니다.',
-          confirmText: '확인',
+          title: 'Delete Complete',
+          message: 'Virtual point deleted successfully.',
+          confirmText: 'OK',
           showCancelButton: false
         });
       } catch (error) {
         await confirm({
-          title: '삭제 실패',
-          message: '가상 포인트를 삭제하는 중 오류가 발생했습니다.',
-          confirmText: '확인',
+          title: 'Delete Failed',
+          message: 'Error occurred while deleting virtual point.',
+          confirmText: 'OK',
           showCancelButton: false
         });
       } finally {
@@ -199,10 +201,10 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
     if (!onRestore) return;
 
     const isConfirmed = await confirm({
-      title: '가상 포인트 복원',
-      message: `"${virtualPoint.name}" 가상 포인트를 복원하시겠습니까?`,
-      confirmText: '복원하기',
-      cancelText: '취소'
+      title: 'Restore Virtual Point',
+      message: `Are you sure you want to restore the virtual point "${virtualPoint.name}"?`,
+      confirmText: 'Restore',
+      cancelText: 'Cancel'
     });
 
     if (isConfirmed) {
@@ -211,13 +213,13 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
         await onRestore(virtualPoint.id);
 
         await confirm({
-          title: '복원 완료',
-          message: '가상포인트가 성공적으로 복원되었습니다.',
-          confirmText: '확인',
+          title: 'Restore Complete',
+          message: 'Virtual point restored successfully.',
+          confirmText: 'OK',
           showCancelButton: false
         });
       } catch (error) {
-        alert('복원 실패: ' + (error instanceof Error ? error.message : '오류'));
+        alert('Restore failed: ' + (error instanceof Error ? error.message : 'Error'));
       } finally {
         setIsProcessing(false);
       }
@@ -234,9 +236,9 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
       if (onRefresh) await onRefresh();
 
       await confirm({
-        title: '상태 변경 완료',
-        message: `가상포인트가 ${!virtualPoint.is_enabled ? '활성화' : '비활성화'} 되었습니다.`,
-        confirmText: '확인',
+        title: 'Status Updated',
+        message: `Virtual point has been ${!virtualPoint.is_enabled ? 'activated' : 'deactivated'}.`,
+        confirmText: 'OK',
         showCancelButton: false
       });
     }
@@ -262,7 +264,7 @@ export const VirtualPointCard: React.FC<VirtualPointCardProps> = ({
             )}
             <span className={`status-pill ${virtualPoint.calculation_status || 'disabled'}`} style={{ fontSize: '10px' }}>
               <i className={getStatusIcon(virtualPoint.calculation_status || 'disabled').replace('fa-spin', '')}></i>
-              {virtualPoint.calculation_status === 'success' || virtualPoint.calculation_status === 'active' ? '정상' : '오류'}
+              {virtualPoint.calculation_status === 'success' || virtualPoint.calculation_status === 'active' ? '정상' : 'Error'}
             </span>
           </div>
         </div>

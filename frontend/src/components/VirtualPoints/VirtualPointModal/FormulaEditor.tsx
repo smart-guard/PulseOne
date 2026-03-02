@@ -59,7 +59,7 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
         {/* Column 1: Variable Catalog */}
         <div className="variable-palette-card">
           <div className="palette-header">
-            <i className="fas fa-list-ul"></i> 사용 가능한 변수
+            <i className="fas fa-list-ul"></i> Available Variables
           </div>
           <div className="palette-content">
             {inputVariables.map(v => (
@@ -77,12 +77,12 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
             {inputVariables.length === 0 && (
               <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>
                 <i className="fas fa-exclamation-circle" style={{ display: 'block', fontSize: '24px', marginBottom: '8px' }}></i>
-                2단계에서 변수를 먼저 등록하세요.
+                Register variables in Step 2 first.
               </div>
             )}
           </div>
           <div style={{ padding: '12px', background: '#f1f5f9', fontSize: '11px', color: '#64748b', borderTop: '1px solid #e2e8f0' }}>
-            <i className="fas fa-mouse-pointer"></i> 클릭하여 수식에 추가
+            <i className="fas fa-mouse-pointer"></i> Click to add to formula
           </div>
         </div>
 
@@ -118,7 +118,7 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
               </span>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button className="choice-btn-v3" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => onChange('')}>
-                  <i className="fas fa-eraser"></i> 초기화
+                  <i className="fas fa-eraser"></i> Reset
                 </button>
               </div>
             </div>
@@ -126,7 +126,7 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
             <textarea
               ref={textareaRef}
               className="formula-textarea-v3"
-              placeholder="왼쪽의 변수와 상단의 연산자를 클릭하여 수식을 빌드하세요..."
+              placeholder="Click variables on the left and operators above to build the formula..."
               value={expression}
               onChange={(e) => onChange(e.target.value)}
               style={{ minHeight: '140px', borderBottom: validationResult && !validationResult.isValid ? '2px solid #ef4444' : undefined }}
@@ -143,22 +143,22 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
             {/* Live Logic Preview (Interpreted) */}
             <div style={{ padding: '12px 20px', background: '#fff', borderTop: '1px solid #f1f5f9', borderBottom: '1px solid #f1f5f9' }}>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <i className="fas fa-microchip"></i> 해석된 로직 (Natural View)
+                <i className="fas fa-microchip"></i> Interpreted Logic (Natural View)
               </div>
               <div style={{ fontSize: '12px', color: '#475569', minHeight: '18px', fontWeight: 500, fontStyle: expression ? 'normal' : 'italic' }}>
                 {expression ? (
                   expression
-                    .replace(/SUM/g, '합계')
-                    .replace(/AVG/g, '평균')
-                    .replace(/MIN/g, '최솟값')
-                    .replace(/MAX/g, '최댓값')
-                    .replace(/IF/g, '만약 ~라면')
+                    .replace(/SUM/g, 'SUM')
+                    .replace(/AVG/g, 'AVG')
+                    .replace(/MIN/g, 'MIN')
+                    .replace(/MAX/g, 'MAX')
+                    .replace(/IF/g, 'IF (condition)')
                     .replace(/\*/g, ' X ')
                     .replace(/\//g, ' ÷ ')
                     .replace(/\+/g, ' + ')
                     .replace(/-/g, ' - ')
                 ) : (
-                  '수식을 입력하면 이곳에 사람이 읽기 쉬운 형태로 요약됩니다.'
+                  'Enter a formula and it will be summarized in human-readable form here.'
                 )}
               </div>
             </div>
@@ -166,19 +166,19 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
             <div className="formula-footer" style={{ justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <button className="btn btn-primary" onClick={onRunSimulation} disabled={isSimulating || !expression}>
-                  {isSimulating ? '검증 중...' : <><i className="fas fa-play-circle"></i> 로직 테스트</>}
+                  {isSimulating ? 'Validating...' : <><i className="fas fa-play-circle"></i> Test Logic</>}
                 </button>
                 <div style={{ fontSize: '12px', color: (expression.match(/\(/g)?.length || 0) === (expression.match(/\)/g)?.length || 0) ? '#94a3b8' : '#e11d48', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <i className="fas fa-bracket-curly"></i>
-                  괄호 쌍: {(expression.match(/\(/g)?.length || 0)} / {(expression.match(/\)/g)?.length || 0)}
+                  Bracket pairs: {(expression.match(/\(/g)?.length || 0)} / {(expression.match(/\)/g)?.length || 0)}
                   {(expression.match(/\(/g)?.length || 0) !== (expression.match(/\)/g)?.length || 0) && (
-                    <span style={{ fontWeight: 800 }}> (불일치)</span>
+                    <span style={{ fontWeight: 800 }}> (Mismatch)</span>
                   )}
                 </div>
               </div>
               {simulationResult !== null && (
                 <div style={{ background: '#ecfdf5', color: '#059669', padding: '6px 12px', borderRadius: '6px', fontWeight: 800, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <i className="fas fa-check-circle"></i> 예측 결과값: {typeof simulationResult === 'number' ? simulationResult.toFixed(2) : String(simulationResult)}
+                  <i className="fas fa-check-circle"></i> Simulated Result: {typeof simulationResult === 'number' ? simulationResult.toFixed(2) : String(simulationResult)}
                 </div>
               )}
             </div>
@@ -189,14 +189,14 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
         <div className="guidance-panel">
           <div className="guidance-header">
             <i className="fas fa-book" style={{ color: 'var(--blueprint-500)' }}></i>
-            함수 사용 가이드
+            Function Usage Guide
           </div>
 
           <div className="guidance-step">
             <div className="guidance-text" style={{ width: '100%' }}>
               <div style={{ marginBottom: '16px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>사칙 연산</div>
-                <p style={{ fontSize: '12px', color: '#64748b' }}><code>+ - * /</code> 기본 연산자와 괄호<code>( )</code>를 사용하여 계산 순서를 조절합니다.</p>
+                <div style={{ fontSize: '12px', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>Arithmetic Operators</div>
+                <p style={{ fontSize: '12px', color: '#64748b' }}><code>+ - * /</code> basic operators and parentheses<code>( )</code>를 사용하여 계산 순서를 조절합니다.</p>
               </div>
 
               <div style={{ marginBottom: '16px' }}>
@@ -213,7 +213,7 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
           <div style={{ marginTop: 'auto', padding: '16px', background: '#f0f9ff', borderRadius: '12px', border: '1px solid #e0f2fe' }}>
             <div style={{ fontSize: '12px', fontWeight: 800, color: '#0369a1', marginBottom: '4px' }}>PRO TIP</div>
             <div style={{ fontSize: '12px', color: '#0c4a6e', lineHeight: '1.4' }}>
-              수식을 완성한 후 <strong>[로직 테스트]</strong>를 눌러보세요. 실제 계산 시 오류가 발생하지 않는지 미리 점검할 수 있습니다.
+              수식을 완성한 후 <strong>[Test Logic]</strong>를 눌러보세요. 실제 계산 시 오류가 발생하지 않는지 미리 점검할 수 있습니다.
             </div>
           </div>
         </div>

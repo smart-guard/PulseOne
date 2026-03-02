@@ -1,0 +1,28 @@
+{
+    "title": "System Settings",
+    "general": "General",
+    "network": "Network",
+    "security": "Security",
+    "database": "Database",
+    "logging": "Logging",
+    "backup": "Backup",
+    "language": "Language",
+    "timezone": "Timezone",
+    "dateFormat": "Date Format",
+    "apply": "Apply Settings",
+    "restart": "Restart Required",
+    "systemStatus": "System Status & Service Management",
+    "systemStatusDesc": "Real-time monitoring of all services in the industrial data hub.",
+    "userManagementDesc": "Manage system accounts and permissions.",
+    "newUser": "New User",
+    "totalUsers": "Total Users",
+    "activeUsers": "Active Users",
+    "activeToday": "Active in Last 24h",
+    "field": {
+        "username": "Username",
+        "email": "Email"
+    },
+    "section": {
+        "basic": "Basic Info"
+    }
+}

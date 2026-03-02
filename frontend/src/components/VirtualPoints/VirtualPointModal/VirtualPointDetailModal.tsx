@@ -69,21 +69,21 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                         <div className="icon-box">
                             <i className="fas fa-microchip"></i>
                         </div>
-                        <h2>가상포인트 엔진 상세 데이터</h2>
+                        <h2>Virtual Point Engine Details</h2>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         {virtualPoint.is_deleted ? (
                             <div className="vpd-status-banner danger" style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' }}>
                                 <i className="fas fa-trash-alt"></i>
-                                삭제된 가상포인트
+                                Deleted Virtual Point
                             </div>
                         ) : (
                             <div className={`vpd-status-banner ${virtualPoint.is_enabled ? 'active' : 'paused'}`}>
                                 <i className={`fas ${virtualPoint.is_enabled ? 'fa-check-circle' : 'fa-pause-circle'}`}></i>
-                                {virtualPoint.is_enabled ? '실시간 연산 활성화됨' : '연산 일시정지 상태'}
+                                {virtualPoint.is_enabled ? 'Real-time Calculation Active' : 'Calculation Paused'}
                             </div>
                         )}
-                        <button className="close-btn" onClick={onClose} title="닫기">
+                        <button className="close-btn" onClick={onClose} title="Close">
                             <i className="fas fa-times"></i>
                         </button>
                     </div>
@@ -95,19 +95,19 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                         className={`vpd-tab ${activeTab === 'overview' ? 'active' : ''}`}
                         onClick={() => handleTabChange('overview')}
                     >
-                        <i className="fas fa-chart-pie mr-2"></i> 개요 및 상태
+                        <i className="fas fa-chart-pie mr-2"></i> Overview & Status
                     </button>
                     <button
                         className={`vpd-tab ${activeTab === 'history' ? 'active' : ''}`}
                         onClick={() => handleTabChange('history')}
                     >
-                        <i className="fas fa-history mr-2"></i> 변경 이력 (Audit Log)
+                        <i className="fas fa-history mr-2"></i> Change History (Audit Log)
                     </button>
                     <button
                         className={`vpd-tab ${activeTab === 'dependency' ? 'active' : ''}`}
                         onClick={() => handleTabChange('dependency')}
                     >
-                        <i className="fas fa-project-diagram mr-2"></i> 종속성 맵 (Dependency)
+                        <i className="fas fa-project-diagram mr-2"></i> Dependency Map
                     </button>
                 </div>
 
@@ -118,30 +118,30 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                             <div className="vpd-left-column">
                                 <div className="vpd-identity">
                                     <h1>{virtualPoint.name}</h1>
-                                    <p>{virtualPoint.description || '정의된 설명이 없는 가상포인트 엔진입니다.'}</p>
+                                    <p>{virtualPoint.description || 'No description defined for this virtual point engine.'}</p>
                                 </div>
 
                                 <div className="vpd-stats-grid">
                                     <div className="vpd-stat-card">
-                                        <label>카테고리</label>
-                                        <div className="val">{virtualPoint.category || '기본'}</div>
+                                        <label>Category</label>
+                                        <div className="val">{virtualPoint.category || 'Default'}</div>
                                     </div>
                                     <div className="vpd-stat-card">
-                                        <label>데이터 타입</label>
+                                        <label>Data Type</label>
                                         <div className="val">{virtualPoint.data_type} {virtualPoint.unit && `(${virtualPoint.unit})`}</div>
                                     </div>
                                     <div className="vpd-stat-card">
-                                        <label>실행 모드</label>
-                                        <div className="val">{virtualPoint.execution_type === 'periodic' ? `주기적 (${virtualPoint.execution_interval}ms)` : '데이터 변경 시'}</div>
+                                        <label>Execution Mode</label>
+                                        <div className="val">{virtualPoint.execution_type === 'periodic' ? `Periodic (${virtualPoint.execution_interval}ms)` : 'On Data Change'}</div>
                                     </div>
                                     <div className="vpd-stat-card">
-                                        <label>계산 범위</label>
-                                        <div className="val" style={{ textTransform: 'capitalize' }}>{virtualPoint.scope_type} 레벨</div>
+                                        <label>Calculation Scope</label>
+                                        <div className="val" style={{ textTransform: 'capitalize' }}>{virtualPoint.scope_type} Level</div>
                                     </div>
                                 </div>
 
                                 <div className="vpd-result-box">
-                                    <label>현재 데이터 산출 결과</label>
+                                    <label>Current Calculation Result</label>
                                     <div className="main-val">
                                         {virtualPoint.current_value !== undefined ? virtualPoint.current_value : 'N/A'}
                                         <span style={{ fontSize: '14px', fontWeight: 600, marginLeft: '8px', opacity: 0.5 }}>{virtualPoint.unit}</span>
@@ -149,8 +149,8 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                                     <div className="timestamp">
                                         <i className="far fa-clock"></i>
                                         {virtualPoint.last_calculated
-                                            ? `최근 업데이트: ${new Date(virtualPoint.last_calculated).toLocaleString()}`
-                                            : '계산 기록 없음'}
+                                            ? `Last update: ${new Date(virtualPoint.last_calculated).toLocaleString()}`
+                                            : 'No calculation records'}
                                     </div>
                                 </div>
                             </div>
@@ -158,7 +158,7 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                             {/* RIGHT COLUMN: Formula Studio Area */}
                             <div className="vpd-right-column">
                                 <div className="vpd-logic-panel">
-                                    <label>로직 수식 (Logic Expression)</label>
+                                    <label>Logic Expression</label>
                                     <pre>
                                         {virtualPoint.expression || virtualPoint.formula || '// 수식이 정의되지 않았습니다.'}
                                     </pre>
@@ -169,7 +169,7 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                         <div className="vpd-history-panel" style={{ width: '100%', padding: '20px' }}>
                             {loadingLogs ? (
                                 <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
-                                    <i className="fas fa-spinner fa-spin mr-2"></i> 로그를 불러오는 중...
+                                    <i className="fas fa-spinner fa-spin mr-2"></i> Loading logs...
                                 </div>
                             ) : logs.length > 0 ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -191,7 +191,7 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                                                     <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '14px' }}>
                                                         {log.action}
                                                         <span style={{ fontWeight: 400, color: '#64748b', marginLeft: '8px', fontSize: '13px' }}>
-                                                            {log.details || '내역 없음'}
+                                                            {log.details || 'No details'}
                                                         </span>
                                                     </span>
                                                     <span style={{ fontSize: '12px', color: '#94a3b8' }}>
@@ -206,15 +206,15 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                             ) : (
                                 <div className="empty-state" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                                     <i className="fas fa-history fa-3x mb-3" style={{ opacity: 0.3 }}></i>
-                                    <p>저장된 변경 이력이 없습니다.</p>
+                                    <p>No saved change history.</p>
                                 </div>
                             )}
                         </div>
                     ) : (
                         <div className="vpd-dependency-panel" style={{ width: '100%', padding: '20px' }}>
                             <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                                <h3 style={{ fontSize: '16px', color: '#334155' }}>데이터 종속성 시각화</h3>
-                                <p style={{ fontSize: '13px', color: '#64748b' }}>이 가상포인트가 참조하고 있는 입력 변수들입니다.</p>
+                                <h3 style={{ fontSize: '16px', color: '#334155' }}>Data Dependency Visualization</h3>
+                                <p style={{ fontSize: '13px', color: '#64748b' }}>Input variables referenced by this virtual point.</p>
                             </div>
 
                             {dependencies.length > 0 ? (
@@ -250,8 +250,8 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                             ) : (
                                 <div className="empty-state" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                                     <i className="fas fa-link-slash fa-3x mb-3" style={{ opacity: 0.3 }}></i>
-                                    <p>종속된 입력 변수가 없습니다.</p>
-                                    <p style={{ fontSize: '13px', marginTop: '8px' }}>(독립적인 상수 수식일 수 있습니다)</p>
+                                    <p>No dependent input variables.</p>
+                                    <p style={{ fontSize: '13px', marginTop: '8px' }}>(May be an independent constant formula)</p>
                                 </div>
                             )}
                         </div>
@@ -264,13 +264,13 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                             <div style={{ display: 'flex', gap: '12px' }}>
                                 <div style={{ color: '#64748b', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <i className="fas fa-info-circle"></i>
-                                    이 포인트는 삭제되었습니다. 다시 사용하려면 복원하세요.
+                                    This point has been deleted. Restore it to use again.
                                 </div>
                             </div>
                             <div style={{ display: 'flex', gap: '12px' }}>
-                                <button className="vpd-btn secondary" onClick={onClose}>창 닫기</button>
+                                <button className="vpd-btn secondary" onClick={onClose}>Close</button>
                                 <button className="vpd-btn success" onClick={() => onRestore(virtualPoint.id)}>
-                                    <i className="fas fa-undo"></i> 삭제 취소 및 복원
+                                    <i className="fas fa-undo"></i> Cancel Delete & Restore
                                 </button>
                             </div>
                         </>
@@ -282,21 +282,21 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                                     onClick={() => onToggleEnabled(virtualPoint.id)}
                                 >
                                     <i className={`fas ${virtualPoint.is_enabled ? 'fa-pause' : 'fa-play'}`}></i>
-                                    {virtualPoint.is_enabled ? '연산 엔진 중지' : '연산 엔진 재개'}
+                                    {virtualPoint.is_enabled ? 'Stop Engine' : 'Resume Engine'}
                                 </button>
                                 <button className="vpd-btn secondary" onClick={() => onExecute(virtualPoint.id)}>
-                                    <i className="fas fa-bolt"></i> 즉시 실행 (Test)
+                                    <i className="fas fa-bolt"></i> Run Now (Test)
                                 </button>
                             </div>
                             <div style={{ display: 'flex', gap: '12px' }}>
-                                <button className="vpd-btn secondary" onClick={onClose}>창 닫기</button>
+                                <button className="vpd-btn secondary" onClick={onClose}>Close</button>
                                 {onDelete && (
                                     <button className="vpd-btn danger" onClick={() => onDelete(virtualPoint.id)}>
-                                        <i className="fas fa-trash"></i> 가상포인트 삭제
+                                        <i className="fas fa-trash"></i> Delete Virtual Point
                                     </button>
                                 )}
                                 <button className="vpd-btn primary" onClick={() => onEdit(virtualPoint)}>
-                                    <i className="fas fa-sliders-h"></i> 엔진 설정 수정
+                                    <i className="fas fa-sliders-h"></i> Edit Engine Settings
                                 </button>
                             </div>
                         </>

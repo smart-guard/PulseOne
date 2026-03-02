@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import alarmTemplatesApi, {
     AlarmTemplate
 } from '../../api/services/alarmTemplatesApi';
@@ -28,10 +29,10 @@ const LOGIC_TOKENS = [
 ];
 
 const QUICK_LOGIC_PATTERNS = [
-    { id: 'high', title: 'High Threshold (상한 알람)', logic: 'value > THRESHOLD', desc: '값이 설정된 상한값을 넘을 때 발생' },
-    { id: 'low', title: 'Low Threshold (하한 알람)', logic: 'value < THRESHOLD', desc: '값이 설정된 하한값보다 낮을 때 발생' },
-    { id: 'range_in', title: 'Inside Range (범위 내 진입)', logic: 'value > THRESHOLD AND value < THRESHOLD', desc: '값이 특정 범위 안에 있을 때 발생' },
-    { id: 'range_out', title: 'Outside Range (범위 이탈)', logic: 'value < THRESHOLD OR value > THRESHOLD', desc: '값이 특정 범위를 벗어났을 때 발생' },
+    { id: 'high', title: 'High Threshold', logic: 'value > THRESHOLD', desc: 'Triggered when value exceeds the set upper limit' },
+    { id: 'low', title: 'Low Threshold', logic: 'value < THRESHOLD', desc: 'Triggered when value falls below the set lower limit' },
+    { id: 'range_in', title: 'Inside Range', logic: 'value > THRESHOLD AND value < THRESHOLD', desc: 'Triggered when value is within a specific range' },
+    { id: 'range_out', title: 'Outside Range', logic: 'value < THRESHOLD OR value > THRESHOLD', desc: 'Triggered when value is outside a specific range' },
 ];
 
 const SEVERITY_CARDS = [
@@ -51,16 +52,17 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
 }) => {
     const { confirm } = useConfirmContext();
     const [step, setStep] = useState(1);
+    const { t } = useTranslation(['alarms', 'common']);
     const tagInputRef = useRef<HTMLInputElement>(null);
 
     const [formData, setFormData] = useState<Partial<AlarmTemplate>>({
-        name: '새 알람 템플릿',
+        name: 'New Alarm Template',
         category: 'general',
         template_type: 'simple',
         condition_type: 'threshold',
         trigger_condition: '',
         severity: 'medium',
-        message_template: '알람: {device_name}의 값이 임계치를 초과했습니다.',
+        message_template: 'Alarm: {device_name} value exceeded threshold.',
         description: '',
         tags: [],
         is_active: true,
@@ -84,13 +86,13 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                 setStep(1);
             } else {
                 setFormData({
-                    name: '새 알람 템플릿',
+                    name: 'New Alarm Template',
                     category: 'general',
                     template_type: 'simple',
                     condition_type: 'threshold',
                     trigger_condition: '',
                     severity: 'medium',
-                    message_template: '알람: {device_name}의 값이 임계치를 초과했습니다.',
+                    message_template: 'Alarm: {device_name} value exceeded threshold.',
                     description: '',
                     tags: [],
                     is_active: true,
@@ -107,7 +109,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
     const applyPreset = (preset: typeof ALARM_PRESETS[0]) => {
         setFormData(p => ({
             ...p,
-            name: p.name === '새 알람 템플릿' ? preset.title : p.name,
+            name: p.name === 'New Alarm Template' ? preset.title : p.name,
             trigger_condition: preset.logic,
             severity: preset.severity as any,
             condition_type: preset.type as any,
@@ -162,7 +164,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
 
     const handleSave = async () => {
         if (!formData.name) {
-            confirm({ title: '입력 오류', message: '템플릿 이름을 입력해주세요.', confirmButtonType: 'warning', showCancelButton: false });
+            confirm({ title: 'Input Error', message: 'Please enter a template name.', confirmButtonType: 'warning', showCancelButton: false });
             setStep(1);
             return;
         }
@@ -189,10 +191,10 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
     if (!isOpen) return null;
 
     const steps = [
-        { id: 1, title: 'Identity', label: '템플릿 기본 정보' },
-        { id: 2, title: 'Logic', label: '트리거 조건 구성' },
-        { id: 3, title: 'Config', label: '상세 설정 및 레벨' },
-        { id: 4, title: 'Finalize', label: '게시 및 최종 확인' }
+        { id: 1, title: 'Identity', label: 'Template Basic Info' },
+        { id: 2, title: 'Logic', label: 'Trigger Condition Setup' },
+        { id: 3, title: 'Config', label: 'Detail Settings & Level' },
+        { id: 4, title: 'Finalize', label: 'Publish & Final Review' }
     ];
 
     return (
@@ -205,11 +207,11 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                         </div>
                         <div>
                             <h3 className="modal-title" style={{ margin: 0, color: 'white', fontSize: '18px', fontWeight: 700 }}>
-                                {mode === 'create' ? '새 알람 템플릿 마법사' : '알람 템플릿 수정 마법사'}
+                                {mode === 'create' ? 'New Alarm Template Wizard' : 'Edit Alarm Template Wizard'}
                             </h3>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
                                 <p style={{ margin: 0, color: 'rgba(255, 255, 255, 0.95)', fontSize: '13px', lineHeight: '1.4' }}>
-                                    데이터 소스의 특성에 맞는 알람 규칙을 정의하고 임계값을 설정하는 4단계 프로세스입니다.
+                                    A 4-step process to define alarm rules and set thresholds tailored to data source characteristics.
                                 </p>
                                 <span className="wizard-step-info" style={{ color: 'rgba(255, 255, 255, 0.85)', fontWeight: 600, fontSize: '11px', letterSpacing: '0.8px', marginTop: '2px' }}>
                                     STEP {step} OF 4: {steps[step - 1].label.toUpperCase()}
@@ -238,15 +240,15 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-section" style={{ marginBottom: '32px' }}>
                                             <div className="section-title">
                                                 <i className="fas fa-id-card"></i>
-                                                기본 식별 정보
+                                                Basic Identification Info
                                             </div>
                                             <div className="form-group" style={{ marginBottom: '16px' }}>
-                                                <label className="form-label required">템플릿명 (Name)</label>
-                                                <input type="text" className="form-input" placeholder="새 알람 템플릿"
+                                                <label className="form-label required">{t('templates.name', {ns: 'alarms'})}</label>
+                                                <input type="text" className="form-input" placeholder="New Alarm Template"
                                                     value={formData.name} onChange={e => setFormData(p => ({ ...p, name: e.target.value }))} />
                                             </div>
                                             <div className="form-group">
-                                                <label className="form-label">구분 카테고리 (Category)</label>
+                                                <label className="form-label">{t('modals.category', {ns: 'alarms'})}</label>
                                                 <div className="category-selector-wrapper">
                                                     <select className="form-select" value={formData.category} onChange={e => setFormData(p => ({ ...p, category: e.target.value }))}>
                                                         {ALARM_CATEGORIES.map(cat => (
@@ -260,23 +262,23 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-section">
                                             <div className="section-title">
                                                 <i className="fas fa-sliders-h"></i>
-                                                템플릿 모드 선택
+                                                Select Template Mode
                                             </div>
                                             <div className="complexity-selector-vertical">
                                                 <div className={`complexity-card-v2 ${formData.template_type === 'simple' ? 'active' : ''}`}
                                                     onClick={() => setFormData(p => ({ ...p, template_type: 'simple' }))}>
                                                     <div className="mode-icon"><i className="fas fa-bolt"></i></div>
                                                     <div className="mode-info">
-                                                        <div className="mode-title">Simple (기본형)</div>
-                                                        <div className="mode-desc">초보자용. 표준 임계치 위주의 직관적인 설정</div>
+                                                        <div className="mode-title">{t('labels.simpleBasic', {ns: 'alarms'})}</div>
+                                                        <div className="mode-desc">For beginners. Intuitive settings focused on standard thresholds</div>
                                                     </div>
                                                 </div>
                                                 <div className={`complexity-card-v2 ${formData.template_type === 'advanced' ? 'active' : ''}`}
                                                     onClick={() => setFormData(p => ({ ...p, template_type: 'advanced' }))}>
                                                     <div className="mode-icon"><i className="fas fa-microchip"></i></div>
                                                     <div className="mode-info">
-                                                        <div className="mode-title">Advanced (고급형)</div>
-                                                        <div className="mode-desc">엔지니어용. 복합 수식/스크립트 로직 구성</div>
+                                                        <div className="mode-title">{t('templates.advanced', {ns: 'alarms'})}</div>
+                                                        <div className="mode-desc">{t('labels.forEngineersComplexFormulascriptLogicConfiguration', {ns: 'alarms'})}</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -286,10 +288,10 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                     <div className="dashboard-right-panel">
                                         <div className="section-title">
                                             <i className="fas fa-rocket"></i>
-                                            산업별 빠른 시작 프리셋
+                                            Industry Quick-Start Presets
                                         </div>
 
-                                        <div className="preset-group-header">Pumps & Industrial (펌프/공정)</div>
+                                        <div className="preset-group-header">{t('labels.pumpsIndustrial', {ns: 'alarms'})}</div>
                                         <div className="quick-start-row-v2" style={{ marginBottom: '16px' }}>
                                             {ALARM_PRESETS.filter(p => p.category === 'industrial').map(preset => (
                                                 <div key={preset.id} className="preset-card preset-card-v2" onClick={() => applyPreset(preset as any)}>
@@ -303,7 +305,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                             ))}
                                         </div>
 
-                                        <div className="preset-group-header">Environmental & HVAC (환경/공조)</div>
+                                        <div className="preset-group-header">{t('labels.environmentalHvac', {ns: 'alarms'})}</div>
                                         <div className="quick-start-row-v2" style={{ marginBottom: '16px' }}>
                                             {ALARM_PRESETS.filter(p => ['env', 'hvac'].includes(p.category)).map(preset => (
                                                 <div key={preset.id} className="preset-card preset-card-v2" onClick={() => applyPreset(preset as any)}>
@@ -317,7 +319,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                             ))}
                                         </div>
 
-                                        <div className="preset-group-header">Electrical & Power (전기/에너지)</div>
+                                        <div className="preset-group-header">{t('labels.electricalPower', {ns: 'alarms'})}</div>
                                         <div className="quick-start-row-v2">
                                             {ALARM_PRESETS.filter(p => p.category === 'electrical').map(preset => (
                                                 <div key={preset.id} className="preset-card preset-card-v2" onClick={() => applyPreset(preset as any)}>
@@ -340,7 +342,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                 <div className="form-section">
                                     <div className="section-title">
                                         <i className="fas fa-microchip" style={{ color: 'var(--blueprint-500)' }}></i>
-                                        알람 발생 조건 (Trigger Logic)
+                                        Trigger Condition (Logic)
                                     </div>
                                     <div className="logic-builder-container" style={{ padding: '32px' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -374,16 +376,16 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                             </div>
                                             <div style={{ display: 'flex', gap: '8px' }}>
                                                 <button type="button" className="btn btn-outline" onClick={removeLastToken} style={{ fontSize: '13px', padding: '8px 16px' }}>
-                                                    <i className="fas fa-undo-alt"></i> 뒤로
+                                                    <i className="fas fa-undo-alt"></i> Back
                                                 </button>
                                                 <button type="button" className="btn btn-outline" onClick={() => setFormData(p => ({ ...p, trigger_condition: '' }))} style={{ fontSize: '13px', padding: '8px 16px', color: '#ef4444' }}>
-                                                    <i className="fas fa-trash-alt"></i> 전체 삭제
+                                                    <i className="fas fa-trash-alt"></i> Clear All
                                                 </button>
                                             </div>
                                         </div>
 
                                         <div className="expression-box">
-                                            {formData.trigger_condition || '빌더를 사용하여 로직을 구성하세요'}
+                                            {formData.trigger_condition || 'Use the builder to define trigger logic'}
                                         </div>
 
                                         <div className="quick-logic-patterns">
@@ -407,7 +409,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-section">
                                             <div className="section-title">
                                                 <i className="fas fa-exclamation-circle" style={{ color: '#f59e0b' }}></i>
-                                                중요도 설정 (Severity Intensity)
+                                                Severity Settings
                                             </div>
                                             <div className="severity-grid">
                                                 {SEVERITY_CARDS.map(s => (
@@ -425,24 +427,24 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-section">
                                             <div className="section-title">
                                                 <i className="fas fa-sliders-h" style={{ color: 'var(--blueprint-500)' }}></i>
-                                                임계값 및 오차 설정
+                                                Threshold & Deadband Settings
                                             </div>
                                             <div className="form-row two-col">
                                                 <div className="form-group">
-                                                    <label className="form-label">High Limit (상한값)</label>
+                                                    <label className="form-label">{t('labels.highLimitHh', {ns: 'alarms'})}</label>
                                                     <input type="number" className="form-input" placeholder="80"
                                                         value={formData.default_config?.high_limit}
                                                         onChange={e => setFormData(p => ({ ...p, default_config: { ...p.default_config, high_limit: e.target.value } as any }))} />
                                                 </div>
                                                 <div className="form-group">
-                                                    <label className="form-label">Low Limit (하한값)</label>
+                                                    <label className="form-label">{t('labels.lowLimitLl', {ns: 'alarms'})}</label>
                                                     <input type="number" className="form-input" placeholder="20"
                                                         value={formData.default_config?.low_limit}
                                                         onChange={e => setFormData(p => ({ ...p, default_config: { ...p.default_config, low_limit: e.target.value } as any }))} />
                                                 </div>
                                             </div>
                                             <div className="form-group" style={{ marginTop: '16px' }}>
-                                                <label className="form-label">데드밴드 (Deadband)</label>
+                                                <label className="form-label">{t('labels.deadband1', {ns: 'alarms'})}</label>
                                                 <input type="number" className="form-input" placeholder="0"
                                                     value={formData.default_config?.deadband}
                                                     onChange={e => setFormData(p => ({ ...p, default_config: { ...p.default_config, deadband: Number(e.target.value) } as any }))} />
@@ -461,16 +463,16 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-section">
                                             <div className="section-title">
                                                 <i className="fas fa-comment-alt" style={{ color: '#3b82f6' }}></i>
-                                                알람 메시지 구성 (Message Composer)
+                                                Alarm Message Composer
                                             </div>
                                             <div className="composer-container" style={{ background: '#f8fafc', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                                                <label className="form-label" style={{ marginBottom: '12px' }}>전송 메시지 형식</label>
+                                                <label className="form-label" style={{ marginBottom: '12px' }}>{t('templates.messageTemplate', {ns: 'alarms'})}</label>
                                                 <textarea
                                                     className="description-composer"
                                                     rows={4}
                                                     value={formData.message_template}
                                                     onChange={e => setFormData(p => ({ ...p, message_template: e.target.value }))}
-                                                    placeholder="알람 발생 시 전송될 메시지 내용을 입력하세요..."
+                                                    placeholder="Enter the message to send when an alarm is triggered..."
                                                 />
                                                 <div style={{ marginTop: '20px' }}>
                                                     <label className="form-label" style={{ fontSize: '11px', color: '#64748b' }}>사용 가능한 변수 (클릭하여 추가)</label>
@@ -494,12 +496,12 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-section" style={{ marginBottom: '32px' }}>
                                             <div className="section-title">
                                                 <i className="fas fa-info-circle" style={{ color: '#64748b' }}></i>
-                                                템플릿 설명 및 비고
+                                                Template Description & Notes
                                             </div>
                                             <textarea
                                                 className="description-composer"
                                                 rows={3}
-                                                placeholder="엔지니어가 이 템플릿의 용도를 알 수 있게 설명해주세요..."
+                                                placeholder="Describe this template's purpose for engineers..."
                                                 value={formData.description}
                                                 onChange={e => setFormData(p => ({ ...p, description: e.target.value }))}
                                             />
@@ -552,7 +554,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                         )}
 
                         <div style={{ marginLeft: 'auto', display: 'flex', gap: '12px' }}>
-                            <button className="btn btn-ghost" onClick={onClose}>취소</button>
+                            <button className="btn btn-ghost" onClick={onClose}>{t('cancel', {ns: 'common'})}</button>
                             {step < 4 ? (
                                 <button className="btn btn-primary" onClick={handleNext} disabled={!formData.name && step === 1} style={{ minWidth: '120px' }}>
                                     다음 단계 <i className="fas fa-arrow-right"></i>

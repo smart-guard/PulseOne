@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { GroupApiService, DeviceGroup } from '../../api/services/groupApi';
 import { Device } from '../../api/services/deviceApi';
 import '../../styles/management.css';
@@ -17,6 +18,7 @@ const MoveGroupModal: React.FC<MoveGroupModalProps> = ({
     loading
 }) => {
     const [groups, setGroups] = useState<DeviceGroup[]>([]);
+    const { t } = useTranslation(['sites', 'common']);
     const [fetchingGroups, setFetchingGroups] = useState(true);
     const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
     const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
@@ -66,7 +68,7 @@ const MoveGroupModal: React.FC<MoveGroupModalProps> = ({
             }
         } catch (error) {
             console.error('Failed to create group:', error);
-            alert('그룹 생성에 실패했습니다.');
+            alert('Failed to create group.');
         } finally {
             setCreating(false);
         }
@@ -118,7 +120,7 @@ const MoveGroupModal: React.FC<MoveGroupModalProps> = ({
         <div className="modal-overlay">
             <div className="modal-container" style={{ maxWidth: '500px' }}>
                 <div className="modal-header">
-                    <h2 className="modal-title">그룹 이동</h2>
+                    <h2 className="modal-title">{t('labels.moveGroup', {ns: 'sites'})}</h2>
                     <button className="modal-close-btn" onClick={onClose} disabled={loading}>
                         <i className="fas fa-times"></i>
                     </button>
@@ -127,7 +129,7 @@ const MoveGroupModal: React.FC<MoveGroupModalProps> = ({
                 <div className="modal-content">
                     <div className="form-section">
                         <div className="section-header">
-                            <h3>선택된 디바이스 ({selectedDevices.length}개)</h3>
+                            <h3>Selected Devices ({selectedDevices.length})</h3>
                         </div>
                         <div className="selected-items-summary">
                             {selectedDevices.slice(0, 10).map(device => (
@@ -137,19 +139,19 @@ const MoveGroupModal: React.FC<MoveGroupModalProps> = ({
                                 </div>
                             ))}
                             {selectedDevices.length > 10 && (
-                                <div className="summary-item more">외 {selectedDevices.length - 10}개...</div>
+                                <div className="summary-item more">and {selectedDevices.length - 10} more...</div>
                             )}
                         </div>
                     </div>
 
                     <div className="form-section flex-grow">
                         <div className="section-header">
-                            <h3>대상 그룹 선택</h3>
+                            <h3>{t('labels.selectTargetGroup', {ns: 'sites'})}</h3>
                             <div className="search-box-sm">
                                 <i className="fas fa-search"></i>
                                 <input
                                     type="text"
-                                    placeholder="그룹 검색..."
+                                    placeholder="Search group..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
@@ -162,12 +164,12 @@ const MoveGroupModal: React.FC<MoveGroupModalProps> = ({
                                 onClick={() => setSelectedGroupId(null)}
                             >
                                 <i className="fas fa-ban group-icon"></i>
-                                <span className="group-name">그룹 해제 (그룹 없음)</span>
+                                <span className="group-name">{t('labels.ungroupNoGroup', {ns: 'sites'})}</span>
                             </div>
 
                             {fetchingGroups ? (
                                 <div className="tree-loading">
-                                    <i className="fas fa-spinner fa-spin"></i> 로딩 중...
+                                    <i className="fas fa-spinner fa-spin"></i> Loading...
                                 </div>
                             ) : (
                                 <div className="tree-list">

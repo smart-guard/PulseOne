@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { DeviceTemplate, TemplatePoint, Manufacturer, Protocol } from '../../types/manufacturing';
 import { TemplateApiService } from '../../api/services/templateApi';
@@ -32,6 +33,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
     const { confirm } = useConfirmContext();
     const isEdit = !!template;
     const [loading, setLoading] = useState(false);
+    const { t } = useTranslation(['deviceTemplates', 'common']);
     const [step, setStep] = useState(1);
 
     // Form Data
@@ -150,8 +152,8 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
 
                 if (missing.length > 0) {
                     confirm({
-                        title: '필수 정보 누락',
-                        message: `다음 필수 설정 항목이 누락되었습니다: ${missing.join(', ')}`,
+                        title: 'Required Fields Missing',
+                        message: `The following required fields are missing: ${missing.join(', ')}`,
                         confirmButtonType: 'warning',
                         showCancelButton: false
                     });
@@ -169,8 +171,8 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                 const missingConfig = Object.keys(schemaObj).filter(key => schemaObj[key].required && !protocolConfig[key]);
                 if (missingConfig.length > 0) {
                     confirm({
-                        title: '화면 설정 누락',
-                        message: `다음 필수 설정 항목이 누락되었습니다: ${missingConfig.join(', ')}`,
+                        title: 'Display Settings Missing',
+                        message: `The following required display fields are missing: ${missingConfig.join(', ')}`,
                         confirmButtonType: 'warning',
                         showCancelButton: false
                     });
@@ -193,10 +195,10 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
 
                 if (duplicateName || duplicateAddr) {
                     confirm({
-                        title: '데이터 포인트 중복',
+                        title: 'Duplicate Data Points',
                         message: duplicateName
-                            ? `중복된 이름이 존재합니다: ${duplicateName}`
-                            : `중복된 주소가 존재합니다: ${duplicateAddr}`,
+                            ? `Duplicate name found: ${duplicateName}`
+                            : `Duplicate address found: ${duplicateAddr}`,
                         confirmButtonType: 'warning',
                         showCancelButton: false
                     });
@@ -220,8 +222,8 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                     finalModelId = modelRes.data.id;
                 } else {
                     confirm({
-                        title: '생성 실패',
-                        message: '디바이스 모델 생성에 실패했습니다.',
+                        title: 'Creation Failed',
+                        message: 'Failed to create device model.',
                         confirmButtonType: 'danger',
                         showCancelButton: false
                     });
@@ -265,16 +267,16 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                 onClose();
             } else {
                 confirm({
-                    title: '저장 실패',
-                    message: res.message || '저장에 실패했습니다.',
+                    title: 'Save Failed',
+                    message: res.message || 'Save failed.',
                     confirmButtonType: 'danger',
                     showCancelButton: false
                 });
             }
         } catch (err) {
             confirm({
-                title: '오류 발생',
-                message: '저장 중 오류가 발생했습니다.',
+                title: 'Error',
+                message: 'An error occurred while saving.',
                 confirmButtonType: 'danger',
                 showCancelButton: false
             });
@@ -287,8 +289,8 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
         if (step === 1) {
             if (!formData.name || !formData.manufacturer_id || !formData.protocol_id) {
                 confirm({
-                    title: '입력 확인',
-                    message: '모든 필수 정보를 입력해주세요.',
+                    title: 'Input Required',
+                    message: 'Please fill in all required fields.',
                     confirmButtonType: 'warning',
                     showCancelButton: false
                 });
@@ -297,8 +299,8 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
         } else if (step === 2) {
             if (dataPoints.length === 0) {
                 confirm({
-                    title: '데이터 포인트 없음',
-                    message: '최소 하나 이상의 데이터 포인트를 등록해주세요.',
+                    title: 'No Data Points',
+                    message: 'Please register at least one data point.',
                     confirmButtonType: 'warning',
                     showCancelButton: false
                 });
@@ -306,7 +308,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
             }
             if (overlapIndices.size > 0) {
                 confirm({
-                    title: '주소 중복 감지',
+                    title: 'Duplicate Address Detected',
                     message: '주소가 중복된 데이터 포인트가 있습니다. 확인 후 수정해주세요.',
                     confirmButtonType: 'danger',
                     showCancelButton: false

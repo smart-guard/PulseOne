@@ -4,12 +4,14 @@
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DeviceApiService } from '../../../api/services/deviceApi';
 import { DataApiService } from '../../../api/services/dataApi';
 import { DeviceStatusTabProps } from './types';
 import '../../../styles/management.css';
 
 const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints }) => {
+  const { t } = useTranslation(['devices', 'common']);
   // ========================================================================
   // 상태 관리
   // ========================================================================
@@ -43,7 +45,7 @@ const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints })
       } else {
         setConnectionTestResult({
           test_successful: false,
-          error_message: response.error || '테스트 실패'
+          error_message: response.error || 'Test failed'
         });
       }
     } catch (error) {
@@ -73,7 +75,7 @@ const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints })
       } else {
         setDiagnoseResult({
           success: false,
-          message: response.error || '진단 실패'
+          message: response.error || 'Diagnosis failed'
         });
       }
     } catch (error) {
@@ -193,10 +195,10 @@ const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints })
   const formatTimeAgo = (dateString?: string) => {
     if (!dateString) return 'N/A';
     const diff = Math.floor((Date.now() - new Date(dateString).getTime()) / 60000);
-    if (diff < 1) return '방금 전';
-    if (diff < 60) return `${diff}분 전`;
-    if (diff < 1440) return `${Math.floor(diff / 60)}시간 전`;
-    return `${Math.floor(diff / 1440)}일 전`;
+    if (diff < 1) return t('devices:status.justNow');
+    if (diff < 60) return `${diff}${t('devices:status.minAgo')}`;
+    if (diff < 1440) return `${Math.floor(diff / 60)}${t('devices:status.hrAgo')}`;
+    return `${Math.floor(diff / 1440)}${t('devices:status.dayAgo')}`;
   };
 
   /**
@@ -219,7 +221,7 @@ const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints })
       {/* 헤더 & 컨트롤 */}
       <div className="status-header">
         <div className="status-time">
-          마지막 업데이트: {lastUpdate.toLocaleTimeString()}
+          {t('devices:status.lastUpdate')}: {lastUpdate.toLocaleTimeString()}
         </div>
         <div className="status-actions">
           <button
@@ -228,7 +230,7 @@ const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints })
             disabled={isLoadingStats}
           >
             <i className={`fas fa-sync ${isLoadingStats ? 'fa-spin' : ''}`}></i>
-            새로고침
+            {t('devices:status.refresh')}
           </button>
           <button
             className="st-btn st-btn-primary"
@@ -236,9 +238,9 @@ const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints })
             disabled={isTestingConnection || isDiagnosing}
           >
             {isTestingConnection ? (
-              <><i className="fas fa-spinner fa-spin"></i> 테스트 중...</>
+              <><i className="fas fa-spinner fa-spin"></i> {t('devices:status.testing')}</>
             ) : (
-              <><i className="fas fa-plug"></i> 연결 테스트</>
+              <><i className="fas fa-plug"></i> {t('devices:basicInfo.connectionTest')}</>
             )}
           </button>
           <button
@@ -247,9 +249,9 @@ const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints })
             disabled={isTestingConnection || isDiagnosing}
           >
             {isDiagnosing ? (
-              <><i className="fas fa-spinner fa-spin"></i> 진단 중...</>
+              <><i className="fas fa-spinner fa-spin"></i> {t('devices:status.diagnosing')}</>
             ) : (
-              <><i className="fas fa-stethoscope"></i> 정밀 진단</>
+              <><i className="fas fa-stethoscope"></i> {t('devices:status.preciseDiagnosis')}</>
             )}
           </button>
         </div>
@@ -260,17 +262,17 @@ const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints })
 
         {/* 1. 연결 상태 (Connection) */}
         <div className="status-card">
-          <h3><i className="fas fa-link icon-con"></i> 연결 상태</h3>
+          <h3><i className="fas fa-link icon-con"></i> {t('devices:status.connectionStatus')}</h3>
           <div className="status-content">
-            {renderReadOnlyField('현재 상태', (
+            {renderReadOnlyField(t('devices:status.currentStatus'), (
               <span className={`status-badge-row ${getStatusColor(displayData?.connection_status)}`}>
                 <i className={`fas ${displayData?.connection_status === 'connected' ? 'fa-check-circle' : 'fa-times-circle'}`}></i>
-                {displayData?.connection_status === 'connected' ? '연결됨' : displayData?.connection_status === 'disconnected' ? '연결끊김' : '확인 중'}
+                {displayData?.connection_status === 'connected' ? t('devices:status.connected') : displayData?.connection_status === 'disconnected' ? t('devices:status.disconnected') : t('devices:status.checking')}
               </span>
             ))}
-            {renderReadOnlyField('마지막 통신', formatTimeAgo(statusInfo.last_communication || displayData?.last_seen))}
-            {renderReadOnlyField('응답 시간', statusInfo.response_time ? `${statusInfo.response_time}ms` : 'N/A')}
-            {renderReadOnlyField('오류 횟수', `${statusInfo.error_count || 0}회`, (statusInfo.error_count || 0) > 0 ? 'text-error-600' : '')}
+            {renderReadOnlyField(t('devices:status.lastComm'), formatTimeAgo(statusInfo.last_communication || displayData?.last_seen))}
+            {renderReadOnlyField(t('devices:status.responseTime'), statusInfo.response_time ? `${statusInfo.response_time}ms` : 'N/A')}
+            {renderReadOnlyField(t('devices:status.errorCount'), `${statusInfo.error_count || 0}`, (statusInfo.error_count || 0) > 0 ? 'text-error-600' : '')}
 
             {statusInfo.last_error && (
               <div className="error-box">
@@ -283,7 +285,7 @@ const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints })
               <div className={`diagnose-result ${diagnoseResult.success ? 'success' : 'error'}`}>
                 <div className="diag-header">
                   <i className={`fas ${diagnoseResult.success ? 'fa-check-circle' : 'fa-exclamation-circle'}`}></i>
-                  <strong>진단 결과: {diagnoseResult.success ? '정상' : '오류'}</strong>
+                  <strong>Diagnosis: {diagnoseResult.success ? 'OK' : 'Error'}</strong>
                 </div>
                 <div className="diag-body">
                   {diagnoseResult.message && <p>{diagnoseResult.message}</p>}
@@ -318,31 +320,31 @@ const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints })
 
         {/* 2. 성능 통계 (Performance) */}
         <div className="status-card">
-          <h3><i className="fas fa-tachometer-alt icon-perf"></i> 성능 통계</h3>
+          <h3><i className="fas fa-tachometer-alt icon-perf"></i> {t('devices:status.performance')}</h3>
           <div className="status-content">
-            {renderReadOnlyField('총 요청', (statusInfo.total_requests || 0).toLocaleString())}
-            {renderReadOnlyField('성공률', `${calculateSuccessRate()}%`)}
-            {renderReadOnlyField('성공', (statusInfo.successful_requests || 0).toLocaleString(), 'text-success-600')}
-            {renderReadOnlyField('실패', (statusInfo.failed_requests || 0).toLocaleString(), 'text-error-600')}
-            {renderReadOnlyField('처리량', `${(statusInfo.throughput_ops_per_sec || 0).toFixed(2)} ops/sec`)}
+            {renderReadOnlyField(t('devices:status.totalRequests'), (statusInfo.total_requests || 0).toLocaleString())}
+            {renderReadOnlyField(t('devices:status.successRate'), `${calculateSuccessRate()}%`)}
+            {renderReadOnlyField(t('devices:status.success'), (statusInfo.successful_requests || 0).toLocaleString(), 'text-success-600')}
+            {renderReadOnlyField(t('devices:status.failed'), (statusInfo.failed_requests || 0).toLocaleString(), 'text-error-600')}
+            {renderReadOnlyField(t('devices:status.throughput'), `${(statusInfo.throughput_ops_per_sec || 0).toFixed(2)} ops/sec`)}
           </div>
         </div>
 
         {/* 3. 시스템 정보 (System) */}
         <div className="status-card">
-          <h3><i className="fas fa-microchip icon-sys"></i> 시스템 정보</h3>
+          <h3><i className="fas fa-microchip icon-sys"></i> {t('devices:status.systemInfo')}</h3>
           <div className="status-content">
-            {renderReadOnlyField('펌웨어', statusInfo.firmware_version || 'N/A')}
-            {renderReadOnlyField('하드웨어', statusInfo.hardware_info || 'N/A')}
+            {renderReadOnlyField('Firmware', statusInfo.firmware_version || 'N/A')}
+            {renderReadOnlyField('Hardware', statusInfo.hardware_info || 'N/A')}
             {renderReadOnlyField('CPU', `${statusInfo.cpu_usage || 0}%`)}
-            {renderReadOnlyField('메모리', `${statusInfo.memory_usage || 0}%`)}
+            {renderReadOnlyField('Memory', `${statusInfo.memory_usage || 0}%`)}
             {renderReadOnlyField('Uptime', `${statusInfo.uptime_percentage || 0}%`)}
           </div>
         </div>
 
         {/* 4. 데이터 포인트 (Data Points List) */}
         <div className="status-card">
-          <h3><i className="fas fa-database icon-data"></i> 데이터 포인트 ({deviceDataPoints.length})</h3>
+          <h3><i className="fas fa-database icon-data"></i> {t('devices:tabs.dataPoints')} ({deviceDataPoints.length})</h3>
           <div className="status-content-scrollable">
             {deviceDataPoints.length > 0 ? (
               <div className="metrics-list">
@@ -379,14 +381,14 @@ const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints })
                 ))}
               </div>
             ) : (
-              <div className="no-data">데이터 포인트 없음</div>
+              <div className="no-data">{t('devices:dataPoint.noData')}</div>
             )}
 
             {connectionTestResult && (
               <div className={`test-result-box ${connectionTestResult.test_successful ? 'success' : 'fail'}`}>
                 <div className="test-header">
                   <i className={`fas ${connectionTestResult.test_successful ? 'fa-check' : 'fa-exclamation-triangle'}`}></i>
-                  <span>{connectionTestResult.test_successful ? '테스트 성공' : '테스트 실패'}</span>
+                  <span>{connectionTestResult.test_successful ? t('devices:status.testSuccess') : t('devices:status.testFailed')}</span>
                 </div>
                 {connectionTestResult.response_time_ms && <div className="test-time">{connectionTestResult.response_time_ms}ms</div>}
               </div>

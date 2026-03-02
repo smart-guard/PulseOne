@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../styles/base.css';
 import '../styles/management.css';
 
@@ -53,6 +54,7 @@ interface VPNConnection {
 
 const NetworkSettings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'interfaces' | 'firewall' | 'vpn' | 'monitoring'>('interfaces');
+    const { t } = useTranslation(['network', 'common']);
   const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
   const [firewallRules, setFirewallRules] = useState<FirewallRule[]>([]);
   const [vpnConnections, setVPNConnections] = useState<VPNConnection[]>([]);
@@ -65,11 +67,11 @@ const NetworkSettings: React.FC = () => {
   }, []);
 
   const initializeMockData = () => {
-    // 네트워크 인터페이스
+    // Network Interface
     const mockInterfaces: NetworkInterface[] = [
       {
         id: 'eth0',
-        name: '이더넷 0',
+        name: 'Ethernet 0',
         type: 'ethernet',
         status: 'up',
         ipAddress: '192.168.1.100',
@@ -88,7 +90,7 @@ const NetworkSettings: React.FC = () => {
       },
       {
         id: 'eth1',
-        name: '이더넷 1',
+        name: 'Ethernet 1',
         type: 'ethernet',
         status: 'down',
         ipAddress: '',
@@ -107,7 +109,7 @@ const NetworkSettings: React.FC = () => {
       },
       {
         id: 'wlan0',
-        name: 'WiFi 어댑터',
+        name: 'WiFi Adapter',
         type: 'wifi',
         status: 'up',
         ipAddress: '192.168.0.50',
@@ -126,11 +128,11 @@ const NetworkSettings: React.FC = () => {
       }
     ];
 
-    // 방화벽 규칙
+    // Firewall Rules
     const mockFirewallRules: FirewallRule[] = [
       {
         id: 'rule_1',
-        name: 'SSH 접근 허용',
+        name: 'Allow SSH Access',
         enabled: true,
         action: 'allow',
         protocol: 'tcp',
@@ -138,13 +140,13 @@ const NetworkSettings: React.FC = () => {
         sourcePort: 'any',
         destinationIp: 'any',
         destinationPort: '22',
-        description: '내부 네트워크에서 SSH 접근 허용',
+        description: 'Allow SSH access from internal network',
         priority: 1,
         createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
       },
       {
         id: 'rule_2',
-        name: 'HTTP/HTTPS 허용',
+        name: 'Allow HTTP/HTTPS',
         enabled: true,
         action: 'allow',
         protocol: 'tcp',
@@ -152,13 +154,13 @@ const NetworkSettings: React.FC = () => {
         sourcePort: 'any',
         destinationIp: 'any',
         destinationPort: '80,443',
-        description: 'HTTP 및 HTTPS 트래픽 허용',
+        description: 'Allow HTTP and HTTPS traffic',
         priority: 2,
         createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
       },
       {
         id: 'rule_3',
-        name: '외부 FTP 차단',
+        name: 'Block External FTP',
         enabled: true,
         action: 'deny',
         protocol: 'tcp',
@@ -166,17 +168,17 @@ const NetworkSettings: React.FC = () => {
         sourcePort: 'any',
         destinationIp: 'any',
         destinationPort: '21',
-        description: '외부에서 FTP 접근 차단',
+        description: 'Block FTP access from external sources',
         priority: 3,
         createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
       }
     ];
 
-    // VPN 연결
+    // VPN Connection
     const mockVPNConnections: VPNConnection[] = [
       {
         id: 'vpn_1',
-        name: '본사 VPN',
+        name: 'HQ VPN',
         type: 'openvpn',
         status: 'connected',
         serverAddress: 'vpn.company.com:1194',
@@ -189,7 +191,7 @@ const NetworkSettings: React.FC = () => {
       },
       {
         id: 'vpn_2',
-        name: '클라우드 백업',
+        name: 'Cloud Backup',
         type: 'wireguard',
         status: 'disconnected',
         serverAddress: 'backup.cloud.com:51820',
@@ -215,7 +217,7 @@ const NetworkSettings: React.FC = () => {
     ));
   };
 
-  // VPN 연결/해제
+  // VPN Connection/해제
   const handleToggleVPN = (vpnId: string) => {
     setVPNConnections(prev => prev.map(vpn =>
       vpn.id === vpnId
@@ -228,7 +230,7 @@ const NetworkSettings: React.FC = () => {
     ));
   };
 
-  // 방화벽 규칙 토글
+  // Firewall Rules 토글
   const handleToggleFirewallRule = (ruleId: string) => {
     setFirewallRules(prev => prev.map(rule =>
       rule.id === ruleId ? { ...rule, enabled: !rule.enabled } : rule
@@ -264,15 +266,15 @@ const NetworkSettings: React.FC = () => {
     <div className="user-management-container">
       {/* 페이지 헤더 */}
       <div className="page-header">
-        <h1 className="page-title">네트워크 설정</h1>
+        <h1 className="page-title">{t('title', {ns: 'network'})}</h1>
         <div className="page-actions">
           <button className="btn btn-outline">
             <i className="fas fa-sync"></i>
-            새로고침
+            Refresh
           </button>
           <button className="btn btn-outline">
             <i className="fas fa-download"></i>
-            내보내기
+            Export
           </button>
         </div>
       </div>
@@ -284,7 +286,7 @@ const NetworkSettings: React.FC = () => {
           onClick={() => setActiveTab('interfaces')}
         >
           <i className="fas fa-network-wired"></i>
-          네트워크 인터페이스
+          Network Interface
           <span className="tab-badge">{interfaces.length}</span>
         </button>
         <button
@@ -292,7 +294,7 @@ const NetworkSettings: React.FC = () => {
           onClick={() => setActiveTab('firewall')}
         >
           <i className="fas fa-shield-alt"></i>
-          방화벽 규칙
+          Firewall Rules
           <span className="tab-badge">{firewallRules.length}</span>
         </button>
         <button
@@ -300,7 +302,7 @@ const NetworkSettings: React.FC = () => {
           onClick={() => setActiveTab('vpn')}
         >
           <i className="fas fa-lock"></i>
-          VPN 연결
+          VPN Connection
           <span className="tab-badge">{vpnConnections.length}</span>
         </button>
         <button
@@ -308,19 +310,19 @@ const NetworkSettings: React.FC = () => {
           onClick={() => setActiveTab('monitoring')}
         >
           <i className="fas fa-chart-line"></i>
-          네트워크 모니터링
+          Network Monitoring
         </button>
       </div>
 
-      {/* 네트워크 인터페이스 탭 */}
+      {/* Network Interface 탭 */}
       {activeTab === 'interfaces' && (
         <div className="users-management">
           <div className="users-header">
-            <h2 className="users-title">네트워크 인터페이스</h2>
+            <h2 className="users-title">{t('labels.networkInterface', {ns: 'network'})}</h2>
             <div className="users-actions">
               <button className="btn btn-primary">
                 <i className="fas fa-plus"></i>
-                가상 인터페이스 추가
+                Add Virtual Interface
               </button>
             </div>
           </div>
@@ -338,7 +340,7 @@ const NetworkSettings: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <i className={`fas ${getStatusIcon(iface.status)}`}></i>
                         <span className="text-sm text-neutral-600">
-                          {iface.status === 'up' ? '활성' : '비활성'} • {iface.type.toUpperCase()}
+                          {iface.status === 'up' ? 'Active' : 'Inactive'} • {iface.type.toUpperCase()}
                         </span>
                       </div>
                     </div>
@@ -349,46 +351,46 @@ const NetworkSettings: React.FC = () => {
                       onClick={() => handleToggleInterface(iface.id)}
                     >
                       <i className={`fas ${iface.status === 'up' ? 'fa-stop' : 'fa-play'}`}></i>
-                      {iface.status === 'up' ? '비활성화' : '활성화'}
+                      {iface.status === 'up' ? 'Deactivate' : 'Activate'}
                     </button>
                     <button className="btn btn-sm btn-outline">
                       <i className="fas fa-cog"></i>
-                      설정
+                      Settings
                     </button>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">IP 주소</label>
+                    <label className="text-xs font-medium text-neutral-500">{t('field.ipAddress', {ns: 'network'})}</label>
                     <div className="text-sm text-neutral-800">{iface.ipAddress || 'N/A'}</div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">서브넷 마스크</label>
+                    <label className="text-xs font-medium text-neutral-500">{t('field.subnetMask', {ns: 'network'})}</label>
                     <div className="text-sm text-neutral-800">{iface.subnetMask || 'N/A'}</div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">게이트웨이</label>
+                    <label className="text-xs font-medium text-neutral-500">{t('field.gateway', {ns: 'network'})}</label>
                     <div className="text-sm text-neutral-800">{iface.gateway || 'N/A'}</div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">MAC 주소</label>
+                    <label className="text-xs font-medium text-neutral-500">{t('field.macAddress', {ns: 'network'})}</label>
                     <div className="text-sm text-neutral-800 font-mono">{iface.macAddress}</div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">속도</label>
+                    <label className="text-xs font-medium text-neutral-500">{t('field.speed', {ns: 'network'})}</label>
                     <div className="text-sm text-neutral-800">{iface.speed}</div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">MTU</label>
+                    <label className="text-xs font-medium text-neutral-500">{t('labels.mtu', {ns: 'network'})}</label>
                     <div className="text-sm text-neutral-800">{iface.mtu}</div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">수신</label>
+                    <label className="text-xs font-medium text-neutral-500">RX</label>
                     <div className="text-sm text-neutral-800">{formatBytes(iface.rxBytes)}</div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">송신</label>
+                    <label className="text-xs font-medium text-neutral-500">TX</label>
                     <div className="text-sm text-neutral-800">{formatBytes(iface.txBytes)}</div>
                   </div>
                 </div>
@@ -397,7 +399,7 @@ const NetworkSettings: React.FC = () => {
                   <div className="mt-4 p-3 bg-primary-50 rounded-lg">
                     <div className="flex items-center gap-2">
                       <i className="fas fa-info-circle text-primary-600"></i>
-                      <span className="text-sm text-primary-700">DHCP 자동 설정 사용 중</span>
+                      <span className="text-sm text-primary-700">{t('labels.usingDhcpAutoConfiguration', {ns: 'network'})}</span>
                     </div>
                   </div>
                 )}
@@ -407,39 +409,39 @@ const NetworkSettings: React.FC = () => {
         </div>
       )}
 
-      {/* 방화벽 규칙 탭 */}
+      {/* Firewall Rules 탭 */}
       {activeTab === 'firewall' && (
         <div className="users-management">
           <div className="users-header">
-            <h2 className="users-title">방화벽 규칙</h2>
+            <h2 className="users-title">{t('tab.firewall', {ns: 'network'})}</h2>
             <div className="users-actions">
               <button className="btn btn-primary">
                 <i className="fas fa-plus"></i>
-                새 규칙
+                New Rule
               </button>
             </div>
           </div>
 
           <div className="users-table">
             <div className="table-header">
-              <div className="header-cell">규칙명</div>
-              <div className="header-cell">상태</div>
-              <div className="header-cell">동작</div>
-              <div className="header-cell">프로토콜</div>
-              <div className="header-cell">소스</div>
-              <div className="header-cell">목적지</div>
-              <div className="header-cell">우선순위</div>
-              <div className="header-cell">액션</div>
+              <div className="header-cell">{t('labels.ruleName', {ns: 'network'})}</div>
+              <div className="header-cell">{t('scan.status', {ns: 'network'})}</div>
+              <div className="header-cell">{t('labels.action', {ns: 'network'})}</div>
+              <div className="header-cell">{t('labels.protocol', {ns: 'network'})}</div>
+              <div className="header-cell">{t('labels.source', {ns: 'network'})}</div>
+              <div className="header-cell">{t('labels.destination', {ns: 'network'})}</div>
+              <div className="header-cell">{t('labels.priority', {ns: 'network'})}</div>
+              <div className="header-cell">{t('labels.action', {ns: 'network'})}</div>
             </div>
 
             {firewallRules.map(rule => (
               <div key={rule.id} className="table-row">
-                <div className="table-cell" data-label="규칙명">
+                <div className="table-cell" data-label="Rule Name">
                   <div className="user-name">{rule.name}</div>
                   <div className="user-email">{rule.description}</div>
                 </div>
 
-                <div className="table-cell" data-label="상태">
+                <div className="table-cell" data-label="Status">
                   <label className="status-toggle">
                     <input
                       type="checkbox"
@@ -450,34 +452,34 @@ const NetworkSettings: React.FC = () => {
                   </label>
                 </div>
 
-                <div className="table-cell" data-label="동작">
+                <div className="table-cell" data-label="Action">
                   <span className={`role-badge ${rule.action === 'allow' ? 'role-engineer' : 'role-admin'}`}>
-                    {rule.action === 'allow' ? '허용' : '차단'}
+                    {rule.action === 'allow' ? 'Allow' : 'Block'}
                   </span>
                 </div>
 
-                <div className="table-cell" data-label="프로토콜">
+                <div className="table-cell" data-label="Protocol">
                   <div className="text-neutral-700">{rule.protocol.toUpperCase()}</div>
                 </div>
 
-                <div className="table-cell" data-label="소스">
+                <div className="table-cell" data-label="Source">
                   <div className="text-neutral-700">{rule.sourceIp}:{rule.sourcePort}</div>
                 </div>
 
-                <div className="table-cell" data-label="목적지">
+                <div className="table-cell" data-label="Destination">
                   <div className="text-neutral-700">{rule.destinationIp}:{rule.destinationPort}</div>
                 </div>
 
-                <div className="table-cell" data-label="우선순위">
+                <div className="table-cell" data-label="Priority">
                   <span className="text-primary-600 font-semibold">{rule.priority}</span>
                 </div>
 
-                <div className="table-cell action-cell" data-label="액션">
+                <div className="table-cell action-cell" data-label="Action">
                   <div className="action-buttons">
-                    <button className="btn btn-sm btn-outline" title="편집">
+                    <button className="btn btn-sm btn-outline" title="Edit">
                       <i className="fas fa-edit"></i>
                     </button>
-                    <button className="btn btn-sm btn-error" title="삭제">
+                    <button className="btn btn-sm btn-error" title="Delete">
                       <i className="fas fa-trash"></i>
                     </button>
                   </div>
@@ -488,15 +490,15 @@ const NetworkSettings: React.FC = () => {
         </div>
       )}
 
-      {/* VPN 연결 탭 */}
+      {/* VPN Connection 탭 */}
       {activeTab === 'vpn' && (
         <div className="users-management">
           <div className="users-header">
-            <h2 className="users-title">VPN 연결</h2>
+            <h2 className="users-title">{t('labels.vpnConnection', {ns: 'network'})}</h2>
             <div className="users-actions">
               <button className="btn btn-primary">
                 <i className="fas fa-plus"></i>
-                새 VPN 연결
+                New VPN Connection
               </button>
             </div>
           </div>
@@ -514,7 +516,7 @@ const NetworkSettings: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <i className={`fas ${getStatusIcon(vpn.status)}`}></i>
                         <span className="text-sm text-neutral-600">
-                          {vpn.status === 'connected' ? '연결됨' : '연결 안됨'} • {vpn.type.toUpperCase()}
+                          {vpn.status === 'connected' ? 'Connected' : 'Disconnected'} • {vpn.type.toUpperCase()}
                         </span>
                       </div>
                     </div>
@@ -525,38 +527,38 @@ const NetworkSettings: React.FC = () => {
                       onClick={() => handleToggleVPN(vpn.id)}
                     >
                       <i className={`fas ${vpn.status === 'connected' ? 'fa-stop' : 'fa-play'}`}></i>
-                      {vpn.status === 'connected' ? '연결 해제' : '연결'}
+                      {vpn.status === 'connected' ? 'Disconnect' : 'Connect'}
                     </button>
                     <button className="btn btn-sm btn-outline">
                       <i className="fas fa-cog"></i>
-                      설정
+                      Settings
                     </button>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">서버 주소</label>
+                    <label className="text-xs font-medium text-neutral-500">{t('labels.serverAddress', {ns: 'network'})}</label>
                     <div className="text-sm text-neutral-800">{vpn.serverAddress}</div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">로컬 IP</label>
+                    <label className="text-xs font-medium text-neutral-500">{t('labels.localIp', {ns: 'network'})}</label>
                     <div className="text-sm text-neutral-800">{vpn.localIp || 'N/A'}</div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">원격 IP</label>
+                    <label className="text-xs font-medium text-neutral-500">{t('labels.remoteIp', {ns: 'network'})}</label>
                     <div className="text-sm text-neutral-800">{vpn.remoteIp || 'N/A'}</div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">암호화</label>
+                    <label className="text-xs font-medium text-neutral-500">{t('labels.encryption', {ns: 'network'})}</label>
                     <div className="text-sm text-neutral-800">{vpn.encryption}</div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">자동 연결</label>
-                    <div className="text-sm text-neutral-800">{vpn.autoConnect ? '활성' : '비활성'}</div>
+                    <label className="text-xs font-medium text-neutral-500">{t('labels.autoConnect', {ns: 'network'})}</label>
+                    <div className="text-sm text-neutral-800">{vpn.autoConnect ? 'Active' : 'Inactive'}</div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">마지막 연결</label>
+                    <label className="text-xs font-medium text-neutral-500">{t('labels.lastConnected', {ns: 'network'})}</label>
                     <div className="text-sm text-neutral-800">
                       {vpn.lastConnected?.toLocaleString() || 'N/A'}
                     </div>
@@ -572,15 +574,15 @@ const NetworkSettings: React.FC = () => {
         </div>
       )}
 
-      {/* 네트워크 모니터링 탭 */}
+      {/* Network Monitoring 탭 */}
       {activeTab === 'monitoring' && (
         <div className="users-management">
           <div className="users-header">
-            <h2 className="users-title">네트워크 모니터링</h2>
+            <h2 className="users-title">{t('tab.monitoring', {ns: 'network'})}</h2>
             <div className="users-actions">
               <button className="btn btn-outline">
                 <i className="fas fa-download"></i>
-                리포트 내보내기
+                리포트 Export
               </button>
             </div>
           </div>
@@ -617,7 +619,7 @@ const NetworkSettings: React.FC = () => {
                 <i className="fas fa-lock text-success-600"></i>
               </div>
               <div className="stat-value">{vpnConnections.filter(v => v.status === 'connected').length}</div>
-              <div className="stat-label">VPN 연결</div>
+              <div className="stat-label">{t('labels.vpnConnection', {ns: 'network'})}</div>
             </div>
           </div>
 

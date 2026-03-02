@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DeviceApiService, Device } from '../../api/services/deviceApi';
 import { useConfirmContext } from '../common/ConfirmProvider';
 
@@ -11,6 +12,7 @@ interface NetworkScanModalProps {
 const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, onSuccess }) => {
     const { confirm } = useConfirmContext();
     const [protocol, setProtocol] = useState('BACNET');
+    const { t } = useTranslation(['network', 'common']);
     const [range, setRange] = useState('');
     const [timeoutValue, setTimeoutValue] = useState(5000);
     const [isScanning, setIsScanning] = useState(false);
@@ -54,7 +56,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
 
     const handleScan = async () => {
         if (!range && protocol !== 'BACNET' && protocol !== 'MODBUS_RTU' && protocol !== 'MQTT') {
-            setError(protocol === 'MQTT' ? '브로커 URL을 입력해주세요.' : 'IP 범위(CIDR)를 입력해주세요.');
+            setError(protocol === 'MQTT' ? 'Please enter the broker URL.' : 'Please enter the IP range (CIDR).');
             return;
         }
 
@@ -106,17 +108,17 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
 
                     if (foundCount > 0) {
                         await confirm({
-                            title: '스캔 완료',
-                            message: `${foundCount}건의 새로운 장치가 발견되어 자동 등록되었습니다.`,
-                            confirmText: '확인',
+                            title: 'Scan Complete',
+                            message: `${foundCount} new device(s) found and auto-registered.`,
+                            confirmText: 'OK',
                             showCancelButton: false,
                             confirmButtonType: 'success'
                         });
                     } else {
                         await confirm({
-                            title: '스캔 완료',
-                            message: '새롭게 발견된 장치가 없습니다. 네트워크 환경 또는 설정을 확인해주세요.',
-                            confirmText: '확인',
+                            title: 'Scan Complete',
+                            message: 'No new devices found. Please check your network settings.',
+                            confirmText: 'OK',
                             showCancelButton: false,
                             confirmButtonType: 'warning'
                         });
@@ -125,10 +127,10 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
 
             } else {
                 clearInterval(progressTimer);
-                throw new Error(response.error || '스캔 시작 실패');
+                throw new Error(response.error || 'Scan start failed');
             }
         } catch (err: any) {
-            setError(err.message || '스캔 중 오류가 발생했습니다.');
+            setError(err.message || 'An error occurred during scanning.');
             setIsScanning(false);
             setProgress(0);
         }
@@ -141,7 +143,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
             <div className="mgmt-modal-container network-scan-modal" style={{ width: '480px', maxWidth: '480px' }}>
                 <div className="mgmt-modal-header" style={{ padding: '20px 24px', borderBottom: '1px solid #edf2f7' }}>
                     <div className="mgmt-modal-title">
-                        <h3 style={{ margin: 0, color: '#1a202c', fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-0.02em' }}>네트워크 장치 스캔</h3>
+                        <h3 style={{ margin: 0, color: '#1a202c', fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-0.02em' }}>{t('labels.networkDeviceScan', {ns: 'protocols'})}</h3>
                     </div>
                     <button className="mgmt-close-btn" onClick={onClose} disabled={isScanning}>
                         <i className="fas fa-times"></i>
@@ -166,7 +168,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                         }}>
                             <i className="fas fa-exclamation-circle" style={{ marginTop: '3px' }}></i>
                             <div style={{ lineHeight: '1.5' }}>
-                                <div style={{ fontWeight: 700, marginBottom: '2px' }}>스캔 중 오류 발생</div>
+                                <div style={{ fontWeight: 700, marginBottom: '2px' }}>{t('labels.scanErrorOccurred', {ns: 'protocols'})}</div>
                                 <div style={{ opacity: 0.9 }}>{error}</div>
                             </div>
                         </div>
@@ -176,11 +178,11 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                     <div style={{ marginBottom: '32px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                             <div style={{ width: '4px', height: '16px', background: '#667eea', borderRadius: '2px' }}></div>
-                            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#2d3748' }}>스캔 설정</h4>
+                            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#2d3748' }}>{t('labels.scanSettings', {ns: 'protocols'})}</h4>
                         </div>
 
                         <div className="mgmt-modal-form-group" style={{ marginBottom: '20px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 700, color: '#718096', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>프로토콜 선택</label>
+                            <label style={{ fontSize: '12px', fontWeight: 700, color: '#718096', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>{t('labels.selectProtocol', {ns: 'protocols'})}</label>
                             <select
                                 className="mgmt-select"
                                 value={protocol}
@@ -188,26 +190,26 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                                 disabled={isScanning}
                                 style={{ height: '42px', borderRadius: '10px', fontSize: '14px' }}
                             >
-                                <option value="BACNET">BACnet/IP (추천)</option>
-                                <option value="MQTT">MQTT Discovery (스마트 탐색)</option>
-                                <option value="MODBUS_TCP">Modbus TCP (테스트용)</option>
-                                <option value="MODBUS_RTU">Modbus RTU (시리얼)</option>
+                                <option value="BACNET">{t('labels.bacnetipRecommended', {ns: 'protocols'})}</option>
+                                <option value="MQTT">{t('labels.mqttDiscoverySmartSearch', {ns: 'protocols'})}</option>
+                                <option value="MODBUS_TCP">{t('labels.modbusTcpTest', {ns: 'protocols'})}</option>
+                                <option value="MODBUS_RTU">{t('labels.modbusRtuSerial', {ns: 'protocols'})}</option>
                             </select>
                             {protocol.startsWith('MODBUS') && (
                                 <div style={{ marginTop: '8px', color: '#dd6b20', fontSize: '11px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <i className="fas fa-flask"></i> <span>현재 실험적 기능입니다. 수동 등록을 권장합니다.</span>
+                                    <i className="fas fa-flask"></i> <span>This is an experimental feature. Manual registration is recommended.</span>
                                 </div>
                             )}
                         </div>
 
                         <div className="mgmt-modal-form-group">
                             <label style={{ fontSize: '12px', fontWeight: 700, color: '#718096', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                                {protocol === 'MQTT' ? '브로커 URL' : (protocol === 'MODBUS_RTU' ? '시리얼 포트 경로' : '네트워크 대역 (CIDR)')}
+                                {protocol === 'MQTT' ? 'Broker URL' : (protocol === 'MODBUS_RTU' ? 'Serial Port Path' : 'Network Range (CIDR)')}
                             </label>
                             <input
                                 type="text"
                                 className="mgmt-input"
-                                placeholder={protocol === 'MQTT' ? '예: mqtt://rabbitmq:1883' : (protocol === 'MODBUS_RTU' ? '예: /dev/ttyS0' : '예: 192.168.1.0/24')}
+                                placeholder={protocol === 'MQTT' ? 'e.g. mqtt://rabbitmq:1883' : (protocol === 'MODBUS_RTU' ? 'e.g. /dev/ttyS0' : 'e.g. 192.168.1.0/24')}
                                 value={range}
                                 onChange={(e) => setRange(e.target.value)}
                                 disabled={isScanning}
@@ -215,12 +217,12 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                             />
                             {protocol !== 'MODBUS_RTU' && protocol !== 'MQTT' && (
                                 <div style={{ marginTop: '8px', color: '#a0aec0', fontSize: '11px' }}>
-                                    대역을 비워두면 로컬 네트워크 브로드캐스트를 사용합니다.
+                                    If left empty, local network broadcast is used.
                                 </div>
                             )}
                             {protocol === 'MQTT' && (
                                 <div style={{ marginTop: '8px', color: '#a0aec0', fontSize: '11px' }}>
-                                    브로커에 연결하여 활성화된 토픽을 기반으로 장치를 자동 탐색합니다.
+                                    Connects to the broker and auto-discovers devices based on active topics.
                                 </div>
                             )}
                         </div>
@@ -231,7 +233,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <div style={{ width: '4px', height: '16px', background: '#667eea', borderRadius: '2px' }}></div>
-                                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#2d3748' }}>검색 결과</h4>
+                                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#2d3748' }}>{t('labels.searchResults', {ns: 'protocols'})}</h4>
                                 {discoveredDevices.length > 0 && (
                                     <span style={{
                                         padding: '2px 8px',
@@ -245,7 +247,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                             </div>
                             {isScanning && (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#667eea', fontSize: '12px', fontWeight: 600 }}>
-                                    <span>검색 중</span> <i className="fas fa-circle-notch fa-spin"></i>
+                                    <span>{t('labels.searching', {ns: 'protocols'})}</span> <i className="fas fa-circle-notch fa-spin"></i>
                                 </div>
                             )}
                         </div>
@@ -268,7 +270,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                                     }}></div>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#718096', fontWeight: 500 }}>
-                                    <span>네트워크 탐색 중...</span>
+                                    <span>{t('labels.scanningNetwork', {ns: 'protocols'})}</span>
                                     <span>{Math.round(progress)}%</span>
                                 </div>
                             </div>
@@ -297,8 +299,8 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                                     }}>
                                         <i className="fas fa-satellite-dish" style={{ fontSize: '24px' }}></i>
                                     </div>
-                                    <div style={{ fontWeight: 700, color: '#4a5568', fontSize: '14px', marginBottom: '4px' }}>발견된 장치 없음</div>
-                                    <div style={{ color: '#a0aec0', fontSize: '12px' }}>상단의 설정을 확인하고 스캔을 시작하세요.</div>
+                                    <div style={{ fontWeight: 700, color: '#4a5568', fontSize: '14px', marginBottom: '4px' }}>{t('labels.noDevicesFound', {ns: 'protocols'})}</div>
+                                    <div style={{ color: '#a0aec0', fontSize: '12px' }}>{t('labels.checkTheSettingsAboveAndStartScanning', {ns: 'protocols'})}</div>
                                 </div>
                             ) : discoveredDevices.length === 0 && isScanning ? (
                                 <div style={{ padding: '48px 24px', textAlign: 'center' }}>
@@ -320,8 +322,8 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                                             <i className="fas fa-circle-notch fa-spin" style={{ fontSize: '10px', color: '#667eea' }}></i>
                                         </div>
                                     </div>
-                                    <div style={{ fontWeight: 700, color: '#4a5568', fontSize: '14px', marginBottom: '4px' }}>네트워크 탐색 중...</div>
-                                    <div style={{ color: '#a0aec0', fontSize: '12px' }}>장치를 찾는 동안 잠시만 기다려 주세요.</div>
+                                    <div style={{ fontWeight: 700, color: '#4a5568', fontSize: '14px', marginBottom: '4px' }}>{t('labels.scanningNetwork', {ns: 'protocols'})}</div>
+                                    <div style={{ color: '#a0aec0', fontSize: '12px' }}>{t('labels.pleaseWaitWhileSearchingForDevices', {ns: 'protocols'})}</div>
                                 </div>
                             ) : (
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>

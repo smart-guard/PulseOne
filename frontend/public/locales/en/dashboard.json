@@ -1,0 +1,100 @@
+{
+    "title": "Dashboard",
+    "header": {
+        "title": "Operations Dashboard",
+        "subtitle": "PulseOne Real-Time Monitoring",
+        "serverConnected": "Server Connected",
+        "pause": "Pause",
+        "refresh": "Refresh Now",
+        "lastUpdated": "Last Updated"
+    },
+    "tiles": {
+        "upstreamConnectivity": "Upstream Connectivity",
+        "downstreamExport": "Downstream Export",
+        "activeAlarms": "Active Alarms",
+        "systemHealth": "System Health",
+        "normal": "Normal",
+        "connRate": "Connectivity Rate",
+        "totalExports": "Total Exports",
+        "todayAlarms": "Today's Alarms",
+        "criticalAlarms": "Critical Alarms"
+    },
+    "flow": {
+        "title": "Data Flow Monitoring",
+        "subtitle": "Real-time monitoring of the full data pipeline from field collection to destination.",
+        "systemHealth": "System Health",
+        "excellent": "Excellent",
+        "caution": "Caution",
+        "dataCollection": "Field Data Collection",
+        "dataInflow": "Data Inflow",
+        "connectorProcess": "Connector Processing",
+        "deviceCommRate": "Device Comm Rate",
+        "exportGateway": "Export Gateway",
+        "activeService": "Active Services",
+        "finalTransmission": "Final Transmission",
+        "transmitRate": "Success Rate"
+    },
+    "devices": {
+        "connectionStatus": "Device Connection Status",
+        "subtitle": "Overall device operation status at all sites",
+        "normal": "Connected",
+        "disconnected": "Disconnected",
+        "commError": "Comm Error"
+    },
+    "alarms": {
+        "realtimeStatus": "Real-Time Status & Alarms",
+        "subtitle": "Per-site real-time status and recent key events",
+        "siteStatus": "Site Operation Status",
+        "recentEvents": "Recent Events",
+        "viewHistory": "View Full History →",
+        "noAlarms": "No active alarms",
+        "allNormal": "All systems operating normally"
+    },
+    "services": {
+        "title": "Service Status",
+        "start": "Start",
+        "stop": "Stop",
+        "restart": "Restart",
+        "running": "Running",
+        "stopped": "Stopped",
+        "error": "Error",
+        "confirmStart": "Start Service",
+        "confirmStop": "Stop Service",
+        "confirmRestart": "Restart Service"
+    },
+    "deviceStatus": {
+        "title": "Device Connection Status",
+        "subtitle": "Overall device operation status at all sites",
+        "normal": "Connected",
+        "disconnected": "Disconnected",
+        "commError": "Comm Error",
+        "protocolStatus": "Devices by Protocol",
+        "noDevices": "No registered devices.",
+        "units": ""
+    },
+    "alarmStatus": {
+        "title": "Real-Time Status & Alarms",
+        "subtitle": "Per-site real-time status and recent key events",
+        "viewHistory": "View Full History \u2192",
+        "siteStatus": "Site Operation Status",
+        "recentEvents": "Recent Key Events",
+        "noRecentAlarms": "No recent alarms.",
+        "system": "System"
+    },
+    "performance": {
+        "title": "System Performance Index",
+        "apiResponse": "API Response Time",
+        "dbQuery": "DB Query Time",
+        "throughput": "Data Throughput"
+    },
+    "assets": {
+        "title": "Integrated Asset Summary",
+        "protocols": "Registered Protocols",
+        "activeSites": "Active Sites",
+        "dataPoints": "Data Points",
+        "protocolUnit": "",
+        "siteUnit": "",
+        "pointUnit": "k EA"
+    },
+    "networkError": "Network Connection Error"
+}

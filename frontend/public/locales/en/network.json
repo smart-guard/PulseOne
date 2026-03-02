@@ -1,0 +1,53 @@
+{
+    "title": "Network Settings",
+    "refresh": "Refresh",
+    "export": "Export",
+    "tab": {
+        "interfaces": "Network Interfaces",
+        "firewall": "Firewall Rules",
+        "vpn": "VPN Connections",
+        "monitoring": "Network Monitoring"
+    },
+    "scan": {
+        "start": "Start Scan",
+        "status": "Status"
+    },
+    "interface": {
+        "title": "Network Interfaces"
+    },
+    "status": {
+        "active": "Active",
+        "inactive": "Inactive"
+    },
+    "action": {
+        "enable": "Enable",
+        "disable": "Disable"
+    },
+    "field": {
+        "ipAddress": "IP Address",
+        "subnetMask": "Subnet Mask",
+        "gateway": "Gateway",
+        "macAddress": "MAC Address",
+        "speed": "Speed",
+        "received": "Received",
+        "sent": "Sent"
+    },
+    "labels": {
+        "networkInterface": "Network Interface",
+        "mtu": "MTU",
+        "usingDhcpAutoConfiguration": "Using DHCP auto configuration",
+        "ruleName": "Rule Name",
+        "action": "Action",
+        "protocol": "Protocol",
+        "source": "Source",
+        "destination": "Destination",
+        "priority": "Priority",
+        "vpnConnection": "VPN Connection",
+        "serverAddress": "Server Address",
+        "localIp": "Local IP",
+        "remoteIp": "Remote IP",
+        "encryption": "Encryption",
+        "autoConnect": "Auto Connect",
+        "lastConnected": "Last Connected"
+    }
+}

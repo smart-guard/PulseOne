@@ -109,7 +109,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
           console.log(`✅ 가상포인트 ${result.data.length}개 로드됨`);
         } else {
           console.warn('예상하지 못한 가상포인트 응답 구조:', result);
-          throw new Error(result.message || 'API 응답 구조 오류');
+          throw new Error(result.message || 'API response structure error');
         }
       } else {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -123,7 +123,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
         {
           id: 201,
           name: 'Avg_Temperature',
-          description: '평균 온도',
+          description: 'Average Temperature',
           data_type: 'number',
           current_value: 54.9,
           unit: '°C',
@@ -132,7 +132,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
         {
           id: 202,
           name: 'Energy_Efficiency',
-          description: '에너지 효율',
+          description: 'Energy Efficiency',
           data_type: 'number',
           current_value: 87.5,
           unit: '%',
@@ -159,9 +159,9 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
 
       // 목 데이터
       setDevices([
-        { id: 1, name: 'PLC-001 (보일러)' },
-        { id: 2, name: 'WEATHER-001 (기상)' },
-        { id: 3, name: 'HVAC-001 (공조)' }
+        { id: 1, name: 'PLC-001 (Boiler)' },
+        { id: 2, name: 'WEATHER-001 (Weather)' },
+        { id: 3, name: 'HVAC-001 (HVAC)' }
       ]);
     }
   }, [sourceType]);
@@ -281,7 +281,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
         borderRadius: '8px',
         border: '1px solid #e9ecef'
       }}>
-        상수값은 직접 입력해주세요
+        Enter constant value directly
       </div>
     );
   }
@@ -293,7 +293,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
         <input
           type="text"
-          placeholder={sourceType === 'data_point' ? '데이터포인트 검색...' : '가상포인트 검색...'}
+          placeholder={sourceType === 'data_point' ? 'Search data points...' : 'Search virtual points...'}
           value={searchTerm}
           onChange={handleSearchChange}
           style={{
@@ -318,7 +318,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
               fontSize: '14px'
             }}
           >
-            <option value="">모든 디바이스</option>
+            <option value="">All Devices</option>
             {devices.map(device => (
               <option key={device.id} value={device.id}>{device.name}</option>
             ))}
@@ -343,7 +343,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
             animation: 'spin 1s linear infinite'
           }} />
           <div style={{ marginTop: '8px' }}>
-            {sourceType === 'data_point' ? '데이터포인트' : '가상포인트'} 로딩 중...
+            {sourceType === 'data_point' ? 'data points' : 'virtual points'} loading...
           </div>
         </div>
       )}
@@ -366,16 +366,16 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
             }}>
               {deviceFilter ? (
                 <>
-                  선택한 디바이스에 데이터포인트가 없습니다
+                  No data points for selected device
                   <br />
                   <small style={{ color: '#868e96' }}>
-                    다른 디바이스를 선택하거나 '모든 디바이스'로 변경해보세요
+                    Select a different device or switch to 'All Devices'
                   </small>
                 </>
               ) : dataPoints.length === 0 ? (
-                '데이터포인트가 없습니다'
+                'No data points'
               ) : (
-                '검색 조건에 맞는 데이터포인트가 없습니다'
+                'No data points match the search criteria'
               )}
             </div>
           ) : (
@@ -459,8 +459,8 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
               color: '#6c757d'
             }}>
               {virtualPoints.length === 0 ?
-                '가상포인트가 없습니다' :
-                '검색 조건에 맞는 가상포인트가 없습니다'}
+                'No virtual points' :
+                'No virtual points match the search criteria'}
             </div>
           ) : (
             filteredVirtualPoints.slice(0, 100).map(point => ( // 성능 최적화
@@ -535,9 +535,9 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
           padding: '8px',
           borderRadius: '4px'
         }}>
-          디버그: {sourceType === 'data_point' ?
-            `전체 ${dataPoints.length}개, 필터링 ${filteredDataPoints.length}개 표시${deviceFilter ? ` (디바이스 ID: ${deviceFilter})` : ''}` :
-            `전체 ${virtualPoints.length}개, 필터링 ${filteredVirtualPoints.length}개 표시`
+          Debug: {sourceType === 'data_point' ?
+            `Total ${dataPoints.length}, showing ${filteredDataPoints.length}${deviceFilter ? ` (Device ID: ${deviceFilter})` : ''}` :
+            `Total ${virtualPoints.length}, showing ${filteredVirtualPoints.length}`
           }
         </div>
       )}

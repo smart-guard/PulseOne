@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { DeviceTemplate } from '../../types/manufacturing';
 import Pagination from '../common/Pagination';
@@ -23,6 +24,7 @@ const DeviceTemplateDetailModal: React.FC<DeviceTemplateDetailModalProps> = ({
     onDelete
 }) => {
     const [currentPage, setCurrentPage] = useState<number>(1);
+    const { t } = useTranslation(['deviceTemplates', 'common']);
     const [pageSize, setPageSize] = useState<number>(10);
 
     if (!isOpen || !template) return null;
@@ -40,7 +42,7 @@ const DeviceTemplateDetailModal: React.FC<DeviceTemplateDetailModalProps> = ({
             <div className="mgmt-modal-container" style={{ width: '1100px', maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
                 <div className="mgmt-modal-header">
                     <h3 className="mgmt-modal-title">
-                        <i className="fas fa-file-invoice text-primary"></i> 마스터 모델 상세 정보
+                        <i className="fas fa-file-invoice text-primary"></i> Master Model Details
                     </h3>
                     <button className="mgmt-close-btn" onClick={onClose}><i className="fas fa-times"></i></button>
                 </div>
@@ -48,31 +50,31 @@ const DeviceTemplateDetailModal: React.FC<DeviceTemplateDetailModalProps> = ({
                 <div className="mgmt-modal-body" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
 
                     <div className="mgmt-modal-form-section">
-                        <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
+                        <h3><i className="fas fa-info-circle"></i> Basic Info</h3>
                         <div className="mgmt-modal-form-grid">
                             <div className="mgmt-modal-form-group">
-                                <label>마스터 모델 이름</label>
+                                <label>{t('table.modelName', {ns: 'deviceTemplates'})}</label>
                                 <div className="detail-value">{template.name}</div>
                             </div>
                             <div className="mgmt-modal-form-group">
-                                <label>타입</label>
+                                <label>{t('table.type', {ns: 'deviceTemplates'})}</label>
                                 <div className="detail-value"><span className="badge">{template.device_type}</span></div>
                             </div>
                             <div className="mgmt-modal-form-group">
-                                <label>제조사</label>
+                                <label>{t('filter.manufacturer', {ns: 'deviceTemplates'})}</label>
                                 <div className="detail-value">{template.manufacturer_name}</div>
                             </div>
                             <div className="mgmt-modal-form-group">
-                                <label>모델</label>
+                                <label>{t('labels.model', {ns: 'deviceTemplates'})}</label>
                                 <div className="detail-value">{template.model_name}</div>
                             </div>
                             <div className="mgmt-modal-form-group mgmt-span-full">
-                                <label>설명</label>
+                                <label>{t('table.description', {ns: 'deviceTemplates'})}</label>
                                 <div className="detail-value">{template.description || '-'}</div>
                             </div>
                             {template.manual_url && (
                                 <div className="mgmt-modal-form-group mgmt-span-full">
-                                    <label>참조 매뉴얼</label>
+                                    <label>{t('labels.referenceManual', {ns: 'deviceTemplates'})}</label>
                                     <div className="detail-value">
                                         <a
                                             href={template.manual_url}
@@ -80,7 +82,7 @@ const DeviceTemplateDetailModal: React.FC<DeviceTemplateDetailModalProps> = ({
                                             rel="noopener noreferrer"
                                             style={{ color: '#2563eb', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
                                         >
-                                            <i className="fas fa-book-open"></i> 제조사 매뉴얼 열기 ({template.manual_url})
+                                            <i className="fas fa-book-open"></i> Open Manufacturer Manual ({template.manual_url})
                                         </a>
                                     </div>
                                 </div>
@@ -89,39 +91,39 @@ const DeviceTemplateDetailModal: React.FC<DeviceTemplateDetailModalProps> = ({
                     </div>
 
                     <div className="mgmt-modal-form-section">
-                        <h3><i className="fas fa-network-wired"></i> 통신 설정</h3>
+                        <h3><i className="fas fa-network-wired"></i> Communication Settings</h3>
                         <div className="mgmt-modal-form-grid">
                             <div className="mgmt-modal-form-group">
-                                <label>프로토콜</label>
+                                <label>{t('table.protocol', {ns: 'deviceTemplates'})}</label>
                                 <div className="detail-value">{template.protocol_name || (template.protocol_id === 1 ? 'Modbus TCP' : template.protocol_id === 2 ? 'Modbus RTU' : 'Other')}</div>
                             </div>
                             <div className="mgmt-modal-form-group">
-                                <label>수집 주기</label>
+                                <label>{t('labels.collectionInterval', {ns: 'deviceTemplates'})}</label>
                                 <div className="detail-value">{template.polling_interval} ms</div>
                             </div>
                             <div className="mgmt-modal-form-group">
-                                <label>타임아웃</label>
+                                <label>{t('labels.timeout', {ns: 'deviceTemplates'})}</label>
                                 <div className="detail-value">{template.timeout} ms</div>
                             </div>
                             <div className="mgmt-modal-form-group mgmt-span-full">
-                                <label>기본 설정 (Config)</label>
+                                <label>{t('labels.defaultConfig', {ns: 'deviceTemplates'})}</label>
                                 <pre className="code-block">{typeof template.config === 'string' ? template.config : JSON.stringify(template.config, null, 2)}</pre>
                             </div>
                         </div>
                     </div>
 
                     <div className="mgmt-modal-form-section">
-                        <h3><i className="fas fa-list-ul"></i> 데이터 포인트 ({template.data_points?.length || 0})</h3>
+                        <h3><i className="fas fa-list-ul"></i> Data Points (${template.data_points?.length || 0})</h3>
                         <div className="table-container">
                             <table className="mgmt-table">
                                 <thead>
                                     <tr>
-                                        <th style={{ width: '200px' }}>이름</th>
-                                        <th style={{ width: '140px', textAlign: 'center' }}>주소</th>
-                                        <th style={{ width: '160px', textAlign: 'center' }}>타입</th>
-                                        <th style={{ width: '180px', textAlign: 'center' }}>권한</th>
-                                        <th>설명</th>
-                                        <th style={{ width: '110px', textAlign: 'center' }}>단위</th>
+                                        <th style={{ width: '200px' }}>{t('labels.name', {ns: 'deviceTemplates'})}</th>
+                                        <th style={{ width: '140px', textAlign: 'center' }}>{t('labels.address', {ns: 'deviceTemplates'})}</th>
+                                        <th style={{ width: '160px', textAlign: 'center' }}>{t('table.type', {ns: 'deviceTemplates'})}</th>
+                                        <th style={{ width: '180px', textAlign: 'center' }}>{t('labels.permission', {ns: 'deviceTemplates'})}</th>
+                                        <th>{t('table.description', {ns: 'deviceTemplates'})}</th>
+                                        <th style={{ width: '110px', textAlign: 'center' }}>{t('dpStep.unit', {ns: 'deviceTemplates'})}</th>
                                         <th style={{ width: '100px', textAlign: 'center' }}>스케일</th>
                                         <th style={{ width: '100px', textAlign: 'center' }}>오프셋</th>
                                     </tr>
@@ -142,7 +144,7 @@ const DeviceTemplateDetailModal: React.FC<DeviceTemplateDetailModalProps> = ({
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan={8} style={{ textAlign: 'center', color: '#999' }}>데이터 포인트가 없습니다.</td>
+                                            <td colSpan={8} style={{ textAlign: 'center', color: '#999' }}>Data Points가 없습니다.</td>
                                         </tr>
                                     )}
                                 </tbody>

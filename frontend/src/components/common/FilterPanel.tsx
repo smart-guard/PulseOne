@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 
 // ============================================================================
 // 타입 정의
@@ -46,6 +47,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
   style = 'clean'
 }) => {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+    const { t } = useTranslation(['dataExplorer', 'common']);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ========================================================================
@@ -179,7 +181,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
       />
       <input
         type="text"
-        placeholder={group.placeholder || '검색...'}
+        placeholder={group.placeholder || 'Search...'}
         value={group.value || ''}
         onChange={(e) => handleFilterChange(group.id, e.target.value)}
         disabled={group.disabled}

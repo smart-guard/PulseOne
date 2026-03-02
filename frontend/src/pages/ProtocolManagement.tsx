@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ProtocolApiService } from '../api/services/protocolApi';
 import ProtocolEditor from '../components/modals/ProtocolModal/ProtocolEditor';
@@ -53,6 +54,7 @@ interface ProtocolStats {
 }
 
 const ProtocolManagement: React.FC = () => {
+  const { t } = useTranslation(['protocols', 'common']);
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [stats, setStats] = useState<ProtocolStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,7 +100,7 @@ const ProtocolManagement: React.FC = () => {
         setTotalCount(pagination?.total_count || pagination?.totalItems || protocolsData.length);
       }
     } catch (err) {
-      setError('프로토콜 데이터를 불러오지 못했습니다.');
+      setError(t('protocols:message.loadError'));
     } finally {
       setLoading(false);
     }
@@ -129,14 +131,14 @@ const ProtocolManagement: React.FC = () => {
       if (action === 'enable' || action === 'disable') {
         const response = await ProtocolApiService.updateProtocol(protocolId, { is_enabled: action === 'enable' });
         if (response.success) {
-          setSuccessMessage(`프로토콜 "${protocol.display_name}"이(가) ${action === 'enable' ? '활성화' : '비활성화'}되었습니다.`);
+          setSuccessMessage(t(action === 'enable' ? 'protocols:message.activated' : 'protocols:message.deactivated', { name: protocol.display_name }));
           await loadProtocols();
         }
       } else if (action === 'test') {
         const response = await ProtocolApiService.testProtocolConnection(protocolId, {});
-        if (response.success) setSuccessMessage(response.data?.test_successful ? '연결 성공' : '연결 실패');
+        if (response.success) setSuccessMessage(response.data?.test_successful ? t('protocols:message.testSuccess') : t('protocols:message.testFail'));
       }
-    } catch (err) { setError('작업 수행 중 오류가 발생했습니다.'); }
+    } catch (err) { setError(t('protocols:message.actionError')); }
     finally { setProcessing(null); }
   };
 
@@ -153,7 +155,7 @@ const ProtocolManagement: React.FC = () => {
   };
 
   if (loading && protocols.length === 0) {
-    return <ManagementLayout><div className="loading-container">로딩 중...</div></ManagementLayout>;
+    return <ManagementLayout><div className="loading-container">{t('protocols:loading')}</div></ManagementLayout>;
   }
 
   // Dashboard View Render
@@ -162,15 +164,15 @@ const ProtocolManagement: React.FC = () => {
 
     // 데이터 로딩 중이거나 프로토콜을 찾지 못한 경우 처리
     if (loading && !protocol) {
-      return <ManagementLayout><div className="loading-container">대시보드 데이터를 불러오는 중...</div></ManagementLayout>;
+      return <ManagementLayout><div className="loading-container">{t('protocols:loadingDashboard')}</div></ManagementLayout>;
     }
 
     if (!protocol && !loading) {
       return (
         <ManagementLayout>
           <div style={{ textAlign: 'center', padding: '100px' }}>
-            <h3>프로토콜을 찾을 수 없습니다.</h3>
-            <button className="mgmt-btn" onClick={() => navigate('/protocols')}>목록으로 돌아가기</button>
+            <h3>{t('protocols:notFound')}</h3>
+            <button className="mgmt-btn" onClick={() => navigate('/protocols')}>{t('protocols:backToList')}</button>
           </div>
         </ManagementLayout>
       );
@@ -180,7 +182,7 @@ const ProtocolManagement: React.FC = () => {
         <div className="dashboard-view-container" style={{ marginBottom: '24px' }}>
           <div className="mgmt-back-nav" style={{ marginBottom: '16px' }}>
             <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => navigate('/protocols')}>
-              <i className="fas fa-arrow-left"></i> 프로토콜 목록으로 돌아가기
+              <i className="fas fa-arrow-left"></i> {t('protocols:backToProtocolList')}
             </button>
           </div>
           <ProtocolDashboard
@@ -195,18 +197,18 @@ const ProtocolManagement: React.FC = () => {
   return (
     <ManagementLayout>
       <PageHeader
-        title="프로토콜 관리"
-        description="다양한 산업용 통신 프로토콜을 관리하고 드라이버를 구성합니다."
+        title={t('protocols:title')}
+        description={t('protocols:description')}
         icon="fas fa-microchip"
       />
 
       {successMessage && <div className="success-banner">{successMessage}</div>}
 
       <div className="mgmt-stats-panel">
-        <StatCard label="전체 프로토콜" value={stats?.total_protocols || 0} type="primary" />
-        <StatCard label="활성 프로토콜" value={stats?.enabled_protocols || 0} type="success" />
-        <StatCard label="사용 중 디바이스" value={protocols.reduce((sum, p) => sum + (p.device_count || 0), 0)} type="neutral" />
-        <StatCard label="전체 카테고리" value={stats?.categories?.length || 0} type="warning" />
+        <StatCard label={t('protocols:stats.totalProtocols')} value={stats?.total_protocols || 0} type="primary" />
+        <StatCard label={t('protocols:stats.activeProtocols')} value={stats?.enabled_protocols || 0} type="success" />
+        <StatCard label={t('protocols:stats.devicesInUse')} value={protocols.reduce((sum, p) => sum + (p.device_count || 0), 0)} type="neutral" />
+        <StatCard label={t('protocols:stats.totalCategories')} value={stats?.categories?.length || 0} type="warning" />
       </div>
 
       <FilterBar
@@ -220,22 +222,22 @@ const ProtocolManagement: React.FC = () => {
         activeFilterCount={(searchTerm ? 1 : 0) + (categoryFilter !== 'all' ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0)}
         filters={[
           {
-            label: '카테고리',
+            label: t('protocols:filter.category'),
             value: categoryFilter,
             onChange: setCategoryFilter,
             options: [
-              { value: 'all', label: '전체' },
+              { value: 'all', label: t('protocols:filter.all') },
               ...(stats?.categories?.map(c => ({ value: c.category, label: c.category })) || [])
             ]
           },
           {
-            label: '상태',
+            label: t('protocols:filter.status'),
             value: statusFilter,
             onChange: setStatusFilter,
             options: [
-              { value: 'all', label: '전체' },
-              { value: 'enabled', label: '활성' },
-              { value: 'disabled', label: '비활성' }
+              { value: 'all', label: t('protocols:filter.all') },
+              { value: 'enabled', label: t('protocols:filter.active') },
+              { value: 'disabled', label: t('protocols:filter.inactive') }
             ]
           }
         ]}
@@ -244,14 +246,14 @@ const ProtocolManagement: React.FC = () => {
             <button
               className={`mgmt-btn-icon ${viewMode === 'card' ? 'active' : ''}`}
               onClick={() => setViewMode('card')}
-              title="카드 보기"
+              title={t('protocols:view.card')}
             >
               <i className="fas fa-th-large"></i>
             </button>
             <button
               className={`mgmt-btn-icon ${viewMode === 'table' ? 'active' : ''}`}
               onClick={() => setViewMode('table')}
-              title="리스트 보기"
+              title={t('protocols:view.list')}
             >
               <i className="fas fa-list"></i>
             </button>
@@ -275,7 +277,7 @@ const ProtocolManagement: React.FC = () => {
                     <span className="mgmt-badge">{protocol.protocol_type}</span>
                   </div>
                   <div className="mgmt-card-actions">
-                    <button className="mgmt-btn-icon" onClick={() => openDetail(protocol)} title="상세보기"><i className="fas fa-eye"></i></button>
+                    <button className="mgmt-btn-icon" onClick={() => openDetail(protocol)} title={t('protocols:action.detail')}><i className="fas fa-eye"></i></button>
                   </div>
                 </div>
                 <div className="mgmt-card-body">
@@ -296,9 +298,9 @@ const ProtocolManagement: React.FC = () => {
                     onClick={() => handleProtocolAction(protocol.is_enabled ? 'disable' : 'enable', protocol.id)}
                     disabled={processing === protocol.id}
                   >
-                    {protocol.is_enabled ? '활성' : '비활성'}
+                    {protocol.is_enabled ? t('protocols:badge.active') : t('protocols:badge.inactive')}
                   </button>
-                  <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => handleProtocolAction('test', protocol.id)} disabled={processing === protocol.id}>테스트</button>
+                  <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => handleProtocolAction('test', protocol.id)} disabled={processing === protocol.id}>{t('protocols:action.test')}</button>
                 </div>
               </div>
             ))}
@@ -308,13 +310,13 @@ const ProtocolManagement: React.FC = () => {
             <table className="mgmt-table">
               <thead>
                 <tr>
-                  <th>프로토콜명</th>
-                  <th>타입</th>
-                  <th>카테고리</th>
-                  <th>제조사/벤더</th>
-                  <th>기본 포트</th>
-                  <th>사용 디바이스</th>
-                  <th>상태</th>
+                  <th>{t('protocols:table.name')}</th>
+                  <th>{t('protocols:table.type')}</th>
+                  <th>{t('protocols:table.category')}</th>
+                  <th>{t('protocols:table.vendor')}</th>
+                  <th>{t('protocols:table.defaultPort')}</th>
+                  <th>{t('protocols:table.devicesUsed')}</th>
+                  <th>{t('protocols:table.status')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -356,7 +358,7 @@ const ProtocolManagement: React.FC = () => {
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span className={`mgmt-badge ${protocol.is_enabled ? 'success' : 'neutral'}`}>
-                          {protocol.is_enabled ? '활성' : '비활성'}
+                          {protocol.is_enabled ? t('protocols:badge.active') : t('protocols:badge.inactive')}
                         </span>
                       </div>
                     </td>

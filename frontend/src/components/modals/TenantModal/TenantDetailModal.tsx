@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Tenant } from '../../../types/common';
 import { TenantApiService } from '../../../api/services/tenantApi';
 import { useConfirmContext } from '../../common/ConfirmProvider';
@@ -19,6 +20,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
 }) => {
     const { confirm } = useConfirmContext();
     const [tenant, setTenant] = useState<Tenant | null>(null);
+    const { t } = useTranslation(['tenants', 'common']);
     const [isEditing, setIsEditing] = useState(false);
     const [formData, setFormData] = useState<Partial<Tenant>>({});
     const [loading, setLoading] = useState(false);
@@ -49,7 +51,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                 setError(null);
             }
         } catch (err: any) {
-            setError('고객사 정보를 불러오는 중 오류가 발생했습니다.');
+            setError('Error loading tenant information.');
         } finally {
             setLoading(false);
         }
@@ -65,9 +67,9 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
         if (!tenantId) return;
 
         const isConfirmed = await confirm({
-            title: '변경 사항 저장',
-            message: '입력하신 변경 내용을 저장하시겠습니까?',
-            confirmText: '저장',
+            title: 'Save Changes',
+            message: 'Save the entered changes?',
+            confirmText: 'Save',
             confirmButtonType: 'primary'
         });
 
@@ -79,9 +81,9 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
             const res = await TenantApiService.updateTenant(tenantId, formData);
             if (res.success) {
                 await confirm({
-                    title: '저장 완료',
-                    message: '고객사 정보가 성공적으로 수정되었습니다.',
-                    confirmText: '확인',
+                    title: 'Save Complete',
+                    message: 'Tenant information updated successfully.',
+                    confirmText: 'OK',
                     showCancelButton: false,
                     confirmButtonType: 'primary'
                 });
@@ -89,10 +91,10 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                 onSave();
                 onClose();
             } else {
-                setError(res.message || '업데이트에 실패했습니다.');
+                setError(res.message || 'Update failed.');
             }
         } catch (err: any) {
-            setError(err.message || '서버 통신 중 오류가 발생했습니다.');
+            setError(err.message || 'Server communication error.');
         } finally {
             setSaving(false);
         }
@@ -102,9 +104,9 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
         if (!tenant) return;
 
         const confirmed = await confirm({
-            title: '고객사 삭제 확인',
-            message: `'${tenant.company_name}' 고객사를 삭제하시겠습니까?`,
-            confirmText: '삭제',
+            title: 'Confirm Tenant Delete',
+            message: `Delete tenant '${tenant.company_name}'?`,
+            confirmText: 'Delete',
             confirmButtonType: 'danger'
         });
 
@@ -114,19 +116,19 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                 const res = await TenantApiService.deleteTenant(tenant.id);
                 if (res.success) {
                     await confirm({
-                        title: '삭제 완료',
-                        message: '고객사가 성공적으로 삭제되었습니다.',
-                        confirmText: '확인',
+                        title: 'Delete Complete',
+                        message: 'Tenant deleted successfully.',
+                        confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'primary'
                     });
                     onSave();
                     onClose();
                 } else {
-                    setError(res.message || '삭제에 실패했습니다.');
+                    setError(res.message || 'Delete failed.');
                 }
             } catch (err: any) {
-                setError(err.message || '삭제 중 오류가 발생했습니다.');
+                setError(err.message || 'Error during delete.');
             } finally {
                 setSaving(false);
             }
@@ -140,89 +142,89 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
     const inputStyle: React.CSSProperties = { width: '100%', padding: '6px 10px', border: '1px solid var(--neutral-200)', borderRadius: '6px', fontSize: '13px', outline: 'none' };
 
     const renderContent = () => {
-        if (loading) return <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--neutral-400)', fontSize: '13px' }}><i className="fas fa-spinner fa-spin" style={{ marginRight: '6px' }}></i>로딩 중...</div>;
-        if (!tenant) return <div className="mgmt-alert mgmt-alert-danger">고객사 정보를 불러오지 못했습니다.</div>;
+        if (loading) return <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--neutral-400)', fontSize: '13px' }}><i className="fas fa-spinner fa-spin" style={{ marginRight: '6px' }}></i>{t('loading', {ns: 'common'})}</div>;
+        if (!tenant) return <div className="mgmt-alert mgmt-alert-danger">{t('labels.failedToLoadTenantInformation', {ns: 'tenants'})}</div>;
 
         if (isEditing) {
             return (
                 <form id="tenant-detail-form" onSubmit={handleSubmit}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                        {/* 기본 정보 */}
+                        {/* Basic Info */}
                         <div style={sectionStyle}>
-                            <div style={sectionTitleStyle}><i className="fas fa-building"></i> 기본 정보</div>
+                            <div style={sectionTitleStyle}><i className="fas fa-building"></i> Basic Info</div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 <div>
-                                    <div style={fieldLabel}>회사명 <span style={{ color: 'var(--error-500)' }}>*</span></div>
+                                    <div style={fieldLabel}>Company Name <span style={{ color: 'var(--error-500)' }}>*</span></div>
                                     <input type="text" style={inputStyle} value={formData.company_name} onChange={e => setFormData({ ...formData, company_name: e.target.value })} required />
                                 </div>
                                 <div>
-                                    <div style={fieldLabel}>회사 코드</div>
+                                    <div style={fieldLabel}>{t('table.companyCode', {ns: 'tenants'})}</div>
                                     <input type="text" style={{ ...inputStyle, background: 'var(--neutral-50)', color: 'var(--neutral-500)' }} value={formData.company_code} disabled />
                                 </div>
                                 <div>
-                                    <div style={fieldLabel}>도메인</div>
+                                    <div style={fieldLabel}>{t('table.domain', {ns: 'tenants'})}</div>
                                     <input type="text" style={inputStyle} value={formData.domain || ''} onChange={e => setFormData({ ...formData, domain: e.target.value })} />
                                 </div>
                             </div>
                         </div>
 
-                        {/* 담당자 정보 */}
+                        {/* Manager Info */}
                         <div style={sectionStyle}>
-                            <div style={sectionTitleStyle}><i className="fas fa-user-tie"></i> 담당자 정보</div>
+                            <div style={sectionTitleStyle}><i className="fas fa-user-tie"></i> Manager Info</div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 <div>
-                                    <div style={fieldLabel}>이름</div>
+                                    <div style={fieldLabel}>{t('labels.name', {ns: 'tenants'})}</div>
                                     <input type="text" style={inputStyle} value={formData.contact_name || ''} onChange={e => setFormData({ ...formData, contact_name: e.target.value })} />
                                 </div>
                                 <div>
-                                    <div style={fieldLabel}>이메일</div>
+                                    <div style={fieldLabel}>{t('labels.email', {ns: 'tenants'})}</div>
                                     <input type="email" style={inputStyle} value={formData.contact_email || ''} onChange={e => setFormData({ ...formData, contact_email: e.target.value })} />
                                 </div>
                                 <div>
-                                    <div style={fieldLabel}>연락처</div>
+                                    <div style={fieldLabel}>{t('labels.contact', {ns: 'tenants'})}</div>
                                     <input type="text" style={inputStyle} value={formData.contact_phone || ''} onChange={e => setFormData({ ...formData, contact_phone: e.target.value })} />
                                 </div>
                             </div>
                         </div>
 
-                        {/* 설정 및 상태 */}
+                        {/* Settings & Status */}
                         <div style={{ ...sectionStyle, gridColumn: '1 / -1' }}>
-                            <div style={sectionTitleStyle}><i className="fas fa-cog"></i> 설정 및 상태</div>
+                            <div style={sectionTitleStyle}><i className="fas fa-cog"></i> Settings & Status</div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                                 <div>
-                                    <div style={fieldLabel}>구독 플랜</div>
+                                    <div style={fieldLabel}>{t('table.subscriptionPlan', {ns: 'tenants'})}</div>
                                     <select style={inputStyle} value={formData.subscription_plan} onChange={e => setFormData({ ...formData, subscription_plan: e.target.value as any })}>
-                                        <option value="starter">스타터 (Starter)</option>
-                                        <option value="professional">프로페셔널 (Professional)</option>
-                                        <option value="enterprise">엔터프라이즈 (Enterprise)</option>
+                                        <option value="starter">{t('labels.starter', {ns: 'tenants'})}</option>
+                                        <option value="professional">{t('labels.professional', {ns: 'tenants'})}</option>
+                                        <option value="enterprise">{t('labels.enterprise', {ns: 'tenants'})}</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <div style={fieldLabel}>구독 상태</div>
+                                    <div style={fieldLabel}>{t('labels.subscriptionStatus', {ns: 'tenants'})}</div>
                                     <select style={inputStyle} value={formData.subscription_status} onChange={e => setFormData({ ...formData, subscription_status: e.target.value as any })}>
-                                        <option value="active">활성 (Active)</option>
-                                        <option value="trial">트라이얼 (Trial)</option>
-                                        <option value="suspended">정지 (Suspended)</option>
-                                        <option value="cancelled">취소 (Cancelled)</option>
+                                        <option value="active">Active</option>
+                                        <option value="trial">{t('stats.trial', {ns: 'tenants'})}</option>
+                                        <option value="suspended">{t('labels.suspended', {ns: 'tenants'})}</option>
+                                        <option value="cancelled">{t('labels.cancelled', {ns: 'tenants'})}</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <div style={fieldLabel}>계정 상태</div>
+                                    <div style={fieldLabel}>{t('labels.accountStatus', {ns: 'tenants'})}</div>
                                     <div style={{ padding: '6px 10px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-200)', height: '32px', display: 'flex', alignItems: 'center' }}>
                                         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', margin: 0 }}>
                                             <input type="checkbox" checked={formData.is_active} onChange={e => setFormData({ ...formData, is_active: e.target.checked })} />
-                                            계정 활성화
+                                            Account Active
                                         </label>
                                     </div>
                                 </div>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '10px' }}>
                                 <div>
-                                    <div style={fieldLabel}>Edge Server 할당 한도 <span style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>(사이트 등록 시 1개씩 사용)</span></div>
+                                    <div style={fieldLabel}>Edge Server Quota <span style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>(1 used per site registered)</span></div>
                                     <input type="number" style={inputStyle} value={formData.max_edge_servers || ''} onChange={e => setFormData({ ...formData, max_edge_servers: parseInt(e.target.value) || 0 })} min="1" />
                                 </div>
                                 <div>
-                                    <div style={fieldLabel}>최대 데이터 포인트</div>
+                                    <div style={fieldLabel}>{t('labels.maxDataPoints', {ns: 'tenants'})}</div>
                                     <input type="number" style={inputStyle} value={formData.max_data_points || ''} onChange={e => setFormData({ ...formData, max_data_points: parseInt(e.target.value) || 0 })} min="100" />
                                 </div>
                             </div>
@@ -235,37 +237,37 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
         // 상세 보기 모드
         return (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                {/* 기본 정보 */}
+                {/* Basic Info */}
                 <div style={sectionStyle}>
-                    <div style={sectionTitleStyle}><i className="fas fa-building"></i> 기본 정보</div>
+                    <div style={sectionTitleStyle}><i className="fas fa-building"></i> Basic Info</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div>
-                            <div style={fieldLabel}>회사명</div>
+                            <div style={fieldLabel}>{t('table.companyName', {ns: 'tenants'})}</div>
                             <div style={{ ...fieldValue, fontSize: '15px', fontWeight: 700 }}>{tenant.company_name}</div>
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
-                                <div style={fieldLabel}>회사 코드</div>
+                                <div style={fieldLabel}>{t('table.companyCode', {ns: 'tenants'})}</div>
                                 <div style={fieldValue}><code style={{ background: 'var(--neutral-100)', padding: '1px 5px', borderRadius: '4px', fontSize: '12px' }}>{tenant.company_code}</code></div>
                             </div>
                             <div>
-                                <div style={fieldLabel}>도메인</div>
+                                <div style={fieldLabel}>{t('table.domain', {ns: 'tenants'})}</div>
                                 <div style={fieldValue}>{tenant.domain || '-'}</div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* 담당자 정보 */}
+                {/* Manager Info */}
                 <div style={sectionStyle}>
-                    <div style={sectionTitleStyle}><i className="fas fa-user-tie"></i> 담당자 정보</div>
+                    <div style={sectionTitleStyle}><i className="fas fa-user-tie"></i> Manager Info</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div>
-                            <div style={fieldLabel}>이름</div>
+                            <div style={fieldLabel}>{t('labels.name', {ns: 'tenants'})}</div>
                             <div style={fieldValue}>{tenant.contact_name || '-'}</div>
                         </div>
                         <div>
-                            <div style={fieldLabel}>연락처</div>
+                            <div style={fieldLabel}>{t('labels.contact', {ns: 'tenants'})}</div>
                             <div style={fieldValue}>
                                 {tenant.contact_email && <div style={{ fontSize: '12px' }}><i className="fas fa-envelope" style={{ marginRight: '4px', color: 'var(--neutral-400)' }}></i>{tenant.contact_email}</div>}
                                 {tenant.contact_phone && <div style={{ fontSize: '12px', marginTop: '2px' }}><i className="fas fa-phone" style={{ marginRight: '4px', color: 'var(--neutral-400)' }}></i>{tenant.contact_phone}</div>}
@@ -275,12 +277,12 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                     </div>
                 </div>
 
-                {/* 구독 및 사용량 */}
+                {/* Subscription & Usage */}
                 <div style={{ ...sectionStyle, gridColumn: '1 / -1' }}>
-                    <div style={sectionTitleStyle}><i className="fas fa-chart-pie"></i> 구독 및 사용량</div>
+                    <div style={sectionTitleStyle}><i className="fas fa-chart-pie"></i> Subscription & Usage</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
                         <div>
-                            <div style={fieldLabel}>플랜</div>
+                            <div style={fieldLabel}>{t('labels.plan', {ns: 'tenants'})}</div>
                             <div style={fieldValue}>
                                 <span style={{ display: 'inline-block', padding: '1px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, background: tenant.subscription_plan === 'enterprise' ? '#dbeafe' : 'var(--neutral-100)', color: tenant.subscription_plan === 'enterprise' ? '#1e40af' : 'var(--neutral-600)' }}>
                                     {tenant.subscription_plan ? tenant.subscription_plan.toUpperCase() : '-'}
@@ -288,7 +290,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                             </div>
                         </div>
                         <div>
-                            <div style={fieldLabel}>상태</div>
+                            <div style={fieldLabel}>{t('table.status', {ns: 'tenants'})}</div>
                             <div style={fieldValue}>
                                 <span style={{ display: 'inline-block', padding: '1px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, background: tenant.subscription_status === 'active' ? '#dcfce7' : '#fef3c7', color: tenant.subscription_status === 'active' ? '#15803d' : '#92400e' }}>
                                     {tenant.subscription_status ? tenant.subscription_status.toUpperCase() : '-'}
@@ -296,7 +298,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                             </div>
                         </div>
                         <div>
-                            <div style={fieldLabel}>Edge Server 현황</div>
+                            <div style={fieldLabel}>{t('labels.edgeServerStatus', {ns: 'tenants'})}</div>
                             <div style={fieldValue}>
                                 <span className="usage-indicator">
                                     <i className="fas fa-server" style={{ marginRight: '4px', color: 'var(--primary-500)' }}></i>

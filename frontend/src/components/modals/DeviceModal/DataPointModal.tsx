@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DataPoint, DataPointCreateData, DataPointUpdateData, DataPointApiService } from '../../../api/services/dataPointApi';
 
 interface DataPointModalProps {
@@ -49,6 +50,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
     metadata: {},
     protocol_params: {}
   });
+    const { t } = useTranslation(['devices', 'common']);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isTestingRead, setIsTestingRead] = useState(false);
@@ -128,15 +130,15 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
     const newErrors: Record<string, string> = {};
 
     if (!formData.name?.trim()) {
-      newErrors.name = '포인트명은 필수입니다';
+      newErrors.name = 'Point name is required';
     }
 
     if (!formData.address?.trim()) {
-      newErrors.address = '주소는 필수입니다';
+      newErrors.address = 'Address is required';
     }
 
     if (!formData.data_type) {
-      newErrors.data_type = '데이터 타입은 필수입니다';
+      newErrors.data_type = 'Data type is required';
     }
 
     setErrors(newErrors);
@@ -156,14 +158,14 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
         if (response.success && response.data) {
           savedDataPoint = response.data;
         } else {
-          throw new Error(response.error || '생성 실패');
+          throw new Error(response.error || 'Create failed');
         }
       } else if (mode === 'edit' && dataPoint) {
         const response = await DataPointApiService.updateDataPoint(deviceId, dataPoint.id, formData as DataPointUpdateData);
         if (response.success && response.data) {
           savedDataPoint = response.data;
         } else {
-          throw new Error(response.error || '수정 실패');
+          throw new Error(response.error || 'Update failed');
         }
       } else {
         return;
@@ -173,7 +175,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
       onClose();
     } catch (error) {
       console.error('데이터포인트 저장 실패:', error);
-      alert(`저장 실패: ${error.message}`);
+      alert(`Save failed: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -183,7 +185,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
   const handleDelete = async () => {
     if (!dataPoint || !onDelete) return;
 
-    if (confirm(`"${dataPoint.name}" 데이터포인트를 삭제하시겠습니까?`)) {
+    if (confirm(`Delete data point "${dataPoint.name}"?`)) {
       try {
         setIsLoading(true);
         const response = await DataPointApiService.deleteDataPoint(deviceId, dataPoint.id);
@@ -191,11 +193,11 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
           onDelete(dataPoint.id);
           onClose();
         } else {
-          throw new Error(response.error || '삭제 실패');
+          throw new Error(response.error || 'Delete failed');
         }
       } catch (error) {
         console.error('데이터포인트 삭제 실패:', error);
-        alert(`삭제 실패: ${error.message}`);
+        alert(`Delete failed: ${error.message}`);
       } finally {
         setIsLoading(false);
       }
@@ -215,15 +217,15 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
       if (response.success && response.data) {
         const result = response.data;
         if (result.test_successful) {
-          setTestResult(`✅ 읽기 성공: ${result.current_value} (응답시간: ${result.response_time_ms}ms)`);
+          setTestResult(`✅ Read success: ${result.current_value} (response: ${result.response_time_ms}ms)`);
         } else {
-          setTestResult(`❌ 읽기 실패: ${result.error_message}`);
+          setTestResult(`❌ Read failed: ${result.error_message}`);
         }
       } else {
-        setTestResult(`❌ 테스트 실패: ${response.error}`);
+        setTestResult(`❌ Test failed: ${response.error}`);
       }
     } catch (error) {
-      setTestResult(`❌ 테스트 오류: ${error.message}`);
+      setTestResult(`❌ Test error: ${error.message}`);
     } finally {
       setIsTestingRead(false);
     }
@@ -243,15 +245,15 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
       if (response.success && response.data) {
         const result = response.data;
         if (result.test_successful) {
-          setTestResult(`✅ 쓰기 성공: ${result.written_value} (응답시간: ${result.response_time_ms}ms)`);
+          setTestResult(`✅ Write success: ${result.written_value} (response: ${result.response_time_ms}ms)`);
         } else {
-          setTestResult(`❌ 쓰기 실패: ${result.error_message}`);
+          setTestResult(`❌ Write failed: ${result.error_message}`);
         }
       } else {
-        setTestResult(`❌ 테스트 실패: ${response.error}`);
+        setTestResult(`❌ Test failed: ${response.error}`);
       }
     } catch (error) {
-      setTestResult(`❌ 테스트 오류: ${error.message}`);
+      setTestResult(`❌ Test error: ${error.message}`);
     } finally {
       setIsTestingWrite(false);
     }
@@ -265,8 +267,8 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
         {/* 헤더 */}
         <div className="modal-header">
           <h2>
-            {mode === 'create' ? '새 데이터포인트 추가' :
-              mode === 'edit' ? '데이터포인트 편집' : '데이터포인트 상세'}
+            {mode === 'create' ? 'Add Data Point' :
+              mode === 'edit' ? 'Edit Data Point' : 'Data Point Detail'}
           </h2>
           <button className="close-btn" onClick={onClose}>
             <i className="fas fa-times"></i>
@@ -278,10 +280,10 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
           <div className="form-grid">
             {/* 기본 정보 */}
             <div className="form-section">
-              <h3>📊 기본 정보</h3>
+              <h3>📊 Basic Info</h3>
 
               <div className="form-group">
-                <label>포인트명 *</label>
+                <label>Point Name *</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.name}</div>
                 ) : (
@@ -290,7 +292,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                       type="text"
                       value={formData.name || ''}
                       onChange={(e) => updateField('name', e.target.value)}
-                      placeholder="데이터포인트 이름"
+                      placeholder="Data point name"
                       className={errors.name ? 'error' : ''}
                     />
                     {errors.name && <span className="error-text">{errors.name}</span>}
@@ -299,21 +301,21 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>설명</label>
+                <label>{t('dpTab.description', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
-                  <div className="form-value">{dataPoint?.description || '없음'}</div>
+                  <div className="form-value">{dataPoint?.description || 'N/A'}</div>
                 ) : (
                   <textarea
                     value={formData.description || ''}
                     onChange={(e) => updateField('description', e.target.value)}
-                    placeholder="데이터포인트 설명"
+                    placeholder="Description"
                     rows={2}
                   />
                 )}
               </div>
 
               <div className="form-group">
-                <label>주소 *</label>
+                <label>Address *</label>
                 {mode === 'view' ? (
                   <div className="form-value address">{dataPoint?.address}</div>
                 ) : (
@@ -322,7 +324,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                       type="text"
                       value={formData.address || ''}
                       onChange={(e) => updateField('address', e.target.value)}
-                      placeholder="예: 40001, 1001, 0x1000"
+                      placeholder="e.g. 40001, 1001, 0x1000"
                       className={errors.address ? 'error' : ''}
                     />
                     {errors.address && <span className="error-text">{errors.address}</span>}
@@ -331,21 +333,21 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>주소 문자열</label>
+                <label>{t('labels.addressString', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
-                  <div className="form-value">{dataPoint?.address_string || '없음'}</div>
+                  <div className="form-value">{dataPoint?.address_string || 'N/A'}</div>
                 ) : (
                   <input
                     type="text"
                     value={formData.address_string || ''}
                     onChange={(e) => updateField('address_string', e.target.value)}
-                    placeholder="예: 4:40001, MB:1001"
+                    placeholder="e.g. 4:40001, MB:1001"
                   />
                 )}
               </div>
 
               <div className="form-group">
-                <label>데이터 타입 *</label>
+                <label>Data Type *</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.data_type}</div>
                 ) : (
@@ -354,7 +356,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                     onChange={(e) => updateField('data_type', e.target.value)}
                     className={errors.data_type ? 'error' : ''}
                   >
-                    <option value="bool">Boolean</option>
+                    <option value="bool">{t('labels.boolean', {ns: 'devices'})}</option>
                     <option value="uint8">UInt8</option>
                     <option value="int8">Int8</option>
                     <option value="uint16">UInt16</option>
@@ -365,16 +367,16 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                     <option value="int64">Int64</option>
                     <option value="float32">Float32</option>
                     <option value="float64">Float64</option>
-                    <option value="string">String</option>
-                    <option value="bytes">Bytes</option>
+                    <option value="string">{t('labels.string', {ns: 'devices'})}</option>
+                    <option value="bytes">{t('labels.bytes', {ns: 'devices'})}</option>
                   </select>
                 )}
               </div>
 
               <div className="form-group">
-                <label>비트 인덱스 (선택, 0~15)</label>
+                <label>Bit Index (optional, 0~15)</label>
                 {mode === 'view' ? (
-                  <div className="form-value">{dataPoint?.protocol_params?.bit_index ?? '없음'}</div>
+                  <div className="form-value">{dataPoint?.protocol_params?.bit_index ?? 'N/A'}</div>
                 ) : (
                   <input
                     type="number"
@@ -391,13 +393,13 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                       }
                       updateField('protocol_params', newParams);
                     }}
-                    placeholder="Register 비트 추출용 (예: 0)"
+                    placeholder="For register bit extraction (e.g. 0)"
                   />
                 )}
               </div>
 
               <div className="form-group">
-                <label>접근 모드</label>
+                <label>{t('labels.accessMode', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.access_mode || 'read'}</div>
                 ) : (
@@ -405,23 +407,23 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                     value={formData.access_mode || 'read'}
                     onChange={(e) => updateField('access_mode', e.target.value)}
                   >
-                    <option value="read">읽기 전용</option>
-                    <option value="write">쓰기 전용</option>
-                    <option value="read_write">읽기/쓰기</option>
+                    <option value="read">{t('labels.readOnly', {ns: 'devices'})}</option>
+                    <option value="write">{t('labels.writeOnly', {ns: 'devices'})}</option>
+                    <option value="read_write">{t('labels.readwrite', {ns: 'devices'})}</option>
                   </select>
                 )}
               </div>
 
               <div className="form-group">
-                <label>단위</label>
+                <label>{t('dpModal.unit', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
-                  <div className="form-value">{dataPoint?.unit || '없음'}</div>
+                  <div className="form-value">{dataPoint?.unit || 'N/A'}</div>
                 ) : (
                   <input
                     type="text"
                     value={formData.unit || ''}
                     onChange={(e) => updateField('unit', e.target.value)}
-                    placeholder="예: °C, kWh, m/s"
+                    placeholder="e.g. °C, kWh, m/s"
                   />
                 )}
               </div>
@@ -429,10 +431,10 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
 
             {/* 스케일링 및 범위 */}
             <div className="form-section">
-              <h3>📐 스케일링 및 범위</h3>
+              <h3>📐 Scaling & Range</h3>
 
               <div className="form-group">
-                <label>스케일링 팩터</label>
+                <label>{t('dataPoint.scalingFactor', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.scaling_factor || 1}</div>
                 ) : (
@@ -446,7 +448,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>스케일링 오프셋</label>
+                <label>{t('labels.scalingOffset', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.scaling_offset || 0}</div>
                 ) : (
@@ -460,7 +462,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>최솟값</label>
+                <label>{t('labels.minValue', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.min_value || 0}</div>
                 ) : (
@@ -473,7 +475,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>최댓값</label>
+                <label>{t('labels.maxValue', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.max_value || 65535}</div>
                 ) : (
@@ -488,10 +490,10 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
 
             {/* 로깅 및 폴링 설정 */}
             <div className="form-section">
-              <h3>📝 로깅 및 폴링</h3>
+              <h3>📝 Logging & Polling</h3>
 
               <div className="form-group">
-                <label>폴링 간격 (ms)</label>
+                <label>{t('labels.pollingIntervalMs', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.polling_interval_ms || 1000}</div>
                 ) : (
@@ -506,7 +508,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>로그 간격 (ms)</label>
+                <label>{t('labels.logIntervalMs', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.log_interval_ms || 5000}</div>
                 ) : (
@@ -521,7 +523,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>데드밴드</label>
+                <label>{t('labels.deadband', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.log_deadband || 0}</div>
                 ) : (
@@ -536,15 +538,15 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>그룹명</label>
+                <label>{t('labels.groupName', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
-                  <div className="form-value">{dataPoint?.group_name || '없음'}</div>
+                  <div className="form-value">{dataPoint?.group_name || 'N/A'}</div>
                 ) : (
                   <input
                     type="text"
                     value={formData.group_name || ''}
                     onChange={(e) => updateField('group_name', e.target.value)}
-                    placeholder="데이터포인트 그룹"
+                    placeholder="Data point group"
                   />
                 )}
               </div>
@@ -552,14 +554,14 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
 
             {/* 상태 및 옵션 */}
             <div className="form-section">
-              <h3>⚙️ 상태 및 옵션</h3>
+              <h3>⚙️ Status & Options</h3>
 
               <div className="form-group">
-                <label>활성화</label>
+                <label>{t('status.enabled', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
                   <div className="form-value">
                     <span className={`status-badge ${dataPoint?.is_enabled ? 'enabled' : 'disabled'}`}>
-                      {dataPoint?.is_enabled ? '활성화' : '비활성화'}
+                      {dataPoint?.is_enabled ? 'Enabled' : 'Disabled'}
                     </span>
                   </div>
                 ) : (
@@ -575,11 +577,11 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>쓰기 가능</label>
+                <label>{t('labels.writable', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
                   <div className="form-value">
                     <span className={`status-badge ${dataPoint?.is_writable ? 'enabled' : 'disabled'}`}>
-                      {dataPoint?.is_writable ? '가능' : '불가능'}
+                      {dataPoint?.is_writable ? 'Yes' : 'No'}
                     </span>
                   </div>
                 ) : (
@@ -595,11 +597,11 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>로깅 활성화</label>
+                <label>{t('labels.loggingEnabled', {ns: 'devices'})}</label>
                 {mode === 'view' ? (
                   <div className="form-value">
                     <span className={`status-badge ${dataPoint?.is_log_enabled ? 'enabled' : 'disabled'}`}>
-                      {dataPoint?.is_log_enabled ? '활성화' : '비활성화'}
+                      {dataPoint?.is_log_enabled ? 'Enabled' : 'Disabled'}
                     </span>
                   </div>
                 ) : (
@@ -618,10 +620,10 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
             {/* 현재값 및 테스트 (view/edit 모드에서만) */}
             {mode !== 'create' && dataPoint && (
               <div className="form-section">
-                <h3>📊 현재값 및 테스트</h3>
+                <h3>📊 Current Value & Test</h3>
 
                 <div className="form-group">
-                  <label>현재값</label>
+                  <label>{t('labels.currentValue', {ns: 'devices'})}</label>
                   <div className="form-value current-value">
                     {dataPoint.current_value !== null && dataPoint.current_value !== undefined
                       ? (typeof dataPoint.current_value === 'object' ? dataPoint.current_value.value : dataPoint.current_value)
@@ -630,7 +632,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                 </div>
 
                 <div className="form-group">
-                  <label>품질</label>
+                  <label>{t('labels.quality', {ns: 'devices'})}</label>
                   <div className="form-value">
                     <span className={`quality-badge quality-${dataPoint.quality?.toLowerCase() || 'unknown'}`}>
                       {dataPoint.quality || 'Unknown'}
@@ -639,7 +641,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                 </div>
 
                 <div className="form-group">
-                  <label>마지막 읽기</label>
+                  <label>{t('labels.lastRead', {ns: 'devices'})}</label>
                   <div className="form-value">
                     {dataPoint.last_update ? new Date(dataPoint.last_update).toLocaleString() : 'N/A'}
                   </div>
@@ -673,7 +675,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                           type="text"
                           value={testValue}
                           onChange={(e) => setTestValue(e.target.value)}
-                          placeholder="테스트 값 입력"
+                          placeholder="Enter test value"
                           className="test-input"
                         />
                         <button
@@ -744,7 +746,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                 ) : (
                   <>
                     <i className="fas fa-save"></i>
-                    {mode === 'create' ? '생성' : '저장'}
+                    {mode === 'create' ? 'Create' : 'Save'}
                   </>
                 )}
               </button>

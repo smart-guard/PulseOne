@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SiteApiService } from '../api/services/siteApi';
 import { CollectorApiService } from '../api/services/collectorApi';
 import { ManagementLayout } from '../components/common/ManagementLayout';
@@ -14,6 +15,7 @@ import { SiteModal } from '../components/modals/SiteModal/SiteModal';
 import { SiteDetailModal } from '../components/modals/SiteModal/SiteDetailModal';
 
 const SiteManagementPage: React.FC = () => {
+    const { t } = useTranslation(['sites', 'common']);
     const [sites, setSites] = useState<Site[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -68,7 +70,7 @@ const SiteManagementPage: React.FC = () => {
                 });
             }
         } catch (err) {
-            setError('사이트 정보를 불러오는 중 오류가 발생했습니다.');
+            setError(t('sites:loading'));
         } finally {
             setLoading(false);
         }
@@ -91,9 +93,9 @@ const SiteManagementPage: React.FC = () => {
 
     const handleRestore = async (s: Site) => {
         const confirmed = await confirm({
-            title: '사이트 복구 확인',
-            message: `'${s.name}' 사이트를 복구하시겠습니까?`,
-            confirmText: '복구',
+            title: t('sites:confirm.restoreTitle'),
+            message: t('sites:confirm.restoreMsg', { name: s.name }),
+            confirmText: t('sites:confirm.restoreText'),
             confirmButtonType: 'primary'
         });
 
@@ -102,9 +104,9 @@ const SiteManagementPage: React.FC = () => {
                 const res = await SiteApiService.restoreSite(s.id);
                 if (res.success) {
                     await confirm({
-                        title: '복구 완료',
-                        message: '사이트가 성공적으로 복구되었습니다.',
-                        confirmText: '확인',
+                        title: t('sites:confirm.restoreSuccessTitle'),
+                        message: t('sites:confirm.restoreSuccessMsg'),
+                        confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'primary'
                     });
@@ -120,33 +122,33 @@ const SiteManagementPage: React.FC = () => {
     return (
         <ManagementLayout>
             <PageHeader
-                title="사이트(Site) 관리"
-                description="물리적 위치 및 설치 장소 정보를 관리합니다. 계층 구조(본사-지사-동/호 등)를 지원합니다."
+                title={t('sites:title')}
+                description={t('sites:description')}
                 icon="fas fa-map-marker-alt"
                 actions={
                     <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreate}>
-                        <i className="fas fa-plus"></i> 새 사이트 등록
+                        <i className="fas fa-plus"></i> {t('sites:register')}
                     </button>
                 }
             />
 
             <div className="mgmt-stats-panel">
-                <StatCard label="전체 사이트" value={stats.total_sites} type="primary" />
-                <StatCard label="활성 사이트" value={stats.active_sites} type="success" />
-                <StatCard label="본사/메인" value={stats.main_sites} type="neutral" />
+                <StatCard label={t('sites:stats.totalSites')} value={stats.total_sites} type="primary" />
+                <StatCard label={t('sites:stats.activeSites')} value={stats.active_sites} type="success" />
+                <StatCard label={t('sites:stats.mainSites')} value={stats.main_sites} type="neutral" />
                 {quota && (<>
                     <StatCard
-                        label={`Edge Server 사용 (/${quota.max})`}
+                        label={t('sites:stats.edgeServerUsage', { max: quota.max })}
                         value={quota.used}
                         type={quota.is_exceeded ? 'error' : 'primary'}
                     />
                     <StatCard
-                        label="온라인 Edge Server"
+                        label={t('sites:stats.onlineEdge')}
                         value={quota.online}
                         type="success"
                     />
                     <StatCard
-                        label="오프라인 Edge Server"
+                        label={t('sites:stats.offlineEdge')}
                         value={quota.offline}
                         type={quota.offline > 0 ? 'warning' : 'neutral'}
                     />
@@ -158,12 +160,12 @@ const SiteManagementPage: React.FC = () => {
                 onSearchChange={setSearchTerm}
                 filters={[
                     {
-                        label: '상태',
+                        label: t('sites:filter.status'),
                         value: selectedStatus,
                         options: [
-                            { label: '전체', value: 'all' },
-                            { label: '활성', value: 'active' },
-                            { label: '비활성', value: 'inactive' }
+                            { label: t('sites:filter.all'), value: 'all' },
+                            { label: t('sites:filter.active'), value: 'active' },
+                            { label: t('sites:filter.inactive'), value: 'inactive' }
                         ],
                         onChange: setSelectedStatus
                     }
@@ -182,7 +184,7 @@ const SiteManagementPage: React.FC = () => {
                                 checked={includeDeleted}
                                 onChange={(e) => setIncludeDeleted(e.target.checked)}
                             />
-                            삭제된 사이트 보기
+                            {t('sites:showDeleted')}
                         </label>
                     </div>
                 }
@@ -193,13 +195,13 @@ const SiteManagementPage: React.FC = () => {
                     <table className="mgmt-table">
                         <thead>
                             <tr>
-                                <th>사이트명</th>
-                                <th>코드</th>
-                                <th>유형</th>
-                                <th>위치/주소</th>
-                                <th style={{ textAlign: 'center' }}>Edge Server</th>
-                                <th style={{ textAlign: 'center' }}>상태</th>
-                                <th style={{ textAlign: 'center' }}>상위 사이트</th>
+                                <th>{t('sites:table.name')}</th>
+                                <th>{t('sites:table.code')}</th>
+                                <th>{t('sites:table.type')}</th>
+                                <th>{t('sites:table.location')}</th>
+                                <th style={{ textAlign: 'center' }}>{t('sites:table.edgeServer')}</th>
+                                <th style={{ textAlign: 'center' }}>{t('sites:table.status')}</th>
+                                <th style={{ textAlign: 'center' }}>{t('sites:table.parentSite')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -229,10 +231,10 @@ const SiteManagementPage: React.FC = () => {
                                     </td>
                                     <td style={{ textAlign: 'center' }}>
                                         <span className={`mgmt-badge ${s.is_active ? 'success' : 'neutral'}`}>
-                                            {s.is_active ? '활성' : '비활성'}
+                                            {s.is_active ? t('sites:badge.active') : t('sites:badge.inactive')}
                                         </span>
                                     </td>
-                                    <td style={{ textAlign: 'center' }}>{s.parent_site_id ? `ID: ${s.parent_site_id}` : '최상위'}</td>
+                                    <td style={{ textAlign: 'center' }}>{s.parent_site_id ? `ID: ${s.parent_site_id}` : t('sites:topLevel')}</td>
                                 </tr>
                             ))}
                         </tbody>

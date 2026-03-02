@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { TemplatePoint, Protocol, DeviceTemplate } from '../../../types/manufacturing';
 
 interface DataPointsStepProps {
@@ -18,17 +19,18 @@ const DataPointsStep: React.FC<DataPointsStepProps> = ({
     setIsBulkModalOpen,
     overlapIndices
 }) => {
+    const { t } = useTranslation(['deviceTemplates', 'common']);
 
     // Helper: Address Label Logic
     const getAddressLabel = () => {
         const selectedP = protocols.find(p => p.id === formData.protocol_id);
         const type = selectedP?.protocol_type || '';
-        if (type.includes('MODBUS')) return '주소 (Dec) *';
-        if (type.includes('MQTT')) return '토픽 (Topic) *';
+        if (type.includes('MODBUS')) return 'Address (Dec) *';
+        if (type.includes('MQTT')) return 'Topic *';
         if (type.includes('OPC')) return 'Node ID *';
         if (type.includes('BACNET')) return 'Object:Instance *';
         if (type.includes('ROS')) return 'Topic:Field *';
-        return '주소 *';
+        return 'Address *';
     };
 
     // Helper: Address Hint Logic
@@ -97,7 +99,7 @@ const DataPointsStep: React.FC<DataPointsStepProps> = ({
         return (
             <div style={{ padding: '12px', background: '#f1f5f9', borderRadius: '8px', marginTop: '16px' }}>
                 <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>
-                    <i className="fas fa-microchip"></i> 메모리 레지스트리 맵 (Preview)
+                    <i className="fas fa-microchip"></i> Memory Registry Map (Preview)
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                     {sortedPoints.map((p, i) => {
@@ -121,10 +123,10 @@ const DataPointsStep: React.FC<DataPointsStepProps> = ({
     return (
         <div className="data-points-section">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h4 style={{ margin: 0 }}><i className="fas fa-list-ul"></i> 데이터 포인트 ({dataPoints.length})</h4>
+                <h4 style={{ margin: 0 }}><i className="fas fa-list-ul"></i> Data Points ({dataPoints.length})</h4>
                 <div style={{ display: 'flex', gap: '8px' }}>
                     <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => setIsBulkModalOpen(true)}>
-                        <i className="fas fa-file-excel"></i> 엑셀 일괄 등록
+                        <i className="fas fa-file-excel"></i> Bulk Excel Import
                     </button>
                     <button className="mgmt-btn mgmt-btn-primary mgmt-btn-sm" onClick={addPoint}>
                         <i className="fas fa-plus"></i> 포인트 추가
@@ -135,7 +137,7 @@ const DataPointsStep: React.FC<DataPointsStepProps> = ({
                 <table className="mgmt-table">
                     <thead>
                         <tr>
-                            <th style={{ width: '200px' }}>이름 *</th>
+                            <th style={{ width: '200px' }}>Name *</th>
                             <th style={{ width: '140px', textAlign: 'center' }}>{getAddressLabel()} *</th>
                             <th style={{ width: '160px', textAlign: 'center' }}>타입 *</th>
                             <th style={{ width: '180px', textAlign: 'center' }}>권한</th>
@@ -192,7 +194,7 @@ const DataPointsStep: React.FC<DataPointsStepProps> = ({
                                             <option value="UINT32">UINT32</option>
                                             <option value="INT32">INT32</option>
                                             <option value="FLOAT32">FLOAT32</option>
-                                            <option value="BOOLEAN">BOOLEAN</option>
+                                            <option value="BOOLEAN">{t('labels.boolean', {ns: 'deviceTemplates'})}</option>
                                         </select>
                                     </td>
                                     <td>
@@ -202,9 +204,9 @@ const DataPointsStep: React.FC<DataPointsStepProps> = ({
                                             onChange={e => updatePoint(idx, 'access_mode', e.target.value)}
                                             style={{ textAlign: 'center' }}
                                         >
-                                            <option value="read">Read Only</option>
-                                            <option value="write">Write Only</option>
-                                            <option value="read_write">Read/Write</option>
+                                            <option value="read">{t('labels.readOnly', {ns: 'deviceTemplates'})}</option>
+                                            <option value="write">{t('labels.writeOnly', {ns: 'deviceTemplates'})}</option>
+                                            <option value="read_write">{t('labels.readwrite', {ns: 'deviceTemplates'})}</option>
                                         </select>
                                     </td>
                                     <td>

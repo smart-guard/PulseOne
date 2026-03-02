@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { ManufactureApiService } from '../../api/services/manufactureApi';
 import { TemplateApiService } from '../../api/services/templateApi';
@@ -16,6 +17,7 @@ interface ModelListModalProps {
 
 export const ModelListModal: React.FC<ModelListModalProps> = ({ isOpen, onClose, manufacturer }) => {
     const [models, setModels] = useState<DeviceModel[]>([]);
+    const { t } = useTranslation(['deviceTemplates', 'common']);
     const [loading, setLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(6);

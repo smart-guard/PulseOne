@@ -1,0 +1,28 @@
+{
+    "title": "시스템 설정",
+    "general": "일반 설정",
+    "network": "네트워크 설정",
+    "security": "보안 설정",
+    "database": "데이터베이스",
+    "logging": "로깅",
+    "backup": "백업",
+    "language": "언어 설정",
+    "timezone": "시간대",
+    "dateFormat": "날짜 형식",
+    "apply": "설정 적용",
+    "restart": "재시작 필요",
+    "systemStatus": "시스템 상태 및 서비스 관리",
+    "systemStatusDesc": "산업용 데이터 허브의 모든 서비스 상태를 실시간으로 모니터링합니다.",
+    "userManagementDesc": "시스템 계정 및 권한을 관리합니다.",
+    "newUser": "새 사용자 등록",
+    "totalUsers": "전체 사용자",
+    "activeUsers": "활성 사용자",
+    "activeToday": "최근 24시간 활성",
+    "field": {
+        "username": "아이디",
+        "email": "이메일"
+    },
+    "section": {
+        "basic": "기본 정보"
+    }
+}

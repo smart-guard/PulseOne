@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import alarmTemplatesApi, { CreatedAlarmRule } from '../../api/services/alarmTemplatesApi';
 
 interface TemplatePropagateModalProps {
@@ -17,6 +18,7 @@ const TemplatePropagateModal: React.FC<TemplatePropagateModalProps> = ({
     currentVersion
 }) => {
     const [outdatedRules, setOutdatedRules] = useState<CreatedAlarmRule[]>([]);
+    const { t } = useTranslation(['deviceTemplates', 'common']);
     const [selectedRules, setSelectedRules] = useState<number[]>([]);
     const [loading, setLoading] = useState(false);
     const [applying, setApplying] = useState(false);
@@ -39,7 +41,7 @@ const TemplatePropagateModal: React.FC<TemplatePropagateModalProps> = ({
             setSelectedRules(rules.map(r => r.id));
         } catch (error) {
             console.error('Failed to load outdated rules', error);
-            alert('동기화 대상 규칙을 불러오는데 실패했습니다.');
+            alert('Failed to load rules for synchronization.');
         } finally {
             setLoading(false);
         }
@@ -62,18 +64,18 @@ const TemplatePropagateModal: React.FC<TemplatePropagateModalProps> = ({
     const handlePropagate = async () => {
         if (selectedRules.length === 0) return;
 
-        if (!confirm(`${selectedRules.length}개의 규칙을 최신 템플릿 설정(v${currentVersion})으로 업데이트하시겠습니까?`)) {
+        if (!confirm(`Are you sure you want to update ${selectedRules.length} rule(s) to the latest template settings (v${currentVersion})?`)) {
             return;
         }
 
         setApplying(true);
         try {
             const result = await alarmTemplatesApi.propagateTemplate(templateId, selectedRules);
-            alert(`${result.updated_count}개의 규칙이 성공적으로 업데이트되었습니다.`);
+            alert(`${result.updated_count} rule(s) updated successfully.`);
             onClose();
         } catch (error) {
             console.error('Propagate failed', error);
-            alert('업데이트 중 오류가 발생했습니다.');
+            alert('An error occurred during update.');
         } finally {
             setApplying(false);
         }
@@ -124,10 +126,10 @@ const TemplatePropagateModal: React.FC<TemplatePropagateModalProps> = ({
                 }}>
                     <div>
                         <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
-                            템플릿 변경사항 전파
+                            Propagate Template Changes
                         </h2>
                         <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>
-                            {templateName} (v{currentVersion})의 최신 설정을 기존 규칙에 적용합니다.
+                            {templateName} (v{currentVersion}) settings to existing rules.
                         </p>
                     </div>
                     <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' }}>
@@ -142,16 +144,16 @@ const TemplatePropagateModal: React.FC<TemplatePropagateModalProps> = ({
                     borderBottom: '1px solid #e2e8f0'
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px' }}>
-                        <span style={{ fontWeight: 600, color: '#334155' }}>변경 내용:</span>
-                        <span style={{ padding: '4px 8px', backgroundColor: '#e2e8f0', borderRadius: '4px', color: '#64748b' }}>이전 버전</span>
+                        <span style={{ fontWeight: 600, color: '#334155' }}>{t('labels.changes', {ns: 'deviceTemplates'})}</span>
+                        <span style={{ padding: '4px 8px', backgroundColor: '#e2e8f0', borderRadius: '4px', color: '#64748b' }}>{t('labels.previousVersion', {ns: 'deviceTemplates'})}</span>
                         <i className="fas fa-arrow-right" style={{ color: '#94a3b8' }}></i>
                         <span style={{ padding: '4px 8px', backgroundColor: '#dbeafe', borderRadius: '4px', color: '#2563eb', fontWeight: 600 }}>
-                            v{currentVersion} (최신)
+                            v{currentVersion} (Latest)
                         </span>
                     </div>
                     <p style={{ fontSize: '13px', color: '#64748b', marginTop: '8px', marginBottom: 0 }}>
                         <i className="fas fa-info-circle" style={{ marginRight: '6px' }}></i>
-                        선택한 규칙들의 알람 조건, 메시지 설정, 등급 등이 템플릿의 현재 설정으로 덮어씌워집니다.
+                        The alarm conditions, message settings, severity levels, etc. of the selected rules will be overwritten with the current template settings.
                     </p>
                 </div>
 

@@ -1,0 +1,14 @@
+{
+    "title": "System Settings",
+    "general": "General",
+    "network": "Network",
+    "security": "Security",
+    "database": "Database",
+    "logging": "Logging",
+    "backup": "Backup",
+    "language": "Language",
+    "timezone": "Timezone",
+    "dateFormat": "Date Format",
+    "apply": "Apply Settings",
+    "restart": "Restart Required"
+}

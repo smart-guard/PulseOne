@@ -69,20 +69,20 @@ const DeviceTable: React.FC<DeviceTableProps> = ({
                         style={getSortableHeaderStyle('name')}
                         onClick={() => onSort('name')}
                     >
-                        디바이스 명
+                        Device Name
                         {getSortIcon('name')}
                     </div>
 
                     <div className="device-list-template-cell">
-                        마스터 모델 / 제조사
+                        Master Model / Manufacturer
                     </div>
 
                     <div className="device-list-endpoint-cell">
-                        접속 정보
+                        Connection Info
                     </div>
 
                     <div className="device-list-status-cell">
-                        상태
+                        Status
                     </div>
 
                     <div
@@ -90,11 +90,11 @@ const DeviceTable: React.FC<DeviceTableProps> = ({
                         style={getSortableHeaderStyle('data_point_count')}
                         onClick={() => onSort('data_point_count')}
                     >
-                        포인트
+                        Points
                         {getSortIcon('data_point_count')}
                     </div>
 
-                    <div className="device-list-actions-cell">작업</div>
+                    <div className="device-list-actions-cell">Actions</div>
                 </div>
 
                 {/* 바디 */}

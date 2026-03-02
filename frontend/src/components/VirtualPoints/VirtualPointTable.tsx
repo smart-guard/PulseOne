@@ -3,6 +3,7 @@
 // ============================================================================
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { VirtualPoint } from '../../types/virtualPoints';
 
 interface VirtualPointTableProps {
@@ -42,6 +43,7 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
   const headerRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
+    const { t } = useTranslation(['virtualPoints', 'common']);
 
   // 반응형 그리드 컬럼 (이름/수식 위주)
   const gridColumns = `
@@ -115,9 +117,9 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
-      '온도': '#ef4444', '압력': '#3b82f6', '유량': '#10b981', '전력': '#f59e0b',
-      '생산': '#8b5cf6', '품질': '#ec4899', '안전': '#f97316', '유지보수': '#6b7280',
-      '에너지': '#84cc16', 'Custom': '#14b8a6', 'calculation': '#8b5cf6'
+      'temperature': '#ef4444', 'pressure': '#3b82f6', 'flow': '#10b981', 'power': '#f59e0b',
+      'production': '#8b5cf6', 'quality': '#ec4899', 'safety': '#f97316', 'maintenance': '#6b7280',
+      'energy': '#84cc16', 'Custom': '#14b8a6', 'calculation': '#8b5cf6'
     };
     return colors[category] || '#6b7280';
   };
@@ -166,15 +168,15 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
           />
         </div>
         {[
-          { key: 'name', label: '이름', sortable: true },
-          { key: 'category', label: '분류', sortable: true },
-          { key: 'expression', label: '수식', sortable: false },
-          { key: 'current_value', label: '현재값', sortable: false },
-          { key: 'is_enabled', label: '활성상태', sortable: true },
-          { key: 'status', label: '계산상태', sortable: true },
-          { key: 'scope', label: '범위', sortable: true },
-          { key: 'execution_type', label: '실행', sortable: true },
-          { key: 'last_calculated', label: '마지막', sortable: true }
+          { key: 'name', label: 'Name', sortable: true },
+          { key: 'category', label: 'Category', sortable: true },
+          { key: 'expression', label: 'Formula', sortable: false },
+          { key: 'current_value', label: 'Current Value', sortable: false },
+          { key: 'is_enabled', label: 'Active', sortable: true },
+          { key: 'status', label: 'Calc Status', sortable: true },
+          { key: 'scope', label: 'Scope', sortable: true },
+          { key: 'execution_type', label: 'Exec Type', sortable: true },
+          { key: 'last_calculated', label: 'Last Calc', sortable: true }
         ].map((header, index) => (
           <div
             key={header.key}
@@ -303,18 +305,18 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
                   <div style={{ padding: '12px 8px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: getStatusColor(point.calculation_status || 'disabled'), fontSize: '12px', fontWeight: 600 }}>
                       <i className={getStatusIcon(point.calculation_status || 'disabled')}></i>
-                      {point.calculation_status === 'active' ? '정상' : point.calculation_status === 'error' ? '오류' : '중지'}
+                      {point.calculation_status === 'active' ? 'Normal' : point.calculation_status === 'error' ? 'Error' : 'Stopped'}
                     </div>
                   </div>
 
                   {/* 범위 */}
                   <div style={{ padding: '12px 8px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ fontSize: '12px', color: '#6b7280' }}>{point.scope_type === 'global' ? '전역' : point.scope_type === 'site' ? '사이트' : '디바이스'}</span>
+                    <span style={{ fontSize: '12px', color: '#6b7280' }}>{point.scope_type === 'global' ? 'Global' : point.scope_type === 'site' ? 'Site' : 'Device'}</span>
                   </div>
 
                   {/* 실행 */}
                   <div style={{ padding: '12px 8px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ fontSize: '12px', color: '#6b7280' }}>{point.execution_type === 'periodic' ? '주기' : '이벤트'}</span>
+                    <span style={{ fontSize: '12px', color: '#6b7280' }}>{point.execution_type === 'periodic' ? 'Periodic' : 'Event'}</span>
                   </div>
 
                   {/* 마지막 계산 */}

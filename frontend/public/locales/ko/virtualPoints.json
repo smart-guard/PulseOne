@@ -1,0 +1,62 @@
+{
+    "title": "가상포인트 관리",
+    "description": "실시간 데이터를 기반으로 계산되는 가상포인트를 관리합니다. 이름 클릭 시 상세 정보를 확인할 수 있습니다.",
+    "new": "새 가상포인트",
+    "showDeleted": "삭제된 항목 보기",
+    "stats": {
+        "totalPoints": "전체 포인트",
+        "active": "활성 상태",
+        "calcError": "계산 오류"
+    },
+    "tabs": {
+        "list": "가상 포인트 목록",
+        "history": "실행 이력"
+    },
+    "filter": {
+        "category": "카테고리",
+        "all": "전체",
+        "status": "상태",
+        "active": "활성",
+        "error": "오류",
+        "disabled": "비활성"
+    },
+    "bulk": {
+        "selected": "{{count}}개 항목 선택됨",
+        "activate": "활성화",
+        "deactivate": "비활성화",
+        "delete": "삭제",
+        "cancel": "취소"
+    },
+    "loading": "로딩 중...",
+    "history": {
+        "empty": "실행 이력이 없습니다",
+        "emptyDesc": "최근 실행된 가상 포인트의 계산 결과 및 성능 정보가 여기에 표시됩니다."
+    },
+    "confirm": {
+        "bulkDeleteTitle": "일괄 삭제 확인",
+        "bulkDeleteMsg": "선택한 {{count}}개의 가상포인트를 삭제하시겠습니까?",
+        "bulkDeleteText": "삭제",
+        "deleteSuccessTitle": "삭제 완료",
+        "deleteSuccessMsg": "가상포인트가 성공적으로 삭제되었습니다.",
+        "bulkDoneTitle": "완료",
+        "bulkDeleteDoneMsg": "선택한 항목이 삭제되었습니다.",
+        "toggleDoneTitle": "완료",
+        "toggleActivated": "선택한 항목이 활성화 되었습니다.",
+        "toggleDeactivated": "선택한 항목이 비활성화 되었습니다.",
+        "singleToggleTitle": "상태 변경 완료",
+        "singleToggleMsg": "가상포인트가 {{status}} 되었습니다.",
+        "executeTitle": "실행 완료",
+        "executeMsg": "가상포인트 연산이 성공적으로 실행되었습니다."
+    },
+    "error": {
+        "loadFail": "데이터 로딩 실패",
+        "createFail": "생성 실패",
+        "updateFail": "수정 실패",
+        "deleteFail": "삭제 실패",
+        "restoreFail": "복원 실패",
+        "toggleFail": "상태 변경 실패",
+        "executeFail": "실행 실패",
+        "bulkDeleteFail": "일괄 삭제 중 오류가 발생했습니다.",
+        "bulkToggleFail": "일괄 상태 변경 중 오류가 발생했습니다."
+    }
+}

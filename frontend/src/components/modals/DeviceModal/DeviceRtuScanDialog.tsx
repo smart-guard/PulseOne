@@ -1,9 +1,10 @@
 // ============================================================================
 // frontend/src/components/modals/DeviceModal/DeviceRtuScanDialog.tsx
-// RTU 슬래이브 스캔 대화상자 컴포넌트 - protocol_id 지원
+// RTU Slave Scan 대화상자 컴포넌트 - protocol_id 지원
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DeviceApiService } from '../../../api/services/deviceApi';
 import { Device } from './types';
 
@@ -54,6 +55,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
     dataBits: 8,
     stopBits: 1
   });
+    const { t } = useTranslation(['devices', 'common']);
 
   const [scanProgress, setScanProgress] = useState<ScanProgress>({
     currentSlaveId: 0,
@@ -136,10 +138,10 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
     onClose();
   }, [onClose]);
 
-  // 스캔 시작
+  // Start Scan
   const handleStartScan = async () => {
     if (!isRtuDevice()) {
-      setError('RTU 디바이스가 아닙니다');
+      setError('Not an RTU device');
       return;
     }
 
@@ -158,7 +160,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
       const totalSlaves = scanSettings.endSlaveId - scanSettings.startSlaveId + 1;
       const found: FoundDevice[] = [];
 
-      console.log(`RTU 스캔 시작: 마스터 ${masterDevice.id}, 범위 ${scanSettings.startSlaveId}-${scanSettings.endSlaveId}`);
+      console.log(`RTU Start Scan: 마스터 ${masterDevice.id}, 범위 ${scanSettings.startSlaveId}-${scanSettings.endSlaveId}`);
 
       // 실제 스캔 API 호출
       const scanRequest = {
@@ -184,7 +186,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
       });
 
       if (!response.ok) {
-        throw new Error(`스캔 요청 실패: ${response.statusText}`);
+        throw new Error(`Scan request failed: ${response.statusText}`);
       }
 
       const scanResult = await response.json();
@@ -238,7 +240,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
 
     } catch (err) {
       console.error('RTU 스캔 실패:', err);
-      setError(err instanceof Error ? err.message : '스캔 중 오류가 발생했습니다');
+      setError(err instanceof Error ? err.message : 'Error occurred while scanning');
       setScanProgress(prev => ({ ...prev, isScanning: false }));
     }
   };
@@ -268,7 +270,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
   // 선택된 디바이스 등록
   const handleRegisterDevices = async () => {
     if (!isRtuDevice()) {
-      setError('RTU 디바이스가 아닙니다');
+      setError('Not an RTU device');
       return;
     }
 
@@ -315,7 +317,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
 
     } catch (err) {
       console.error('디바이스 등록 실패:', err);
-      setError(err instanceof Error ? err.message : '디바이스 등록 중 오류가 발생했습니다');
+      setError(err instanceof Error ? err.message : 'Error registering device');
     }
   };
 
@@ -331,7 +333,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
         <div className="dialog-header">
           <h2>
             <i className="fas fa-search"></i>
-            RTU 슬래이브 스캔
+            RTU Slave Scan
             {protocolInfo && (
               <span className="protocol-info">
                 {protocolInfo.display_name || protocolInfo.name} (ID: {protocolInfo.id})
@@ -348,7 +350,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
           {scanPhase === 'settings' && (
             <div className="settings-phase">
               <div className="master-info">
-                <h3>마스터 디바이스</h3>
+                <h3>{t('basicInfo.masterDevice', {ns: 'devices'})}</h3>
                 <div className="master-card">
                   <div className="device-icon">
                     <i className="fas fa-server"></i>
@@ -368,11 +370,11 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
               </div>
 
               <div className="scan-settings">
-                <h3>스캔 설정</h3>
+                <h3>{t('labels.scanSettings', {ns: 'devices'})}</h3>
                 
                 <div className="settings-grid">
                   <div className="setting-group">
-                    <label>슬래이브 ID 범위</label>
+                    <label>{t('labels.slaveIdRange', {ns: 'devices'})}</label>
                     <div className="range-inputs">
                       <input
                         type="number"
@@ -399,7 +401,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
                   </div>
 
                   <div className="setting-group">
-                    <label>타임아웃</label>
+                    <label>{t('modal.diffTimeout', {ns: 'devices'})}</label>
                     <div className="input-with-unit">
                       <input
                         type="number"
@@ -417,7 +419,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
                   </div>
 
                   <div className="setting-group">
-                    <label>Baud Rate</label>
+                    <label>{t('basicInfo.baudRate', {ns: 'devices'})}</label>
                     <select
                       value={scanSettings.baudRate}
                       onChange={(e) => setScanSettings(prev => ({
@@ -437,7 +439,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
                   </div>
 
                   <div className="setting-group">
-                    <label>패리티</label>
+                    <label>{t('basicInfo.parity', {ns: 'devices'})}</label>
                     <select
                       value={scanSettings.parity}
                       onChange={(e) => setScanSettings(prev => ({
@@ -446,23 +448,22 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
                       }))}
                     >
                       <option value="N">None</option>
-                      <option value="E">Even</option>
-                      <option value="O">Odd</option>
+                      <option value="E">{t('basicInfo.even', {ns: 'devices'})}</option>
+                      <option value="O">{t('basicInfo.odd', {ns: 'devices'})}</option>
                     </select>
                   </div>
                 </div>
 
                 <div className="scan-info">
                   <p>
-                    슬래이브 ID {scanSettings.startSlaveId}-{scanSettings.endSlaveId} 범위에서 
-                    총 {scanSettings.endSlaveId - scanSettings.startSlaveId + 1}개 디바이스를 스캔합니다.
+                    Slave ID {scanSettings.startSlaveId}-{scanSettings.endSlaveId} range, scanning {scanSettings.endSlaveId - scanSettings.startSlaveId + 1} devices.
                   </p>
                   <p>
-                    예상 소요시간: 약 {Math.ceil((scanSettings.endSlaveId - scanSettings.startSlaveId + 1) * (scanSettings.timeoutMs / 1000))}초
+                    Estimated time: ~{Math.ceil((scanSettings.endSlaveId - scanSettings.startSlaveId + 1) * (scanSettings.timeoutMs / 1000))}s
                   </p>
                   {protocolInfo && (
                     <p>
-                      프로토콜: {protocolInfo.display_name || protocolInfo.name} (ID: {protocolInfo.id})
+                      Protocol: {protocolInfo.display_name || protocolInfo.name} (ID: {protocolInfo.id})
                     </p>
                   )}
                 </div>
@@ -473,11 +474,11 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
           {scanPhase === 'scanning' && (
             <div className="scanning-phase">
               <div className="scan-progress-header">
-                <h3>네트워크 스캔 진행중...</h3>
+                <h3>{t('labels.networkScanInProgress', {ns: 'devices'})}</h3>
                 <div className="progress-stats">
-                  <span>진행률: {scanProgress.progress}%</span>
-                  <span>발견: {scanProgress.foundDevices}개</span>
-                  <span>현재: ID {scanProgress.currentSlaveId}</span>
+                  <span>Progress: {scanProgress.progress}%</span>
+                  <span>Found: {scanProgress.foundDevices}</span>
+                  <span>Current: ID {scanProgress.currentSlaveId}</span>
                 </div>
               </div>
 
@@ -495,12 +496,12 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
 
               {foundDevices.length > 0 && (
                 <div className="found-devices-preview">
-                  <h4>발견된 디바이스</h4>
+                  <h4>{t('labels.discoveredDevices', {ns: 'devices'})}</h4>
                   <div className="devices-list">
                     {foundDevices.map((device) => (
                       <div key={device.slaveId} className="found-device-item">
                         <i className="fas fa-microchip"></i>
-                        <span>슬래이브 ID {device.slaveId}</span>
+                        <span>Slave ID {device.slaveId}</span>
                         <span className="response-time">{device.responseTime}ms</span>
                       </div>
                     ))}
@@ -511,7 +512,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
               {scanProgress.isScanning && (
                 <div className="scanning-indicator">
                   <i className="fas fa-spinner fa-spin"></i>
-                  <span>스캔 중... 잠시만 기다려주세요</span>
+                  <span>{t('labels.scanningPleaseWait', {ns: 'devices'})}</span>
                 </div>
               )}
             </div>
@@ -521,14 +522,14 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
             <div className="results-phase">
               <div className="scan-results-header">
                 <h3>
-                  스캔 완료 - {foundDevices.length}개 디바이스 발견
+                  Scan complete — {foundDevices.length} device(s) found
                 </h3>
                 <div className="results-stats">
-                  <span>스캔 범위: {scanSettings.startSlaveId}-{scanSettings.endSlaveId}</span>
-                  <span>총 스캔: {scanProgress.totalScanned}개</span>
-                  <span>발견률: {Math.round((foundDevices.length / scanProgress.totalScanned) * 100)}%</span>
+                  <span>Scan range: {scanSettings.startSlaveId}-{scanSettings.endSlaveId}</span>
+                  <span>Total scanned: {scanProgress.totalScanned}</span>
+                  <span>Discovery rate: {Math.round((foundDevices.length / scanProgress.totalScanned) * 100)}%</span>
                   {protocolInfo && (
-                    <span>프로토콜: {protocolInfo.display_name} (ID: {protocolInfo.id})</span>
+                    <span>Protocol: {protocolInfo.display_name} (ID: {protocolInfo.id})</span>
                   )}
                 </div>
               </div>
@@ -542,7 +543,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
                         checked={selectedDevices.size === foundDevices.length}
                         onChange={(e) => handleSelectAll(e.target.checked)}
                       />
-                      전체 선택 ({selectedDevices.size}/{foundDevices.length})
+                      Select All ({selectedDevices.size}/{foundDevices.length})
                     </label>
                   </div>
 
@@ -566,7 +567,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
                             RTU-SLAVE-{device.slaveId.toString().padStart(2, '0')}
                           </div>
                           <div className="device-details">
-                            슬래이브 ID: {device.slaveId} • 응답시간: {device.responseTime}ms
+                            Slave ID: {device.slaveId} • Response: {device.responseTime}ms
                             {protocolInfo && (
                               <span className="protocol-info">
                                 • {protocolInfo.protocol_type}
@@ -578,7 +579,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
                         <div className="device-status">
                           <span className="status-badge discovered">
                             <i className="fas fa-check"></i>
-                            발견됨
+                            Found
                           </span>
                         </div>
                       </div>
@@ -588,11 +589,11 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
               ) : (
                 <div className="no-devices">
                   <i className="fas fa-search"></i>
-                  <h4>발견된 디바이스가 없습니다</h4>
-                  <p>다른 설정으로 다시 스캔해보세요</p>
+                  <h4>{t('labels.noDevicesFound', {ns: 'devices'})}</h4>
+                  <p>{t('labels.tryScanningAgainWithDifferentSettings', {ns: 'devices'})}</p>
                   {protocolInfo && (
                     <p className="protocol-note">
-                      현재 프로토콜: {protocolInfo.display_name || protocolInfo.name} (ID: {protocolInfo.id})
+                      Protocol: {protocolInfo.display_name || protocolInfo.name} (ID: {protocolInfo.id})
                     </p>
                   )}
                 </div>
@@ -613,18 +614,18 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
           <div className="footer-left">
             {scanPhase === 'results' && foundDevices.length > 0 && (
               <div className="selection-info">
-                {selectedDevices.size}개 디바이스가 선택됨
+                {selectedDevices.size} device(s) selected
               </div>
             )}
             {protocolInfo && (
               <div className="footer-protocol-info">
-                프로토콜: {protocolInfo.display_name || protocolInfo.name} (ID: {protocolInfo.id})
+                Protocol: {protocolInfo.display_name || protocolInfo.name} (ID: {protocolInfo.id})
               </div>
             )}
           </div>
           <div className="footer-right">
             <button className="btn btn-secondary" onClick={handleClose}>
-              {scanPhase === 'results' ? '닫기' : '취소'}
+              {scanPhase === 'results' ? 'Close' : 'Cancel'}
             </button>
             
             {scanPhase === 'settings' && (
@@ -634,7 +635,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
                 disabled={scanSettings.startSlaveId > scanSettings.endSlaveId}
               >
                 <i className="fas fa-search"></i>
-                스캔 시작
+                Start Scan
               </button>
             )}
             
@@ -644,7 +645,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
                 onClick={handleRegisterDevices}
               >
                 <i className="fas fa-plus"></i>
-                선택된 디바이스 등록 ({selectedDevices.size})
+                Register Selected ({selectedDevices.size})
               </button>
             )}
             
@@ -658,7 +659,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
                 }}
               >
                 <i className="fas fa-redo"></i>
-                다시 스캔
+                Rescan
               </button>
             )}
           </div>

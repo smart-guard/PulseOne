@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../styles/alarm-settings.css';
 import '../../styles/notification-grid.css';
 import '../../styles/management.css';
@@ -34,6 +35,7 @@ interface ActiveAlarmDetailModalProps {
 }
 
 const ActiveAlarmDetailModal: React.FC<ActiveAlarmDetailModalProps> = ({ alarm, onClose, onAcknowledge, onClear }) => {
+    const { t } = useTranslation(['alarms', 'common']);
     if (!alarm) return null;
 
     const severity = (alarm.severity || 'low').toUpperCase();
@@ -52,9 +54,9 @@ const ActiveAlarmDetailModal: React.FC<ActiveAlarmDetailModalProps> = ({ alarm, 
 
     const getStatusText = (s: string) => {
         switch (s) {
-            case 'active': return '확인 대기 (Active)';
-            case 'acknowledged': return '확인됨 (Acknowledged)';
-            case 'cleared': return '해제됨 (Cleared)';
+            case 'active': return 'Pending (Active)';
+            case 'acknowledged': return 'Acknowledged';
+            case 'cleared': return 'Cleared';
             default: return s;
         }
     };
@@ -71,7 +73,7 @@ const ActiveAlarmDetailModal: React.FC<ActiveAlarmDetailModalProps> = ({ alarm, 
         <div className="modal-overlay">
             <div className="modal modal-xl">
                 <div className="modal-header">
-                    <h2 className="modal-title">활성 알람 상세 정보: #{alarm.id}</h2>
+                    <h2 className="modal-title">Active Alarm Details: #{alarm.id}</h2>
                     <button className="close-button" onClick={onClose}><i className="fas fa-times"></i></button>
                 </div>
                 <div className="modal-content">
@@ -80,9 +82,9 @@ const ActiveAlarmDetailModal: React.FC<ActiveAlarmDetailModalProps> = ({ alarm, 
 
                             {/* --- Section 1: Basic Information --- */}
                             <div className="form-section">
-                                <div className="section-title">기본 정보</div>
+                                <div className="section-title">{t('modals.basicInfo', {ns: 'alarms'})}</div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">메시지</label>
+                                    <label className="form-label">{t('columns.message', {ns: 'alarms'})}</label>
                                     <div className="detail-read-value" style={{
                                         fontSize: '15px',
                                         fontWeight: 600,
@@ -93,11 +95,11 @@ const ActiveAlarmDetailModal: React.FC<ActiveAlarmDetailModalProps> = ({ alarm, 
                                         color: 'var(--neutral-900)',
                                         lineHeight: '1.5'
                                     }}>
-                                        {alarm.message || '메시지 없음'}
+                                        {alarm.message || 'No message'}
                                     </div>
                                 </div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">심각도 / 상태</label>
+                                    <label className="form-label">{t('labels.severityStatus', {ns: 'alarms'})}</label>
                                     <div style={{ display: 'flex', gap: '8px', padding: '4px 0' }}>
                                         <span className={`badge severity-badge ${getSeverityBadgeClass(severity)}`}>
                                             {severity}
@@ -113,7 +115,7 @@ const ActiveAlarmDetailModal: React.FC<ActiveAlarmDetailModalProps> = ({ alarm, 
                                     </div>
                                 </div>
                                 <div className="detail-item-group">
-                                    <label className="form-label">디바이스 / 규칙</label>
+                                    <label className="form-label">{t('modals.deviceRule', {ns: 'alarms'})}</label>
                                     <div className="detail-read-value" style={{ padding: '8px 12px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-100)' }}>
                                         <div style={{ fontWeight: 600 }}>{alarm.device_name || 'N/A'}</div>
                                         <div style={{ fontSize: '13px', color: 'var(--neutral-500)', marginTop: '2px' }}>{alarm.rule_name || 'N/A'}</div>
@@ -123,9 +125,9 @@ const ActiveAlarmDetailModal: React.FC<ActiveAlarmDetailModalProps> = ({ alarm, 
 
                             {/* --- Section 2: Real-time Status --- */}
                             <div className="form-section">
-                                <div className="section-title">실시간 상태</div>
+                                <div className="section-title">{t('modals.realtimeStatus', {ns: 'alarms'})}</div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">현재 값 (Trigger Value)</label>
+                                    <label className="form-label">{t('modals.currentValueLabel', {ns: 'alarms'})}</label>
                                     <div className="detail-read-value" style={{
                                         fontSize: '18px',
                                         fontWeight: 700,
@@ -140,13 +142,13 @@ const ActiveAlarmDetailModal: React.FC<ActiveAlarmDetailModalProps> = ({ alarm, 
                                     </div>
                                 </div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">발생 시간</label>
+                                    <label className="form-label">{t('columns.occurrenceTime', {ns: 'alarms'})}</label>
                                     <div className="detail-read-value" style={{ padding: '8px 12px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-100)' }}>
                                         {new Date(alarm.triggered_at).toLocaleString('ko-KR')}
                                     </div>
                                 </div>
                                 <div className="detail-item-group">
-                                    <label className="form-label">담당자 (확인/해제)</label>
+                                    <label className="form-label">{t('labels.handledBy', {ns: 'alarms'})}</label>
                                     <div className="detail-read-value" style={{ padding: '8px 12px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-100)' }}>
                                         {alarm.acknowledged_by ? (
                                             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

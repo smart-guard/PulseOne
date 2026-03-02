@@ -3,6 +3,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { VirtualPoint, VirtualPointInput } from '../../../types/virtualPoints';
 import { useScriptEngine } from '../../../hooks/shared/useScriptEngine';
 import BasicInfoForm from './BasicInfoForm';
@@ -57,6 +58,7 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
   loading = false
 }) => {
   const { confirm } = useConfirmContext();
+    const { t } = useTranslation(['virtualPoints', 'common']);
 
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 4;
@@ -191,10 +193,10 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
       const savedDraft = loadFromLocalStorage();
       if (savedDraft && mode === 'create') {
         confirm({
-          title: '작성 중인 내용 복원',
-          message: '이전에 작성하던 내용이 있습니다. 복원하시겠습니까?',
-          confirmText: '복원하기',
-          cancelText: '무시하기'
+          title: 'Restore Draft',
+          message: 'You have a previously saved draft. Restore it?',
+          confirmText: 'Restore',
+          cancelText: 'Discard'
         }).then(shouldRestore => {
           if (shouldRestore) {
             setFormData(prev => ({ ...prev, ...savedDraft }));
@@ -250,9 +252,9 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
     const errors: Record<string, string> = {};
     const warnings: Record<string, string> = {};
 
-    if (!dataToValidate.name.trim()) errors.name = '이름은 필수입니다';
-    if (!dataToValidate.category.trim()) warnings.category = '카테고리를 설정하는 것이 좋습니다';
-    if (!dataToValidate.expression.trim()) warnings.expression = '수식을 작성하는 것이 좋습니다';
+    if (!dataToValidate.name.trim()) errors.name = 'Name is required';
+    if (!dataToValidate.category.trim()) warnings.category = 'It is recommended to set a category';
+    if (!dataToValidate.expression.trim()) warnings.expression = 'It is recommended to write a formula';
 
     if (dataToValidate.expression) {
       const matches = dataToValidate.expression.match(/[a-zA-Z_][a-zA-Z0-9_]*/g);
@@ -264,7 +266,7 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
       );
 
       if (missingVariables.length > 0) {
-        warnings.expression = `정의되지 않은 변수: ${missingVariables.join(', ')}`;
+        warnings.expression = `Undefined variables: ${missingVariables.join(', ')}`;
       }
 
       // Boolean 변수에 대한 사칙/대소 비교 연산 검증
@@ -273,7 +275,7 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
         // boolVar 앞뒤로 +, -, *, /, >, <, >=, <= 가 오면 에러 (==, != 는 허용)
         const invalidOpRegex = new RegExp(`\\b${boolVar}\\s*(?:[><]=?|[+\\-*/])|(?:[><]=?|[+\\-*/])\\s*${boolVar}\\b`);
         if (invalidOpRegex.test(dataToValidate.expression)) {
-          errors.expression = `BOOL 타입 변수('${boolVar}')는 크기 비교(>, <)나 사칙연산을 직접 수행할 수 없습니다. 대신 IF 함수를 사용해주세요.`;
+          errors.expression = `BOOL-type variable '${boolVar}' cannot directly perform comparison (>, <) or arithmetic. 대신 IF 함수를 사용해주세요.`;
           break;
         }
       }
@@ -313,7 +315,7 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
         // 에러를 validationErrors에 표시할 수도 있음
         const errorMsg = response?.error
           ? (typeof response.error === 'object' && response.error.message ? response.error.message : String(response.error))
-          : '계산 오류가 발생했습니다.';
+          : 'A calculation error occurred.';
 
         setValidationErrors(prev => ({
           ...prev,
@@ -348,9 +350,9 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
   const handleDelete = async () => {
     if (!onDelete || !virtualPoint?.id) return;
     const confirmed = await confirm({
-      title: '가상포인트 삭제',
-      message: `'${formData.name}' 가상포인트를 삭제하시겠습니까?\n삭제된 항목은 '삭제된 항목 보기' 필터를 통해 복원할 수 있습니다.`,
-      confirmText: '삭제',
+      title: 'Delete Virtual Point',
+      message: `Delete virtual point '${formData.name}'?\nDeleted items can be restored via the 'View Deleted' filter.`,
+      confirmText: 'Delete',
       confirmButtonType: 'danger'
     });
 
@@ -371,9 +373,9 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
   const handleRestore = async () => {
     if (!onRestore || !virtualPoint?.id) return;
     const confirmed = await confirm({
-      title: '가상포인트 복원',
-      message: `'${formData.name}' 가상포인트를 복원하시겠습니까?`,
-      confirmText: '복원',
+      title: 'Restore Virtual Point',
+      message: `Restore virtual point '${formData.name}'?`,
+      confirmText: 'Restore',
       confirmButtonType: 'primary'
     });
 
@@ -394,9 +396,9 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
     const validation = validateForm();
     if (Object.keys(validation.errors).length > 0) {
       await confirm({
-        title: '입력 오류',
-        message: '필수 항목을 입력해주세요.',
-        confirmText: '확인',
+        title: 'Input Error',
+        message: 'Please fill in the required fields.',
+        confirmText: 'OK',
         showCancelButton: false
       });
       return;
@@ -405,9 +407,9 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
     // 서버 사이드 검증 결과 최종 확인
     if (validationResult && !validationResult.isValid) {
       await confirm({
-        title: '수식 문법 오류',
-        message: '수식에 오류가 있습니다. 3단계 또는 4단계에서 오류 내역을 확인하고 수정해 주세요.',
-        confirmText: '확인',
+        title: 'Formula Syntax Error',
+        message: 'The formula has errors. Please check and fix the errors in step 3 or 4.',
+        confirmText: 'OK',
         showCancelButton: false
       });
       return;
@@ -437,7 +439,7 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {mode === 'create' ? '새 가상포인트 생성' : '가상포인트 편집'}
+              {mode === 'create' ? 'Create New Virtual Point' : 'Edit Virtual Point'}
               {!!virtualPoint?.is_deleted && (
                 <span className="badge danger" style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '12px' }}>
                   <i className="fas fa-trash-alt"></i> 삭제됨

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Button, Tag, Pagination, Space } from 'antd';
 import exportGatewayApi, { Gateway, Assignment, ExportTarget, ExportProfile, ExportSchedule } from '../../../api/services/exportGatewayApi';
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
@@ -39,6 +40,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
     schedules
 }) => {
     const [actionLoading, setActionLoading] = useState<number | null>(null);
+    const { t } = useTranslation(['dataExport', 'common']);
     const [selectedGateway, setSelectedGateway] = useState<Gateway | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
@@ -56,9 +58,9 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
     const handleDelete = async (gw: Gateway) => {
         const confirmed = await confirm({
-            title: '게이트웨이 삭제',
-            message: `"${gw.name}" 게이트웨이를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
-            confirmText: '삭제',
+            title: 'Delete Gateway',
+            message: `Delete gateway "${gw.name}"?\nThis cannot be undone.`,
+            confirmText: 'Delete',
             confirmButtonType: 'danger'
         });
         if (!confirmed) return;
@@ -68,8 +70,8 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             onRefresh();
         } catch (e: any) {
             await confirm({
-                title: '삭제 실패',
-                message: e.message || '삭제 중 오류가 발생했습니다.',
+                title: 'Delete Failed',
+                message: e.message || 'Error occurred while deleting.',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -78,9 +80,9 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
     const onStart = async (gw: Gateway) => {
         const confirmed = await confirm({
-            title: '게이트웨이 시작 확인',
-            message: `"${gw.name}" 게이트웨이 프로세스를 시작하시겠습니까?`,
-            confirmText: '시작',
+            title: 'Confirm Gateway Start',
+            message: `Start gateway process "${gw.name}"?`,
+            confirmText: 'Start',
             confirmButtonType: 'primary'
         });
         if (!confirmed) return;
@@ -89,15 +91,15 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             const res = await exportGatewayApi.startGatewayProcess(gw.id, siteId);
             if (res.success) {
                 await confirm({
-                    title: '시작 완료',
-                    message: '게이트웨이 프로세스가 성공적으로 시작되었습니다.',
+                    title: 'Start Complete',
+                    message: 'Gateway process started successfully.',
                     showCancelButton: false,
-                    confirmText: '확인'
+                    confirmText: 'OK'
                 });
             } else {
                 await confirm({
-                    title: '시작 실패',
-                    message: res.message || '프로세스 시작에 실패했습니다.',
+                    title: 'Start Failed',
+                    message: res.message || 'Failed to start process.',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -105,8 +107,8 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             onRefresh();
         } catch (e) {
             await confirm({
-                title: '시작 에러',
-                message: 'API 호출 중 오류가 발생했습니다.',
+                title: 'Start Error',
+                message: 'Error calling API.',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -115,9 +117,9 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
     const onStop = async (gw: Gateway) => {
         const confirmed = await confirm({
-            title: '게이트웨이 중지 확인',
-            message: `"${gw.name}" 게이트웨이 프로세스를 중지하시겠습니까?`,
-            confirmText: '중지',
+            title: 'Confirm Gateway Stop',
+            message: `Stop gateway process "${gw.name}"?`,
+            confirmText: 'Stop',
             confirmButtonType: 'danger'
         });
         if (!confirmed) return;
@@ -126,15 +128,15 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             const res = await exportGatewayApi.stopGatewayProcess(gw.id, siteId);
             if (res.success) {
                 await confirm({
-                    title: '중지 완료',
-                    message: '게이트웨이 프로세스를 중지했습니다.',
+                    title: 'Stop Complete',
+                    message: 'Gateway process stopped.',
                     showCancelButton: false,
-                    confirmText: '확인'
+                    confirmText: 'OK'
                 });
             } else {
                 await confirm({
-                    title: '중지 실패',
-                    message: res.message || '프로세스 중지에 실패했습니다.',
+                    title: 'Stop Failed',
+                    message: res.message || 'Failed to stop the process.',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -142,8 +144,8 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             onRefresh();
         } catch (e) {
             await confirm({
-                title: '중지 에러',
-                message: 'API 호출 중 오류가 발생했습니다.',
+                title: 'Stop Error',
+                message: 'Error calling API.',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -152,9 +154,9 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
     const onRestart = async (gw: Gateway) => {
         const confirmed = await confirm({
-            title: '게이트웨이 재시작 확인',
-            message: `"${gw.name}" 게이트웨이 프로세스를 재시작하시겠습니까?`,
-            confirmText: '재시작',
+            title: 'Confirm Gateway Restart',
+            message: `Restart gateway process "${gw.name}"?`,
+            confirmText: 'Restart',
             confirmButtonType: 'warning'
         });
         if (!confirmed) return;
@@ -163,15 +165,15 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             const res = await exportGatewayApi.restartGatewayProcess(gw.id, siteId);
             if (res.success) {
                 await confirm({
-                    title: '재시작 완료',
-                    message: '게이트웨이 프로세스를 재시작했습니다.',
+                    title: 'Restart Complete',
+                    message: 'Gateway process restarted.',
                     showCancelButton: false,
-                    confirmText: '확인'
+                    confirmText: 'OK'
                 });
             } else {
                 await confirm({
-                    title: '재시작 실패',
-                    message: res.message || '프로세스 재시작에 실패했습니다.',
+                    title: 'Restart Failed',
+                    message: res.message || 'Failed to restart the process.',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -179,8 +181,8 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             onRefresh();
         } catch (e) {
             await confirm({
-                title: '재시작 에러',
-                message: 'API 호출 중 오류가 발생했습니다.',
+                title: 'Restart Error',
+                message: 'Error calling API.',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -189,9 +191,9 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
     const onDeploy = async (gw: Gateway) => {
         const confirmed = await confirm({
-            title: '배포 확인',
-            message: `"${gw.name}" 게이트웨이의 설정을 실제 서버에 배포하시겠습니까?`,
-            confirmText: '배포 시작',
+            title: 'Confirm Deploy',
+            message: `Deploy configuration for gateway "${gw.name}" to the server?`,
+            confirmText: 'Start Deploy',
             confirmButtonType: 'primary'
         });
         if (!confirmed) return;
@@ -201,24 +203,24 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             const res = await exportGatewayApi.deployConfig(gw.id, siteId);
             if (res.success) {
                 await confirm({
-                    title: '배포 성공',
-                    message: '최신 설정이 게이트웨이에 성공적으로 적용되었습니다.',
+                    title: 'Deploy Success',
+                    message: 'Latest settings applied to the gateway successfully.',
                     showCancelButton: false,
                     confirmButtonType: 'success'
                 });
                 onRefresh();
             } else {
                 await confirm({
-                    title: '배포 실패',
-                    message: res.message || '설정 적용에 실패했습니다.',
+                    title: 'Deploy Failed',
+                    message: res.message || 'Failed to apply settings.',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
             }
         } catch (e) {
             await confirm({
-                title: '에러 발생',
-                message: 'API 호출 중 오류가 발생했습니다.',
+                title: 'Error Occurred',
+                message: 'Error calling API.',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -233,15 +235,15 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
         <div style={{ flex: 1, overflow: 'auto' }}>
             <div className="gateway-list">
                 <div className="mgmt-header-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-                    <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>등록된 게이트웨이</h3>
+                    <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>{t('labels.registeredGateways', { ns: 'dataExport' })}</h3>
                     <button className="btn btn-outline btn-sm" onClick={() => onRefresh()}>
-                        <i className="fas fa-sync-alt" /> 새로고침
+                        <i className="fas fa-sync-alt" /> Refresh
                     </button>
                 </div>
                 {gateways.length === 0 ? (
                     <div className="empty-state" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--neutral-400)' }}>
                         <i className="fas fa-server fa-3x" style={{ marginBottom: '16px', opacity: 0.3 }} />
-                        <p>등록된 게이트웨이가 없습니다.</p>
+                        <p>{t('labels.noRegisteredGateways', { ns: 'dataExport' })}</p>
                     </div>
                 ) : (
                     <div className="mgmt-grid">
@@ -259,7 +261,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDelete(gw); }}
                                                     style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: '0 4px' }}
-                                                    title="삭제"
+                                                    title="Delete"
                                                 >
                                                     <i className="fas fa-trash-alt hover-danger" />
                                                 </button>
@@ -282,22 +284,22 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                 <div className="mgmt-card-body" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                                     <div className="info-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: 'var(--neutral-500)' }}>IP Address:</span>
+                                            <span style={{ color: 'var(--neutral-500)' }}>{t('labels.ipAddress', { ns: 'dataExport' })}</span>
                                             <span style={{ fontWeight: 500, fontFamily: 'monospace' }}>{gw.ip_address}</span>
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: 'var(--neutral-500)' }}>Last Seen:</span>
+                                            <span style={{ color: 'var(--neutral-500)' }}>{t('labels.lastSeen', { ns: 'dataExport' })}</span>
                                             <span>{gw.last_seen ? new Date(gw.last_seen).toLocaleString() : '-'}</span>
                                         </div>
                                         {gw.live_status && (
                                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span style={{ color: 'var(--neutral-500)' }}>Memory:</span>
+                                                <span style={{ color: 'var(--neutral-500)' }}>{t('labels.memory', { ns: 'dataExport' })}</span>
                                                 <span>{gw.live_status.memory_usage} MB</span>
                                             </div>
                                         )}
                                         <div style={{ marginTop: '8px', padding: '8px', background: 'var(--neutral-50)', borderRadius: '4px' }}>
                                             <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>프로세스 상태</span>
+                                                <span>{t('labels.processStatus', { ns: 'dataExport' })}</span>
                                                 <span style={{ fontWeight: 600, color: (gw.processes && gw.processes.length > 0) || gw.status === 'active' ? 'var(--success-600)' : 'var(--error-600)' }}>
                                                     {(gw.processes && gw.processes.length > 0) || gw.status === 'active' ? 'RUNNING' : 'STOPPED'}
                                                 </span>
@@ -315,7 +317,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                                         onClick={() => handleAction(gw.id, onStart)}
                                                         disabled={actionLoading === gw.id}
                                                     >
-                                                        {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-play" style={{ fontSize: '10px' }} />} 시작
+                                                        {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-play" style={{ fontSize: '10px' }} />} Start
                                                     </button>
                                                 ) : (
                                                     <>
@@ -325,7 +327,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                                             onClick={() => handleAction(gw.id, onStop)}
                                                             disabled={actionLoading === gw.id}
                                                         >
-                                                            {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-stop" style={{ fontSize: '10px' }} />} 중지
+                                                            {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-stop" style={{ fontSize: '10px' }} />} Stop
                                                         </button>
                                                         <button
                                                             className="btn btn-outline btn-xs"
@@ -333,7 +335,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                                             onClick={() => handleAction(gw.id, onRestart)}
                                                             disabled={actionLoading === gw.id}
                                                         >
-                                                            {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-redo" style={{ fontSize: '10px' }} />} 재시작
+                                                            {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-redo" style={{ fontSize: '10px' }} />} Restart
                                                         </button>
                                                     </>
                                                 )}
@@ -342,12 +344,12 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                     </div>
 
                                     <div className="assigned-profiles" style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--neutral-100)', flex: 1 }}>
-                                        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--neutral-400)', textTransform: 'uppercase', marginBottom: '8px' }}>포함된 프로파일</div>
+                                        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--neutral-400)', textTransform: 'uppercase', marginBottom: '8px' }}>{t('labels.includedProfiles', { ns: 'dataExport' })}</div>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                                             {(() => {
                                                 const myAssignments = (assignments[gw.id] || []).sort((a, b) => (b.id || 0) - (a.id || 0));
                                                 if (myAssignments.length === 0) {
-                                                    return <span style={{ fontSize: '12px', color: 'var(--neutral-400)', fontStyle: 'italic' }}>할당된 프로파일 없음</span>;
+                                                    return <span style={{ fontSize: '12px', color: 'var(--neutral-400)', fontStyle: 'italic' }}>{t('labels.noAssignedProfiles', { ns: 'dataExport' })}</span>;
                                                 }
                                                 // Only show latest
                                                 return <span key={myAssignments[0].id} className="badge neutral-light" style={{ fontSize: '11px' }}>{myAssignments[0].name}</span>;
@@ -358,10 +360,10 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
                                 <div className="mgmt-card-footer" style={{ borderTop: '1px solid var(--neutral-100)', paddingTop: '12px', marginTop: 'auto', display: 'flex', gap: '8px' }}>
                                     <button className="btn btn-outline btn-sm" onClick={() => { setSelectedGateway(gw); setIsDetailModalOpen(true); }} style={{ flex: 1 }}>
-                                        <i className="fas fa-search-plus" /> 상세
+                                        <i className="fas fa-search-plus" /> Details
                                     </button>
                                     <button className="btn btn-primary btn-sm" onClick={() => onDeploy(gw)} style={{ flex: 1 }} disabled={gw.live_status?.status !== 'online' && gw.live_status?.status !== 'running' && gw.status !== 'active'}>
-                                        <i className="fas fa-rocket" /> 배포
+                                        <i className="fas fa-rocket" /> Deploy
                                     </button>
                                 </div>
                             </div>
@@ -410,6 +412,7 @@ const GatewayDetailModal: React.FC<{
     onDelete: (gateway: Gateway) => void;
 }> = ({ visible, onClose, siteId, gateway, allAssignments, targets, allProfiles, schedules, onEdit, onDelete }) => {
     if (!gateway) return null;
+    const { t } = useTranslation(['dataExport', 'common']);
 
     // Derived info with fallback for names (PICK LATEST ONLY)
     const assignments = gateway ? (allAssignments[gateway.id] || []) : [];
@@ -440,10 +443,10 @@ const GatewayDetailModal: React.FC<{
                         onClick={() => { onClose(); onEdit(gateway); }}
                         style={{ border: '1px solid #e2e8f0' }}
                     >
-                        <i className="fas fa-magic" style={{ marginRight: '6px', color: 'var(--primary-600)' }} /> 설정 수정
+                        <i className="fas fa-magic" style={{ marginRight: '6px', color: 'var(--primary-600)' }} /> Edit Settings
                     </button>
                     <button className="btn btn-primary" onClick={onClose} style={{ minWidth: '80px' }}>
-                        닫기
+                        Close
                     </button>
                 </div>
             }
@@ -485,30 +488,30 @@ const GatewayDetailModal: React.FC<{
                     {/* Summary Board */}
                     <div style={{ background: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', marginBottom: '32px' }}>
                         <div style={{ fontSize: '13px', fontWeight: 800, color: '#475569', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            <i className="fas fa-project-diagram" style={{ color: 'var(--primary-500)' }} /> 데이터 파이프라인 구성 요약
+                            <i className="fas fa-project-diagram" style={{ color: 'var(--primary-500)' }} /> Data Pipeline Configuration Summary
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto 1fr', alignItems: 'center', gap: '20px' }}>
                             <div style={{ padding: '20px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #f1f5f9', textAlign: 'center' }}>
-                                <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>DATA SOURCE</div>
+                                <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>{t('labels.dataSource', { ns: 'dataExport' })}</div>
                                 <div style={{ fontSize: '14px', fontWeight: 800, color: '#1e293b' }}>
                                     {assignedProfiles.length > 0 ? (
                                         <>
                                             <div style={{ color: 'var(--primary-600)' }}>{assignedProfiles[0].name}</div>
                                             <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>({assignedProfiles[0].data_points?.length || 0} Points)</div>
                                         </>
-                                    ) : '미지정'}
+                                    ) : 'Unassigned'}
                                 </div>
                             </div>
                             <i className="fas fa-long-arrow-alt-right" style={{ color: '#cbd5e1', fontSize: '18px' }} />
                             <div style={{ padding: '20px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #f1f5f9', textAlign: 'center' }}>
-                                <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>EXPORT TARGET</div>
-                                <div style={{ fontSize: '15px', fontWeight: 800, color: '#1e293b' }}>{linkedTargets.length > 0 ? `${linkedTargets.length}개 엔드포인트` : '-'}</div>
+                                <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>{t('labels.exportTarget', { ns: 'dataExport' })}</div>
+                                <div style={{ fontSize: '15px', fontWeight: 800, color: '#1e293b' }}>{linkedTargets.length > 0 ? `${linkedTargets.length} Endpoints` : '-'}</div>
                             </div>
                             <i className="fas fa-long-arrow-alt-right" style={{ color: '#cbd5e1', fontSize: '18px' }} />
                             <div style={{ padding: '20px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #f1f5f9', textAlign: 'center' }}>
-                                <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>EXPORT MODE</div>
+                                <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>{t('labels.exportMode', { ns: 'dataExport' })}</div>
                                 <div style={{ fontSize: '15px', fontWeight: 800, color: '#1e293b' }}>
-                                    {linkedSchedules.length > 0 ? '정기 전송' : '설정 필요'}
+                                    {linkedSchedules.length > 0 ? 'Scheduled' : 'Setup Required'}
                                 </div>
                             </div>
                         </div>

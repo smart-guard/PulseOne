@@ -84,8 +84,8 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
         // 1. Validation: Ensure at least one point is mapped
         if (!editingProfile?.data_points || editingProfile.data_points.length === 0) {
             await confirm({
-                title: '포인트 부족',
-                message: '최소 하나 이상의 데이터 포인트를 매핑해야 합니다.',
+                title: 'Insufficient Points',
+                message: 'You must map at least one data point.',
                 showCancelButton: false,
                 confirmButtonType: 'warning'
             });
@@ -95,8 +95,8 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
         // 2. Check for modifications
         if (!hasChanges && editingProfile.id) {
             await confirm({
-                title: '수정사항 없음',
-                message: '수정된 정보가 없습니다.',
+                title: 'No Changes',
+                message: 'No information has been modified.',
                 showCancelButton: false,
                 confirmButtonType: 'primary'
             });
@@ -106,10 +106,10 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
 
         // 3. Final Confirmation
         const confirmed = await confirm({
-            title: '저장 확인',
-            message: editingProfile.id ? '프로파일 변경 사항을 저장하시겠습니까?' : '새 프로파일을 생성하시겠습니까?',
-            confirmText: '저장',
-            cancelText: '취소',
+            title: 'Confirm Save',
+            message: editingProfile.id ? 'Save profile changes?' : 'Create a new profile?',
+            confirmText: 'Save',
+            cancelText: 'Cancel',
             confirmButtonType: 'primary'
         });
         if (!confirmed) return;
@@ -134,8 +134,8 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
 
             if (response.success) {
                 await confirm({
-                    title: '저장 완료',
-                    message: '프로파일이 성공적으로 저장되었습니다.',
+                    title: 'Save Complete',
+                    message: 'Profile saved successfully.',
                     showCancelButton: false,
                     confirmButtonType: 'success'
                 });
@@ -144,16 +144,16 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                 fetchProfiles();
             } else {
                 await confirm({
-                    title: '저장 실패',
-                    message: response.message || '프로파일을 저장하는 중 오류가 발생했습니다.',
+                    title: 'Save Failed',
+                    message: response.message || 'Error occurred while saving profile.',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
             }
         } catch (error) {
             await confirm({
-                title: '저장 실패',
-                message: '프로파일을 저장하는 중 오류가 발생했습니다.',
+                title: 'Save Failed',
+                message: 'Error occurred while saving profile.',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -163,10 +163,10 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
     const handleCloseModal = async () => {
         if (hasChanges) {
             const confirmed = await confirm({
-                title: '변경사항 유실 주의',
-                message: '수정 중인 내용이 있습니다. 저장하지 않고 닫으시면 모든 데이터가 사라집니다. 정말 닫으시겠습니까?',
-                confirmText: '닫기',
-                cancelText: '취소',
+                title: 'Unsaved Changes Warning',
+                message: 'You have unsaved changes. Closing without saving will discard all data. Are you sure?',
+                confirmText: 'Close',
+                cancelText: 'Cancel',
                 confirmButtonType: 'warning'
             });
             if (!confirmed) return;
@@ -177,9 +177,9 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
 
     const handleDelete = async (id: number) => {
         const confirmed = await confirm({
-            title: '프로파일 삭제 확인',
-            message: '이 프로파일을 삭제하시겠습니까? 관련된 게이트웨이 할당 정보도 모두 삭제됩니다.',
-            confirmText: '삭제',
+            title: 'Confirm Profile Delete',
+            message: 'Delete this profile? All related gateway assignment data will also be deleted.',
+            confirmText: 'Delete',
             confirmButtonType: 'danger'
         });
 
@@ -188,7 +188,7 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
             await exportGatewayApi.deleteProfile(id);
             fetchProfiles();
         } catch (error) {
-            await confirm({ title: '삭제 실패', message: '프로파일을 삭제하는 중 오류가 발생했습니다.', showCancelButton: false, confirmButtonType: 'danger' });
+            await confirm({ title: 'Delete Failed', message: 'Error occurred while deleting the profile.', showCancelButton: false, confirmButtonType: 'danger' });
         }
     };
 
@@ -300,9 +300,9 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
     return (
         <div>
             <div className="mgmt-header-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>내보내기 프로파일</h3>
+                <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>Export Profile</h3>
                 <button className="btn btn-primary btn-sm" onClick={() => { setEditingProfile({ name: '', description: '', data_points: [], is_enabled: true }); setIsModalOpen(true); }}>
-                    <i className="fas fa-plus" /> 프로파일 생성
+                    <i className="fas fa-plus" /> Create Profile
                 </button>
             </div>
 
@@ -310,10 +310,10 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                 <table className="mgmt-table">
                     <thead>
                         <tr>
-                            <th>이름</th>
-                            <th>설명</th>
-                            <th>포인트 수</th>
-                            <th>관리</th>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>Points</th>
+                            <th>Manage</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -323,13 +323,13 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                 <td>{p.description}</td>
                                 <td>
                                     <span className="badge neutral">
-                                        {Array.isArray(p.data_points) ? p.data_points.length : 0}개
+                                        {Array.isArray(p.data_points) ? p.data_points.length : 0} pts
                                     </span>
                                 </td>
                                 <td>
                                     <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button className="btn btn-outline btn-xs" onClick={() => handleEditProfile(p)}>수정</button>
-                                        <button className="btn btn-outline btn-xs btn-danger" onClick={() => handleDelete(p.id)}>삭제</button>
+                                        <button className="btn btn-outline btn-xs" onClick={() => handleEditProfile(p)}>Edit</button>
+                                        <button className="btn btn-outline btn-xs btn-danger" onClick={() => handleDelete(p.id)}>Delete</button>
                                     </div>
                                 </td>
                             </tr>
@@ -457,7 +457,7 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                             <div className="ultra-wide-header">
                                 <h3 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>
                                     <i className={`fas ${editingProfile?.id ? 'fa-edit' : 'fa-plus-circle'} `} style={{ marginRight: '12px', color: 'var(--primary-600)' }} />
-                                    {editingProfile?.id ? "프로파일 수정" : "신규 프로파일 생성"}
+                                    {editingProfile?.id ? "Edit Profile" : "New Profile"}
                                 </h3>
                                 <button type="button" className="mgmt-modal-close" onClick={handleCloseModal} style={{ fontSize: '28px', color: '#94a3b8' }}>&times;</button>
                             </div>
@@ -465,31 +465,31 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                             {/* Top Setup Bar (Horizontal) */}
                             <div style={{ background: 'white', padding: '20px 32px', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '40px', alignItems: 'flex-start' }}>
                                 <div style={{ flex: '0 0 400px' }}>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>프로파일 명칭</label>
+                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>Profile Name</label>
                                     <input
                                         type="text"
                                         className="mgmt-input"
                                         required
                                         value={editingProfile?.name || ''}
                                         onChange={e => { setEditingProfile({ ...editingProfile, name: e.target.value }); setHasChanges(true); }}
-                                        placeholder="예: 공장 데이터 전송 프로파일"
+                                        placeholder="e.g. Factory Data Transfer Profile"
                                         style={{ height: '42px', fontSize: '15px' }}
                                     />
                                 </div>
                                 <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>상세 설명</label>
+                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>Description</label>
                                     <input
                                         type="text"
                                         className="mgmt-input"
                                         value={editingProfile?.description || ''}
                                         onChange={e => { setEditingProfile({ ...editingProfile, description: e.target.value }); setHasChanges(true); }}
-                                        placeholder="이 프로파일의 용도를 간단히 적어주세요"
+                                        placeholder="Briefly describe this profile's purpose"
                                         style={{ height: '42px', fontSize: '15px' }}
                                     />
                                 </div>
                                 {isAdmin && !tenantId && (
                                     <div style={{ flex: '0 0 250px' }}>
-                                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>소속 테넌트 <span style={{ color: 'red' }}>*</span></label>
+                                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>Tenant <span style={{ color: 'red' }}>*</span></label>
                                         <select
                                             className="mgmt-select"
                                             required
@@ -497,7 +497,7 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                             onChange={e => { setEditingProfile({ ...editingProfile, tenant_id: parseInt(e.target.value) }); setHasChanges(true); }}
                                             style={{ width: '100%', height: '42px', fontSize: '15px', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}
                                         >
-                                            <option value="">(테넌트 선택)</option>
+                                            <option value="">(Select Tenant)</option>
                                             {tenants.map(t => (
                                                 <option key={t.id} value={t.id}>{t.company_name}</option>
                                             ))}
@@ -511,7 +511,7 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                 <div className="side-setup-panel">
                                     <div style={{ padding: '20px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                         <i className="fas fa-search-plus" style={{ color: 'var(--primary-600)' }} />
-                                        <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>포인트 탐색</h4>
+                                        <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Point Explorer</h4>
                                     </div>
                                     <div style={{ flex: 1, overflow: 'hidden' }}>
                                         <DataPointSelector
@@ -528,12 +528,12 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                 <div className="center-mapping-panel">
                                     <div style={{ padding: '24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <div>
-                                            <h4 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>데이터 매핑 및 외부 필드명 설정</h4>
-                                            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>추가된 포인트가 외부 시스템에서 어떤 이름으로 표시될지 정의하세요.</p>
+                                            <h4 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>Data Mapping & External Field Names</h4>
+                                            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Define how added points will appear in external systems.</p>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', padding: '12px 20px', background: '#f0f9ff', borderRadius: '12px', border: '1.5px solid #bae6fd' }}>
                                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                <span style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', marginBottom: '2px', textTransform: 'uppercase' }}>Site ID 일괄 적용</span>
+                                                <span style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', marginBottom: '2px', textTransform: 'uppercase' }}>Site ID 일괄 Apply</span>
                                                 <input
                                                     type="number"
                                                     className="mgmt-input sm bulk-site-input"
@@ -552,7 +552,7 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                                 onClick={handleBulkSiteIdApply}
                                                 style={{ height: '36px', fontSize: '13px', fontWeight: 700, padding: '0 20px' }}
                                             >
-                                                적용
+                                                Apply
                                             </button>
                                         </div>
                                     </div>
@@ -560,12 +560,12 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                         <table className="mgmt-table">
                                             <thead>
                                                 <tr>
-                                                    <th style={{ width: '22%' }}>내부 포인트명</th>
-                                                    <th style={{ width: '38%' }}>매핑 명칭 (TARGET KEY)</th>
+                                                    <th style={{ width: '22%' }}>Internal Point Name</th>
+                                                    <th style={{ width: '38%' }}>Mapping Name (TARGET KEY)</th>
                                                     <th style={{ width: '100px', textAlign: 'center' }}>SITE ID</th>
                                                     <th style={{ width: '90px', textAlign: 'center' }}>SCALE</th>
                                                     <th style={{ width: '90px', textAlign: 'center' }}>OFFSET</th>
-                                                    <th style={{ width: '60px', textAlign: 'center' }}>삭제</th>
+                                                    <th style={{ width: '60px', textAlign: 'center' }}>Delete</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -581,7 +581,7 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                                                 className="mgmt-input"
                                                                 value={p.target_field_name || ''}
                                                                 onChange={e => handleMappingNameChange(p.id, e.target.value)}
-                                                                placeholder="예: TEMPERATURE_SENSOR_1"
+                                                                placeholder="e.g. TEMPERATURE_SENSOR_1"
                                                                 style={{ height: '38px', fontSize: '13px' }}
                                                             />
                                                         </td>
@@ -644,14 +644,14 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                         <section>
                                             <div style={{ fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 <span style={{ background: 'var(--primary-100)', color: 'var(--primary-700)', width: '22px', height: '22px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>1</span>
-                                                프로파일 정의
+                                                Profile Definition
                                             </div>
-                                            <p style={{ margin: '8px 0 0 30px', color: '#64748b' }}>데이터 수집의 **템플릿** 역할을 수행합니다. 내부 관리용 명칭을 입력하세요.</p>
+                                            <p style={{ margin: '8px 0 0 30px', color: '#64748b' }}>Serves as a **template** for data collection. Enter an internal management name.</p>
                                         </section>
                                         <section>
                                             <div style={{ fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 <span style={{ background: 'var(--primary-100)', color: 'var(--primary-700)', width: '22px', height: '22px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>2</span>
-                                                포인트 탐색
+                                                Point Explorer
                                             </div>
                                             <p style={{ margin: '8px 0 0 30px', color: '#64748b' }}>왼쪽 패널에서 필요한 포인트를 선택하여 우측 매핑 리스트에 추가하세요.</p>
                                         </section>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { DeviceTemplate, Manufacturer, Protocol } from '../../../types/manufacturing';
 import { useConfirmContext } from '../../common/ConfirmProvider';
 
@@ -25,38 +26,39 @@ const BasicInfoStep: React.FC<BasicInfoStepProps> = ({
     protocols,
     handleProtocolChange
 }) => {
+    const { t } = useTranslation(['deviceTemplates', 'common']);
     const { confirm } = useConfirmContext();
 
     return (
         <div className="mgmt-modal-form-grid">
             <div className="mgmt-modal-form-group mgmt-span-full">
-                <label>마스터 모델 이름 *</label>
+                <label>Master Model Name *</label>
                 <input
                     className="mgmt-input"
                     value={formData.name || ''}
                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="예: ACS880 Standard Template"
+                    placeholder="e.g. ACS880 Standard Template"
                 />
             </div>
             <div className="mgmt-modal-form-group">
-                <label>제조사 *</label>
+                <label>Manufacturer *</label>
                 <select
                     className="mgmt-select"
                     value={formData.manufacturer_id || ''}
                     onChange={e => setFormData({ ...formData, manufacturer_id: Number(e.target.value) })}
                 >
-                    <option value="">제조사 선택</option>
+                    <option value="">{t('labels.selectManufacturer', {ns: 'deviceTemplates'})}</option>
                     {manufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
             </div>
             <div className="mgmt-modal-form-group">
-                <label>모델명 *</label>
+                <label>Model Name *</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                     <input
                         className="mgmt-input"
                         value={modelName}
                         onChange={e => setModelName(e.target.value)}
-                        placeholder="예: ACS880"
+                        placeholder="e.g. ACS880"
                         style={{ flex: 1 }}
                     />
                     <button
@@ -64,8 +66,8 @@ const BasicInfoStep: React.FC<BasicInfoStepProps> = ({
                         onClick={() => {
                             if (!modelName) {
                                 confirm({
-                                    title: '모델명 입력 필요',
-                                    message: '모델명을 입력 후 검색해주세요.',
+                                    title: 'Model Name Required',
+                                    message: 'Please enter a model name before searching.',
                                     confirmButtonType: 'warning',
                                     showCancelButton: false
                                 });
@@ -75,20 +77,20 @@ const BasicInfoStep: React.FC<BasicInfoStepProps> = ({
                             const query = `${mName || ''} ${modelName} manual`.trim();
                             window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank');
                         }}
-                        title="구글에서 매뉴얼 검색"
+                        title="Search for manual on Google"
                         style={{ whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px', width: 'auto', flex: 'none' }}
                     >
-                        <i className="fab fa-google"></i> 검색
+                        <i className="fab fa-google"></i> Search
                     </button>
                 </div>
             </div>
             <div className="mgmt-modal-form-group">
-                <label>모델 번호</label>
+                <label>{t('labels.modelNumber', {ns: 'deviceTemplates'})}</label>
                 <input
                     className="mgmt-input"
                     value={formData.model_number || ''}
                     onChange={e => setFormData({ ...formData, model_number: e.target.value })}
-                    placeholder="예: ACS880-01-045A-4"
+                    placeholder="e.g. ACS880-01-045A-4"
                 />
             </div>
             <div className="mgmt-modal-form-group mgmt-span-full">
@@ -97,7 +99,7 @@ const BasicInfoStep: React.FC<BasicInfoStepProps> = ({
                     className="mgmt-input"
                     value={manualUrl}
                     onChange={e => setManualUrl(e.target.value)}
-                    placeholder="검색된 매뉴얼의 URL을 복사하여 입력하세요 (예: https://...)"
+                    placeholder="Search된 매뉴얼의 URL을 복사하여 입력하세요 (예: https://...)"
                 />
             </div>
             <div className="mgmt-modal-form-group">
@@ -107,11 +109,11 @@ const BasicInfoStep: React.FC<BasicInfoStepProps> = ({
                     value={formData.device_type || 'PLC'}
                     onChange={e => setFormData({ ...formData, device_type: e.target.value })}
                 >
-                    <option value="PLC">PLC</option>
-                    <option value="INVERTER">INVERTER</option>
-                    <option value="SENSOR">SENSOR</option>
-                    <option value="METER">METER</option>
-                    <option value="GATEWAY">GATEWAY</option>
+                    <option value="PLC">{t('labels.plc', {ns: 'deviceTemplates'})}</option>
+                    <option value="INVERTER">{t('labels.inverter', {ns: 'deviceTemplates'})}</option>
+                    <option value="SENSOR">{t('labels.sensor', {ns: 'deviceTemplates'})}</option>
+                    <option value="METER">{t('labels.meter', {ns: 'deviceTemplates'})}</option>
+                    <option value="GATEWAY">{t('labels.gateway', {ns: 'deviceTemplates'})}</option>
                 </select>
             </div>
             <div className="mgmt-modal-form-group">

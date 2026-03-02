@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pagination } from '../components/common/Pagination';
 import { PageHeader } from '../components/common/PageHeader';
 import { StatCard } from '../components/common/StatCard';
@@ -26,6 +27,7 @@ import '../styles/management.css';
 
 const VirtualPoints: React.FC = () => {
   const { confirm } = useConfirmContext();
+    const { t } = useTranslation(['virtualPoints', 'common']);
   const scriptEngine = useScriptEngine({ autoLoadFunctions: false });
 
   // 데이터 상태
@@ -79,7 +81,7 @@ const VirtualPoints: React.FC = () => {
       setVirtualPoints(processedData);
       setSelectedIds([]); // 데이터 로드 시 선택 초기화
     } catch (err) {
-      setError(err instanceof Error ? err.message : '데이터 로딩 실패');
+      setError(err instanceof Error ? err.message : 'Data loading failed');
     } finally {
       setLoading(false);
     }
@@ -111,7 +113,7 @@ const VirtualPoints: React.FC = () => {
       });
       await loadVirtualPoints();
       setShowCreateModal(false);
-    } catch (err) { setError(err instanceof Error ? err.message : '생성 실패'); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Create failed'); }
     finally { setSaving(false); }
   };
 
@@ -126,7 +128,7 @@ const VirtualPoints: React.FC = () => {
       });
       await loadVirtualPoints();
       setShowEditModal(false);
-    } catch (err) { setError(err instanceof Error ? err.message : '수정 실패'); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Update failed'); }
     finally { setSaving(false); }
   };
 
@@ -140,12 +142,12 @@ const VirtualPoints: React.FC = () => {
 
       // 성공 피드백 추가
       await confirm({
-        title: '삭제 완료',
-        message: '가상포인트가 성공적으로 삭제되었습니다.',
-        confirmText: '확인',
+        title: 'Delete Complete',
+        message: 'Virtual point deleted successfully.',
+        confirmText: 'OK',
         showCancelButton: false
       });
-    } catch (err) { setError(err instanceof Error ? err.message : '삭제 실패'); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Delete failed'); }
     finally { setSaving(false); }
   };
 
@@ -158,7 +160,7 @@ const VirtualPoints: React.FC = () => {
         // Update selected point if it was restored while open
         setSelectedPoint({ ...selectedPoint, is_deleted: false });
       }
-    } catch (err) { setError(err instanceof Error ? err.message : '복원 실패'); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Restore failed'); }
     finally { setSaving(false); }
   };
 
@@ -171,12 +173,12 @@ const VirtualPoints: React.FC = () => {
 
       // 성공 피드백 추가
       await confirm({
-        title: '상태 변경 완료',
-        message: `가상포인트가 ${!point.is_enabled ? '활성화' : '비활성화'} 되었습니다.`,
-        confirmText: '확인',
+        title: 'Status Changed',
+        message: `Virtual point has been ${!point.is_enabled ? 'enabled' : 'disabled'}.`,
+        confirmText: 'OK',
         showCancelButton: false
       });
-    } catch (err) { setError('상태 변경 실패'); }
+    } catch (err) { setError('Status change failed'); }
   };
 
   const handleExecutePoint = async (pointId: number) => {
@@ -186,21 +188,21 @@ const VirtualPoints: React.FC = () => {
 
       // 성공 피드백 추가
       await confirm({
-        title: '실행 완료',
-        message: '가상포인트 연산이 성공적으로 실행되었습니다.',
-        confirmText: '확인',
+        title: 'Execution Complete',
+        message: 'Virtual point calculation executed successfully.',
+        confirmText: 'OK',
         showCancelButton: false
       });
-    } catch (err) { setError('실행 실패'); }
+    } catch (err) { setError('Execution failed'); }
   };
 
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
     const confirmed = await confirm({
-      title: '일괄 삭제 확인',
-      message: `선택한 ${selectedIds.length}개의 가상포인트를 삭제하시겠습니까?`,
-      confirmText: '삭제',
-      cancelText: '취소'
+      title: 'Confirm Bulk Delete',
+      message: `Delete ${selectedIds.length} selected virtual point(s)?`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel'
     });
 
     if (confirmed) {
@@ -209,8 +211,8 @@ const VirtualPoints: React.FC = () => {
         await Promise.all(selectedIds.map(id => virtualPointsApi.deleteVirtualPoint(id)));
         await loadVirtualPoints();
         setSelectedIds([]);
-        await confirm({ title: '완료', message: '선택한 항목이 삭제되었습니다.', confirmText: '확인', showCancelButton: false });
-      } catch (e) { setError('일괄 삭제 중 오류가 발생했습니다.'); }
+        await confirm({ title: 'Complete', message: 'Selected items have been deleted.', confirmText: 'OK', showCancelButton: false });
+      } catch (e) { setError('Error during bulk delete.'); }
       finally { setSaving(false); }
     }
   };
@@ -222,8 +224,8 @@ const VirtualPoints: React.FC = () => {
       await Promise.all(selectedIds.map(id => virtualPointsApi.updateVirtualPoint(id, { is_enabled: enable })));
       await loadVirtualPoints();
       setSelectedIds([]);
-      await confirm({ title: '완료', message: `선택한 항목이 ${enable ? '활성화' : '비활성화'} 되었습니다.`, confirmText: '확인', showCancelButton: false });
-    } catch (e) { setError('일괄 상태 변경 중 오류가 발생했습니다.'); }
+      await confirm({ title: 'Complete', message: `Selected items have been ${enable ? 'enabled' : 'disabled'}.`, confirmText: 'OK', showCancelButton: false });
+    } catch (e) { setError('Error during bulk status change.'); }
     finally { setSaving(false); }
   };
 
@@ -240,29 +242,29 @@ const VirtualPoints: React.FC = () => {
   return (
     <ManagementLayout>
       <PageHeader
-        title="가상포인트 관리"
-        description="실시간 데이터를 기반으로 계산되는 가상포인트를 관리합니다. 이름 클릭 시 상세 정보를 확인 수 있습니다."
+        title="Virtual Point Management"
+        description="Manage virtual points calculated from real-time data. Click a name to view details."
         icon="fas fa-function"
         actions={
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button className="btn btn-primary" onClick={openCreateModal}><i className="fas fa-plus"></i> 새 가상포인트</button>
+            <button className="btn btn-primary" onClick={openCreateModal}><i className="fas fa-plus"></i> New Virtual Point</button>
           </div>
         }
       />
 
       <div className="mgmt-stats-panel">
-        <StatCard label="전체 포인트" value={virtualPoints.length} type="neutral" icon="fas fa-layer-group" />
-        <StatCard label="활성 상태" value={virtualPoints.filter(p => p.is_enabled).length} type="success" icon="fas fa-check-circle" />
-        <StatCard label="계산 오류" value={virtualPoints.filter(p => p.calculation_status === 'error').length} type="error" icon="fas fa-exclamation-triangle" />
+        <StatCard label="Total Points" value={virtualPoints.length} type="neutral" icon="fas fa-layer-group" />
+        <StatCard label="Active" value={virtualPoints.filter(p => p.is_enabled).length} type="success" icon="fas fa-check-circle" />
+        <StatCard label="Calc Error" value={virtualPoints.filter(p => p.calculation_status === 'error').length} type="error" icon="fas fa-exclamation-triangle" />
       </div>
 
       <div className="mgmt-tabs-wrapper">
         <div className="tab-navigation">
           <button className={`tab-button ${activeTab === 'list' ? 'active' : ''}`} onClick={() => setActiveTab('list')}>
-            <i className="fas fa-list"></i> 가상 포인트 목록
+            <i className="fas fa-list"></i> Virtual Points List
           </button>
           <button className={`tab-button ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
-            <i className="fas fa-history"></i> 실행 이력
+            <i className="fas fa-history"></i> Execution History
           </button>
         </div>
       </div>
@@ -277,23 +279,23 @@ const VirtualPoints: React.FC = () => {
               activeFilterCount={(searchFilter ? 1 : 0) + (categoryFilter !== 'all' ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0) + (includeDeleted ? 1 : 0)}
               filters={[
                 {
-                  label: '카테고리',
+                  label: 'Category',
                   value: categoryFilter,
                   onChange: setCategoryFilter,
                   options: [
-                    { value: 'all', label: '전체' },
-                    { value: '온도', label: '온도' }, { value: '압력', label: '압력' },
-                    { value: '유량', label: '유량' }, { value: '전력', label: '전력' },
+                    { value: 'all', label: 'All' },
+                    { value: 'temperature', label: 'Temperature' }, { value: 'pressure', label: 'Pressure' },
+                    { value: 'flow', label: 'Flow Rate' }, { value: 'power', label: 'Power' },
                     { value: 'Custom', label: 'Custom' }
                   ]
                 },
                 {
-                  label: '상태',
+                  label: 'Status',
                   value: statusFilter,
                   onChange: setStatusFilter,
                   options: [
-                    { value: 'all', label: '전체' },
-                    { value: 'active', label: '활성' }, { value: 'error', label: '오류' }, { value: 'disabled', label: '비활성' }
+                    { value: 'all', label: 'All' },
+                    { value: 'active', label: 'Active' }, { value: 'error', label: 'Error' }, { value: 'disabled', label: 'Inactive' }
                   ]
                 }
               ]}
@@ -301,7 +303,7 @@ const VirtualPoints: React.FC = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginRight: '8px' }}>
                   <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', color: '#64748b', whiteSpace: 'nowrap' }}>
                     <input type="checkbox" checked={includeDeleted} onChange={(e) => setIncludeDeleted(e.target.checked)} />
-                    삭제된 항목 보기
+                    View Deleted
                   </label>
                   <div className="view-toggle" style={{ display: 'flex', flexShrink: 0 }}>
                     <button className={`btn-icon ${viewMode === 'card' ? 'active' : ''}`} onClick={() => setViewMode('card')}><i className="fas fa-th-large"></i></button>
@@ -311,14 +313,14 @@ const VirtualPoints: React.FC = () => {
               }
             />
 
-            {/* 일괄 작업 툴바 */}
+            {/* Bulk Actions 툴바 */}
             {selectedIds.length > 0 && (
               <div style={{
                 marginBottom: '12px', padding: '8px 16px', background: '#f0f9ff', border: '1px solid #bae6fd',
                 borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
               }}>
                 <span style={{ fontWeight: 600, color: '#0369a1', fontSize: '14px' }}>
-                  <i className="fas fa-check-circle mr-2"></i> {selectedIds.length}개 항목 선택됨
+                  <i className="fas fa-check-circle mr-2"></i> {selectedIds.length} item(s) selected
                 </span>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button onClick={() => handleBulkToggle(true)} style={{
@@ -351,7 +353,7 @@ const VirtualPoints: React.FC = () => {
 
             <div className="mgmt-content-area" style={{ flex: 1, overflow: 'auto', padding: '8px 4px' }}>
               {loading ? (
-                <div style={{ padding: '40px', textAlign: 'center' }}><i className="fas fa-spinner fa-spin"></i> 로딩 중...</div>
+                <div style={{ padding: '40px', textAlign: 'center' }}><i className="fas fa-spinner fa-spin"></i> Loading...</div>
               ) : viewMode === 'card' ? (
                 <div className="mgmt-grid">
                   {paginatedPoints.map(point => (
@@ -396,8 +398,8 @@ const VirtualPoints: React.FC = () => {
         ) : (
           <div className="empty-state-notice">
             <i className="fas fa-clock-rotate-left"></i>
-            <h3>실행 이력이 없습니다</h3>
-            <p>최근 실행된 가상 포인트의 계산 결과 및 성능 정보가 여기에 표시됩니다.</p>
+            <h3>Execution History이 없습니다</h3>
+            <p>Recent calculation results and performance metrics for virtual points are displayed here.</p>
           </div>
         )}
       </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Site } from '../../../types/common';
 import { SiteApiService } from '../../../api/services/siteApi';
 import { useConfirmContext } from '../../common/ConfirmProvider';
@@ -29,6 +30,7 @@ export const SiteModal: React.FC<SiteModalProps> = ({
         parent_site_id: undefined,
         is_active: true
     });
+    const { t } = useTranslation(['sites', 'common']);
     const [sites, setSites] = useState<Site[]>([]);
     const [saving, setSaving] = useState(false);
     const [loadingSites, setLoadingSites] = useState(false);
@@ -84,7 +86,7 @@ export const SiteModal: React.FC<SiteModalProps> = ({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.name || !formData.code) {
-            setError('사이트명과 코드는 필수 항목입니다.');
+            setError('Site name and code are required.');
             return;
         }
 
@@ -94,9 +96,9 @@ export const SiteModal: React.FC<SiteModalProps> = ({
 
             if (site) {
                 const isConfirmed = await confirm({
-                    title: '변경 사항 저장',
-                    message: '입력하신 변경 내용을 저장하시겠습니까?',
-                    confirmText: '저장',
+                    title: 'Save Changes',
+                    message: 'Save the changes you have entered?',
+                    confirmText: 'Save',
                     confirmButtonType: 'primary'
                 });
                 if (!isConfirmed) return;
@@ -104,22 +106,22 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                 const res = await SiteApiService.updateSite(site.id, formData);
                 if (res.success) {
                     await confirm({
-                        title: '저장 완료',
-                        message: '사이트 정보가 성공적으로 수정되었습니다.',
-                        confirmText: '확인',
+                        title: 'Save Complete',
+                        message: 'Site information updated successfully.',
+                        confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'primary'
                     });
                     onSave();
                     onClose();
                 } else {
-                    setError(res.message || '업데이트에 실패했습니다.');
+                    setError(res.message || 'Update failed.');
                 }
             } else {
                 const isConfirmed = await confirm({
-                    title: '사이트 등록',
-                    message: '새로운 사이트를 등록하시겠습니까?',
-                    confirmText: '등록',
+                    title: 'Register Site',
+                    message: 'Register a new site?',
+                    confirmText: 'Register',
                     confirmButtonType: 'primary'
                 });
                 if (!isConfirmed) return;
@@ -127,20 +129,20 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                 const res = await SiteApiService.createSite(formData);
                 if (res.success) {
                     await confirm({
-                        title: '등록 완료',
-                        message: '성공적으로 등록되었습니다.',
-                        confirmText: '확인',
+                        title: 'Registration Complete',
+                        message: 'Registered successfully.',
+                        confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'primary'
                     });
                     onSave();
                     onClose();
                 } else {
-                    setError(res.message || '등록에 실패했습니다.');
+                    setError(res.message || 'Registration failed.');
                 }
             }
         } catch (err: any) {
-            setError(err.message || '서버 통신 중 오류가 발생했습니다.');
+            setError(err.message || 'Error communicating with server.');
         } finally {
             setSaving(false);
         }
@@ -151,7 +153,7 @@ export const SiteModal: React.FC<SiteModalProps> = ({
             <div className="mgmt-modal-container site-modal">
                 <div className="mgmt-modal-header">
                     <div className="mgmt-modal-title">
-                        <h2>{site ? '사이트 정보 수정' : '새 사이트 등록'}</h2>
+                        <h2>{site ? 'Edit Site Info' : 'Register New Site'}</h2>
                     </div>
                     <button className="mgmt-close-btn" onClick={onClose}>
                         <i className="fas fa-times"></i>
@@ -164,88 +166,88 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                     <form id="site-form" onSubmit={handleSubmit}>
                         <div className="mgmt-modal-form-grid">
                             <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
+                                <h3><i className="fas fa-info-circle"></i> Basic Info</h3>
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">사이트명</label>
+                                    <label className="required">{t('table.name', {ns: 'sites'})}</label>
                                     <input
                                         type="text"
                                         className="form-control"
                                         value={formData.name}
                                         onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="사이트 이름을 입력하세요 (예: 서울 본사)"
+                                        placeholder="Enter site name (e.g. Seoul HQ)"
                                         disabled={saving}
                                         required
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">사이트 코드</label>
+                                    <label className="required">{t('field.code', {ns: 'sites'})}</label>
                                     <input
                                         type="text"
                                         className="form-control"
                                         value={formData.code}
                                         onChange={e => setFormData({ ...formData, code: e.target.value })}
-                                        placeholder="식별 코드를 입력하세요 (예: HQ-001)"
+                                        placeholder="Enter site code (e.g. HQ-001)"
                                         disabled={saving}
                                         required
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>사이트 유형</label>
+                                    <label>{t('labels.siteType', {ns: 'sites'})}</label>
                                     <select
                                         className="form-control"
                                         value={formData.site_type}
                                         onChange={e => setFormData({ ...formData, site_type: e.target.value })}
                                         disabled={saving}
                                     >
-                                        <option value="company">본사 (Business Unit)</option>
-                                        <option value="office">오피스/지사</option>
-                                        <option value="factory">공장/플랜트</option>
-                                        <option value="building">빌딩/건물</option>
-                                        <option value="floor">층 (Floor)</option>
-                                        <option value="room">실 (Room)</option>
+                                        <option value="company">{t('labels.headquartersBusinessUnit', {ns: 'sites'})}</option>
+                                        <option value="office">{t('labels.officebranch', {ns: 'sites'})}</option>
+                                        <option value="factory">{t('labels.factoryplant', {ns: 'sites'})}</option>
+                                        <option value="building">{t('labels.building', {ns: 'sites'})}</option>
+                                        <option value="floor">{t('labels.floor', {ns: 'sites'})}</option>
+                                        <option value="room">{t('labels.room', {ns: 'sites'})}</option>
                                     </select>
                                 </div>
                             </div>
 
                             <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-sitemap"></i> 계층 및 위치</h3>
+                                <h3><i className="fas fa-sitemap"></i> Hierarchy & Location</h3>
                                 <div className="mgmt-modal-form-group">
-                                    <label>상위 사이트</label>
+                                    <label>{t('table.parentSite', {ns: 'sites'})}</label>
                                     <select
                                         className="form-control"
                                         value={formData.parent_site_id || ''}
                                         onChange={e => setFormData({ ...formData, parent_site_id: e.target.value ? parseInt(e.target.value) : undefined })}
                                         disabled={saving || loadingSites}
                                     >
-                                        <option value="">없음 (최상위 사이트)</option>
+                                        <option value="">{t('labels.noneToplevelSite', {ns: 'sites'})}</option>
                                         {sites.map(s => (
                                             <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
                                         ))}
                                     </select>
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>주소</label>
+                                    <label>{t('labels.address', {ns: 'sites'})}</label>
                                     <input
                                         type="text"
                                         className="form-control"
                                         value={formData.address}
                                         onChange={e => setFormData({ ...formData, address: e.target.value })}
-                                        placeholder="상세 주소를 입력하세요"
+                                        placeholder="Enter full address"
                                         disabled={saving}
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>타임존</label>
+                                    <label>{t('labels.timezone', {ns: 'sites'})}</label>
                                     <select
                                         className="form-control"
                                         value={formData.timezone}
                                         onChange={e => setFormData({ ...formData, timezone: e.target.value })}
                                         disabled={saving}
                                     >
-                                        <option value="Asia/Seoul">Asia/Seoul (KST)</option>
-                                        <option value="UTC">UTC</option>
+                                        <option value="Asia/Seoul">{t('labels.asiaseoulKst', {ns: 'sites'})}</option>
+                                        <option value="UTC">{t('labels.utc', {ns: 'sites'})}</option>
                                         <option value="America/New_York">America/New_York (EST/EDT)</option>
-                                        <option value="Europe/London">Europe/London (GMT/BST)</option>
+                                        <option value="Europe/London">{t('labels.europelondonGmtbst', {ns: 'sites'})}</option>
                                     </select>
                                 </div>
                                 <div className="checkbox-group">
@@ -256,35 +258,35 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                                             onChange={e => setFormData({ ...formData, is_active: e.target.checked })}
                                             disabled={saving}
                                         />
-                                        활성화 상태
+                                        Active Status
                                     </label>
                                 </div>
                             </div>
 
                             {!site && (
                                 <div className="mgmt-modal-form-section mgmt-span-full">
-                                    <h3><i className="fas fa-server"></i> Collector 설정 <span style={{ fontSize: '12px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>(사이트 등록 시 자동 생성)</span></h3>
+                                    <h3><i className="fas fa-server"></i> Collector 설정 <span style={{ fontSize: '12px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>(auto-created on site registration)</span></h3>
                                     <div className="mgmt-modal-form-row">
                                         <div className="mgmt-modal-form-group">
-                                            <label>Collector 이름</label>
+                                            <label>{t('labels.collectorName', {ns: 'sites'})}</label>
                                             <input
                                                 type="text"
                                                 className="form-control"
                                                 value={(formData as any).collector_name || ''}
                                                 onChange={e => setFormData({ ...formData, collector_name: e.target.value } as any)}
-                                                placeholder={`${formData.name || '사이트명'}-Collector`}
+                                                placeholder={`${formData.name || 'Site'}-Collector`}
                                                 disabled={saving}
                                             />
-                                            <span className="mgmt-modal-form-hint">비워두면 "사이트명-Collector"로 자동 지정됩니다.</span>
+                                            <span className="mgmt-modal-form-hint">비워두면 "Site-Collector" will be used as default.</span>
                                         </div>
                                         <div className="mgmt-modal-form-group">
-                                            <label>Collector 설명</label>
+                                            <label>{t('labels.collectorDescription', {ns: 'sites'})}</label>
                                             <input
                                                 type="text"
                                                 className="form-control"
                                                 value={(formData as any).collector_description || ''}
                                                 onChange={e => setFormData({ ...formData, collector_description: e.target.value } as any)}
-                                                placeholder="선택 입력"
+                                                placeholder="Optional"
                                                 disabled={saving}
                                             />
                                         </div>

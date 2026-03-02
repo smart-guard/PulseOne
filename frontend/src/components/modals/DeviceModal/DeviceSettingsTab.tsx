@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DeviceSettingsTabProps } from './types';
 import '../../../styles/management.css';
 
@@ -14,6 +15,7 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
   onUpdateField,
   onUpdateSettings
 }) => {
+  const { t } = useTranslation(['devices', 'common']);
   // ========================================================================
   // 로컬 상태로 설정값들 관리
   // ========================================================================
@@ -110,7 +112,7 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
           <label>{label}</label>
           {isReadOnly ? (
             <span className={`status-badge-left ${currentValue ? 'enabled' : 'disabled'}`}>
-              {currentValue ? '활성화' : '비활성화'}
+              {currentValue ? t('devices:status.enabled') : t('devices:status.disabled')}
             </span>
           ) : (
             <label className="switch">
@@ -171,10 +173,10 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
               Object.entries(defaultSettings).forEach(([key, value]) => {
                 onUpdateSettings(key, value);
               });
-              alert('초기화 완료');
+              alert('Reset complete.');
             }}
           >
-            <i className="fas fa-undo"></i> 기본값
+            <i className="fas fa-undo"></i> {t('devices:settings.reset')}
           </button>
         )}
       </div>
@@ -184,28 +186,28 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
 
         {/* 1. 기본 운영 파라미터 */}
         <div className="st-card">
-          <h3><i className="fas fa-wifi" style={{ color: '#3b82f6' }}></i> 기본 운영 파라미터</h3>
+          <h3><i className="fas fa-wifi" style={{ color: '#3b82f6' }}></i> {t('devices:settings.operationParams')}</h3>
           <div className="st-form-stack">
             <div className="st-row">
-              {renderNumberField('폴링 간격', 'polling_interval_ms', 'ms', 10, 60000)}
-              {renderNumberField('연결 타임아웃', 'connection_timeout_ms', 'ms', 100, 30000)}
+              {renderNumberField(t('devices:settings.pollingInterval'), 'polling_interval_ms', 'ms', 10, 60000)}
+              {renderNumberField(t('devices:settings.connectionTimeout'), 'connection_timeout_ms', 'ms', 100, 30000)}
             </div>
             <div className="st-row">
-              {renderNumberField('읽기 타임아웃', 'read_timeout_ms', 'ms', 100, 10000)}
-              {renderNumberField('쓰기 타임아웃', 'write_timeout_ms', 'ms', 100, 10000)}
+              {renderNumberField(t('devices:settings.readTimeout'), 'read_timeout_ms', 'ms', 100, 10000)}
+              {renderNumberField(t('devices:settings.writeTimeout'), 'write_timeout_ms', 'ms', 100, 10000)}
             </div>
             <div className="st-row">
-              {renderNumberField('최대 재시도', 'max_retry_count', '회', 0, 10)}
-              {renderNumberField('재시도 간격', 'retry_interval_ms', 'ms', 100, 10000)}
+              {renderNumberField(t('devices:settings.maxRetry'), 'max_retry_count', t('devices:settings.times'), 0, 10)}
+              {renderNumberField(t('devices:settings.retryInterval'), 'retry_interval_ms', 'ms', 100, 10000)}
             </div>
 
             <div className="divider"></div>
 
-            {renderToggleField('Keep-Alive 세션 유지', 'is_keep_alive_enabled', '접속 세션 지속 유지 활성화')}
+            {renderToggleField(t('devices:settings.keepAlive'), 'is_keep_alive_enabled', t('devices:settings.keepAliveDesc'))}
             {localSettings.is_keep_alive_enabled && (
               <div className="st-row">
-                {renderNumberField('KA 간격', 'keep_alive_interval_s', '초', 10, 300)}
-                {renderNumberField('KA 타임아웃', 'keep_alive_timeout_s', '초', 1, 60)}
+                {renderNumberField(t('devices:settings.keepAliveInterval'), 'keep_alive_interval_s', t('devices:settings.sec'), 10, 300)}
+                {renderNumberField(t('devices:settings.keepAliveTimeout'), 'keep_alive_timeout_s', t('devices:settings.sec'), 1, 60)}
               </div>
             )}
           </div>
@@ -213,34 +215,34 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
 
         {/* 2. 에러 제어 및 백오프 */}
         <div className="st-card">
-          <h3><i className="fas fa-undo" style={{ color: '#f59e0b' }}></i> 에러 제어 및 지수 백오프</h3>
+          <h3><i className="fas fa-undo" style={{ color: '#f59e0b' }}></i> {t('devices:settings.errorControl')}</h3>
           <div className="st-form-stack">
-            {renderNumberField('초기 백오프 시간', 'backoff_time_ms', 'ms', 100, 600000)}
-            {renderNumberField('최대 백오프 시간', 'max_backoff_time_ms', 'ms', 1000, 3600000)}
-            {renderNumberField('지수 증폭 배율', 'backoff_multiplier', '배', 1.0, 5.0, 0.1)}
+            {renderNumberField(t('devices:settings.backoffInitial'), 'backoff_time_ms', 'ms', 100, 600000)}
+            {renderNumberField(t('devices:settings.backoffMax'), 'max_backoff_time_ms', 'ms', 1000, 3600000)}
+            {renderNumberField(t('devices:settings.backoffMultiplier'), 'backoff_multiplier', 'x', 1.0, 5.0, 0.1)}
 
             <div className="info-box">
               <i className="fas fa-info-circle"></i>
-              <span>연속된 에러 발생 시 재시도 간격을 지수적으로 늘려 시스템 부하를 방지합니다.</span>
+              <span>When consecutive errors occur, retry intervals are increased exponentially to reduce system load.</span>
             </div>
           </div>
         </div>
 
         {/* 3. 리소스 및 데이터 안전 */}
         <div className="st-card">
-          <h3><i className="fas fa-microchip" style={{ color: '#10b981' }}></i> 리소스 및 데이터 안전</h3>
+          <h3><i className="fas fa-microchip" style={{ color: '#10b981' }}></i> {t('devices:settings.resourceAndSafety')}</h3>
           <div className="st-form-stack">
             <div className="st-row">
-              {renderNumberField('읽기 버퍼', 'read_buffer_size', 'B', 64, 8192)}
-              {renderNumberField('쓰기 버퍼', 'write_buffer_size', 'B', 64, 8192)}
+              {renderNumberField(t('devices:settings.readBuffer'), 'read_buffer_size', 'B', 64, 8192)}
+              {renderNumberField(t('devices:settings.writeBuffer'), 'write_buffer_size', 'B', 64, 8192)}
             </div>
-            {renderNumberField('이벤트 큐 사이즈', 'queue_size', '개', 10, 1000)}
+            {renderNumberField(t('devices:settings.eventQueueSize'), 'queue_size', t('devices:settings.items'), 10, 1000)}
 
             <div className="divider"></div>
 
-            {renderToggleField('데이터 유효성 검증', 'is_data_validation_enabled', '수신 데이터 패킷 구조 검사')}
-            {renderToggleField('이상치 탐지', 'is_outlier_detection_enabled', '범위 밖 데이터 필터링')}
-            {renderToggleField('데드밴드 필터', 'is_deadband_enabled', '미세 변화 무시 (Deadband)')}
+            {renderToggleField(t('devices:settings.dataValidation'), 'is_data_validation_enabled', t('devices:settings.dataValidationDesc'))}
+            {renderToggleField(t('devices:settings.outlierDetection'), 'is_outlier_detection_enabled', t('devices:settings.outlierDetectionDesc'))}
+            {renderToggleField(t('devices:settings.deadbandFilter'), 'is_deadband_enabled', t('devices:settings.deadbandFilterDesc'))}
           </div>
         </div>
 
@@ -252,7 +254,7 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
           <div className="st-row" style={{ gap: '24px', marginBottom: '8px' }}>
             <div style={{ flex: 1 }}>
               {(editData?.protocol_type === 'MQTT' || device?.protocol_type === 'MQTT') &&
-                renderToggleField('MQTT 자동 데이터 등록 (Auto-Discovery)', 'is_auto_registration_enabled', '수집 시 미등록 JSON 키를 데이터 포인트로 자동 등록')
+                renderToggleField(t('devices:settings.mqttAutoDiscovery'), 'is_auto_registration_enabled', t('devices:settings.mqttAutoDiscoveryDesc'))
               }
             </div>
             <div style={{ flex: 1 }}></div>
@@ -260,13 +262,13 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
           </div>
           <div className="divider" style={{ marginBottom: '12px' }}></div>
           <div className="st-row" style={{ gap: '24px' }}>
-            <div style={{ flex: 1 }}>{renderToggleField('성능 모니터링', 'is_performance_monitoring_enabled', '응답시간 및 처리량 통계 수집')}</div>
-            <div style={{ flex: 1 }}>{renderToggleField('통신 패킷 로깅', 'is_communication_logging_enabled', 'TX/RX 원시 패킷 기록 (디버깅용)')}</div>
-            <div style={{ flex: 1 }}>{renderToggleField('정밀 진단 모드', 'is_diagnostic_mode_enabled', '문제 해결을 위한 상세 내부 로그')}</div>
+            <div style={{ flex: 1 }}>{renderToggleField(t('devices:settings.perfMonitoring'), 'is_performance_monitoring_enabled', t('devices:settings.perfMonitoringDesc'))}</div>
+            <div style={{ flex: 1 }}>{renderToggleField(t('devices:settings.commLogging'), 'is_communication_logging_enabled', t('devices:settings.commLoggingDesc'))}</div>
+            <div style={{ flex: 1 }}>{renderToggleField(t('devices:settings.diagnosticMode'), 'is_diagnostic_mode_enabled', t('devices:settings.diagnosticModeDesc'))}</div>
           </div>
           <div className="warning-box">
             <i className="fas fa-exclamation-triangle"></i>
-            <span>진단 및 패킷 로깅은 저장 공간과 CPU 사용량을 크게 높일 수 있으므로 주의바랍니다.</span>
+            <span>Diagnostic and packet logging can significantly increase storage space and CPU usage. Use with caution.</span>
           </div>
         </div>
       </div>

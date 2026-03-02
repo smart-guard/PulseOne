@@ -86,9 +86,10 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                     className="mgmt-btn mgmt-btn-outline"
                     onClick={onReset}
                     disabled={activeFilterCount === 0}
+                    title="초기화"
+                    style={{ padding: '0 10px' }}
                 >
                     <i className="fas fa-redo-alt"></i>
-                    초기화
                 </button>
                 {rightActions}
             </div>

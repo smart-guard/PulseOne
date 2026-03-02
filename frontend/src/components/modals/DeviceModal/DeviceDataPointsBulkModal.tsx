@@ -5,6 +5,7 @@
 
 import { createPortal } from 'react-dom';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DataPoint } from '../../../api/services/dataApi';
 import { useConfirmContext } from '../../common/ConfirmProvider';
 import { TemplateApiService } from '../../../api/services/templateApi';
@@ -56,6 +57,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
     const STORAGE_KEY = `bulk_draft_device_${deviceId}`;
 
     const [points, setPoints] = useState<BulkDataPoint[]>([]);
+    const { t } = useTranslation(['devices', 'common']);
     const [history, setHistory] = useState<BulkDataPoint[][]>([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -119,7 +121,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         if (isOpen) {
             loadTemplates();
 
-            // 데이터가 이미 있거나 (Step 3에서 넘어옴) 마운트된 상태면 초기화 건너뜀
+            // 데이터가 이미 있거나 (Step 3에서 넘어옴) 마운트된 상태면 Reset 건너뜀
             if (points.length > 0) return;
 
             // 1. 새 디바이스 생성(deviceId === 0)인 경우:
@@ -175,8 +177,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             const res = await TemplateApiService.getTemplate(template.id);
             if (!res.success || !res.data) {
                 confirm({
-                    title: '알림',
-                    message: '템플릿 정보를 불러오는 데 실패했습니다.',
+                    title: 'Notice',
+                    message: 'Failed to load template information.',
                     confirmButtonType: 'danger',
                     showCancelButton: false
                 });
@@ -186,8 +188,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             const fullTemplate = res.data;
             if (!fullTemplate.data_points || fullTemplate.data_points.length === 0) {
                 confirm({
-                    title: '알림',
-                    message: '이 템플릿에는 정의된 포인트가 없습니다.',
+                    title: 'Notice',
+                    message: 'This template has no defined points.',
                     confirmButtonType: 'warning',
                     showCancelButton: false
                 });
@@ -229,9 +231,9 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             const hasData = points.some(p => p.name || p.address);
             if (hasData) {
                 const isConfirmed = await confirm({
-                    title: '템플릿 적용 확인',
-                    message: '기존에 입력된 데이터가 있습니다. 템플릿 데이터로 덮어씌우시겠습니까?',
-                    confirmText: '덮어씌우기',
+                    title: 'Confirm Template Apply',
+                    message: 'Existing data will be overwritten. Apply template?',
+                    confirmText: 'Overwrite',
                     confirmButtonType: 'primary'
                 });
                 if (!isConfirmed) {
@@ -245,8 +247,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         } catch (err) {
             console.error('Failed to apply template:', err);
             confirm({
-                title: '알림',
-                message: '템플릿 적용 중 오류가 발생했습니다.',
+                title: 'Notice',
+                message: 'Error occurred while applying template.',
                 confirmButtonType: 'danger',
                 showCancelButton: false
             });
@@ -255,7 +257,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         }
     };
 
-    // 🔥 NEW: JSON 샘플 파싱 로직
+    // 🔥 NEW: Parse JSON Sample 로직
     const handleParseJson = () => {
         try {
             const data = JSON.parse(jsonInput);
@@ -305,16 +307,16 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             setJsonInput('');
 
             confirm({
-                title: '파싱 완료',
-                message: `${flatPoints.length}개의 데이터 필드를 찾았습니다.\n[주소] 열에 해당 토픽(Sub-topic)을 입력해주세요.`,
+                title: 'Parse Complete',
+                message: `Found ${flatPoints.length} data fields.\nEnter the corresponding topic (Sub-topic) in the [Address] column.`,
                 confirmButtonType: 'success',
                 showCancelButton: false
             });
 
         } catch (e) {
             confirm({
-                title: '파싱 실패',
-                message: '유효한 JSON 형식이 아닙니다. 형식을 확인해주세요.',
+                title: 'Parse Failed',
+                message: 'Invalid JSON format. Please check the format.',
                 confirmButtonType: 'danger',
                 showCancelButton: false
             });
@@ -330,32 +332,32 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             return { ...point, isValid: true, errors: [] };
         }
 
-        if (!point.name) errors.push('이름 필수');
-        if (!point.address) errors.push('주소 필수');
+        if (!point.name) errors.push('Name required');
+        if (!point.address) errors.push('Address required');
 
         const validTypes = ['number', 'boolean', 'string'];
-        if (!validTypes.includes(point.data_type || '')) errors.push('유효하지 않은 타입');
+        if (!validTypes.includes(point.data_type || '')) errors.push('Invalid type');
 
         const validModes = ['read', 'write', 'read_write'];
-        if (!validModes.includes(point.access_mode || '')) errors.push('유효하지 않은 권한');
+        if (!validModes.includes(point.access_mode || '')) errors.push('Invalid access mode');
 
         // DB 내 중복 체크
         if (point.address && existingAddresses.includes(point.address)) {
-            errors.push('이미 존재하는 주소(DB)');
+            errors.push('Address already exists (DB)');
         }
 
         // 현재 입력 목록 내 중복 체크 (allPoints가 제공된 경우)
         if (allPoints && point.address) {
             const sameAddrCount = allPoints.filter(p => (p.name || p.address) && p.address === point.address).length;
             if (sameAddrCount > 1) {
-                errors.push('목록 내 중복 주소');
+                errors.push('Duplicate address in list');
             }
         }
 
         if (allPoints && point.name) {
             const sameNameCount = allPoints.filter(p => (p.name || p.address) && p.name === point.name).length;
             if (sameNameCount > 1) {
-                errors.push('목록 내 중복 이름');
+                errors.push('Duplicate name in list');
             }
         }
 
@@ -396,9 +398,9 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
 
     const handleReset = async () => {
         const isConfirmed = await confirm({
-            title: '초기화 확인',
-            message: '입력된 모든 데이터를 지우고 초기화하시겠습니까?\n이 작업은 되돌릴 수 없습니다.',
-            confirmText: '초기화 시키기',
+            title: 'Confirm Reset',
+            message: 'Clear all entered data and reset?\nThis cannot be undone.',
+            confirmText: 'Reset',
             confirmButtonType: 'danger'
         });
 
@@ -525,9 +527,9 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         // 헤더 감지
         const firstCols = rows[0].split('\t');
         const hasHeader = firstCols[0]?.toLowerCase().includes('name') ||
-            firstCols[0] === '이름' ||
+            firstCols[0] === 'Name' || firstCols[0] === 'Name' ||
             firstCols[1]?.toLowerCase().includes('address') ||
-            firstCols[1] === '주소';
+            firstCols[1] === 'Address' || firstCols[1] === 'Address';
 
         const dataRows = hasHeader ? rows.slice(1) : rows;
 
@@ -590,7 +592,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
 
         // 피드백
         const msg = document.createElement('div');
-        msg.textContent = `${dataRows.length}개 행이 붙여넣어졌습니다.`;
+        msg.textContent = `${dataRows.length} row(s) pasted.`;
         msg.style.cssText = 'position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: #3b82f6; color: white; padding: 12px 24px; border-radius: 30px; z-index: 10000; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-weight: 500; animation: fadeOut 2s forwards; animation-delay: 1.5s;';
         document.body.appendChild(msg);
         setTimeout(() => msg.remove(), 4000);
@@ -602,8 +604,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
 
         if (validPoints.length === 0) {
             confirm({
-                title: '알림',
-                message: '저장할 데이터가 없습니다.',
+                title: 'Notice',
+                message: 'No data to save.',
                 confirmButtonType: 'warning',
                 showCancelButton: false
             });
@@ -613,8 +615,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         const errors = validPoints.filter(p => !p.isValid);
         if (errors.length > 0) {
             confirm({
-                title: '유효성 검사 오류',
-                message: `${errors.length}개의 항목에 오류가 있습니다.\n빨간색으로 표시된 셀을 확인해주세요.`,
+                title: 'Validation Error',
+                message: `${errors.length} item(s) have errors.\nPlease check cells highlighted in red.`,
                 confirmButtonType: 'danger',
                 showCancelButton: false
             });
@@ -622,9 +624,9 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         }
 
         const isConfirmed = await confirm({
-            title: '일괄 등록 확인',
-            message: `${validPoints.length}개의 포인트 데이터를 현재 디바이스에 등록하시겠습니까?`,
-            confirmText: '등록 시작',
+            title: 'Confirm Bulk Register',
+            message: `Register ${validPoints.length} point(s) to this device?`,
+            confirmText: 'Register',
             confirmButtonType: 'primary'
         });
 
@@ -647,8 +649,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         } catch (e) {
             console.error(e);
             confirm({
-                title: '저장 오류',
-                message: '저장 중 오류가 발생했습니다.',
+                title: 'Save Error',
+                message: 'An error occurred while saving.',
                 confirmButtonType: 'danger',
                 showCancelButton: false
             });
@@ -667,26 +669,26 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                     <div className="header-content">
                         <div className="title-group">
                             <div className="title-top">
-                                <h2>데이터포인트 일괄 등록</h2>
+                                <h2>{t('labels.bulkDataPointRegistration', {ns: 'devices'})}</h2>
                                 <div className="history-controls">
-                                    <button onClick={undo} disabled={historyIndex <= 0} title="되돌리기 (Ctrl+Z)">
+                                    <button onClick={undo} disabled={historyIndex <= 0} title="Undo (Ctrl+Z)">
                                         <i className="fas fa-undo"></i>
                                     </button>
-                                    <button onClick={redo} disabled={historyIndex >= history.length - 1} title="다시실행 (Ctrl+Y)">
+                                    <button onClick={redo} disabled={historyIndex >= history.length - 1} title="Redo (Ctrl+Y)">
                                         <i className="fas fa-redo"></i>
                                     </button>
                                 </div>
                             </div>
                             <div className="instruction-box">
-                                <p className="main-desc">엑셀 데이터를 복사(Ctrl+C)하여 아래 표에 붙여넣기(Ctrl+V) 하세요.</p>
+                                <p className="main-desc">Copy (Ctrl+C) Excel data and paste (Ctrl+V) it into the table below.</p>
                                 <ul className="usage-guide">
-                                    <li>이름*, 주소*는 필수 입력 항목이며, 주소는 중복될 수 없습니다.</li>
-                                    <li>엔터(Enter) 키로 행 이동이 가능하며, 마지막 행에서 엔터 시 새 행이 자동 추가됩니다.</li>
-                                    <li>잘못 입력된 셀은 빨간색으로 표시됩니다.</li>
+                                    <li>Name* and Address* are required. Addresses must be unique.</li>
+                                    <li>Press Enter to move rows; a new row is auto-added at the last row.</li>
+                                    <li>{t('labels.invalidCellsAreHighlightedInRed', {ns: 'devices'})}</li>
                                 </ul>
                             </div>
                         </div>
-                        <button className="close-btn" onClick={onClose} title="닫기">
+                        <button className="close-btn" onClick={onClose} title="Close">
                             <i className="fas fa-times"></i>
                         </button>
                     </div>
@@ -701,16 +703,16 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                     <thead>
                                         <tr>
                                             <th className="col-idx">#</th>
-                                            <th className="col-name">이름 *</th>
-                                            <th className="col-addr">{protocolType === 'MQTT' ? 'Sub-Topic *' : '주소 *'}</th>
-                                            {protocolType === 'MQTT' && <th className="col-key">JSON Key</th>}
-                                            <th className="col-type">타입</th>
-                                            <th className="col-mode">권한</th>
-                                            <th className="col-desc">설명</th>
-                                            <th className="col-unit">단위</th>
-                                            <th className="col-scale">스케일</th>
-                                            <th className="col-offset">오프셋</th>
-                                            <th className="col-actions">삭제</th>
+                                            <th className="col-name">Name *</th>
+                                            <th className="col-addr">{protocolType === 'MQTT' ? 'Sub-Topic *' : 'Address *'}</th>
+                                            {protocolType === 'MQTT' && <th className="col-key">{t('labels.jsonKey', {ns: 'devices'})}</th>}
+                                            <th className="col-type">{t('modal.dpDiffType', {ns: 'devices'})}</th>
+                                            <th className="col-mode">{t('modal.dpDiffAccess', {ns: 'devices'})}</th>
+                                            <th className="col-desc">{t('dpTab.description', {ns: 'devices'})}</th>
+                                            <th className="col-unit">{t('dpModal.unit', {ns: 'devices'})}</th>
+                                            <th className="col-scale">{t('dpTab.scale', {ns: 'devices'})}</th>
+                                            <th className="col-offset">{t('modal.dpDiffOffset', {ns: 'devices'})}</th>
+                                            <th className="col-actions">{t('delete', {ns: 'common'})}</th>
                                         </tr>
                                     </thead>
                                 </table>
@@ -735,7 +737,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                     placeholder={idx === 0 ? "Ex: Temp_Sensor" : ""}
                                                 />
                                             </td>
-                                            <td className={`col-addr ${(!point.isValid && !point.address) || point.errors.some(e => e.includes('중복')) ? 'cell-error' : ''}`}>
+                                            <td className={`col-addr ${(!point.isValid && !point.address) || point.errors.some(e => e.includes('duplicate')) ? 'cell-error' : ''}`}>
                                                 <input
                                                     className="excel-input font-mono"
                                                     value={point.address}
@@ -818,7 +820,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                 />
                                             </td>
                                             <td className="col-actions">
-                                                <button onClick={() => removeRow(idx)} className="delete-row-btn" title="행 삭제">
+                                                <button onClick={() => removeRow(idx)} className="delete-row-btn" title="Delete row">
                                                     <i className="fas fa-times"></i>
                                                 </button>
                                             </td>
@@ -835,10 +837,10 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                     <div className="footer-left">
                         <div className="action-group">
                             <button className="add-row-btn" onClick={addRow}>
-                                <i className="fas fa-plus"></i> 행 추가
+                                <i className="fas fa-plus"></i> Add Row
                             </button>
                             <button className="template-btn" onClick={() => setShowTemplateSelector(!showTemplateSelector)}>
-                                <i className="fas fa-file-import"></i> 템플릿 불러오기
+                                <i className="fas fa-file-import"></i> Load Template
                             </button>
                             {protocolType === 'MQTT' && (
                                 <button
@@ -855,24 +857,24 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                         cursor: 'pointer'
                                     }}
                                 >
-                                    <i className="fas fa-code"></i> JSON 샘플 파싱
+                                    <i className="fas fa-code"></i> Parse JSON Sample
                                 </button>
                             )}
-                            <button className="reset-btn" onClick={handleReset} title="전체 입력 데이터 초기화">
-                                <i className="fas fa-trash-alt"></i> 초기화
+                            <button className="reset-btn" onClick={handleReset} title="Reset all input data">
+                                <i className="fas fa-trash-alt"></i> Reset
                             </button>
                         </div>
                         {showTemplateSelector && (
                             <div className="template-selector-bubble">
                                 <div className="bubble-header">
-                                    <span>적용할 템플릿 선택</span>
+                                    <span>{t('labels.selectATemplate', {ns: 'devices'})}</span>
                                     <button onClick={() => setShowTemplateSelector(false)}><i className="fas fa-times"></i></button>
                                 </div>
                                 <div className="bubble-body custom-scrollbar">
                                     {isLoadingTemplates ? (
-                                        <div className="loading-text">불러오는 중...</div>
+                                        <div className="loading-text">{t('loading', {ns: 'common'})}</div>
                                     ) : templates.length === 0 ? (
-                                        <div className="empty-text">등록된 템플릿이 없습니다.</div>
+                                        <div className="empty-text">{t('labels.noTemplatesRegistered', {ns: 'devices'})}</div>
                                     ) : (
                                         templates.map(t => (
                                             <div key={t.id} className="template-item" onClick={() => applyTemplate(t)}>
@@ -894,13 +896,13 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                 display: 'flex', flexDirection: 'column', overflow: 'hidden'
                             }}>
                                 <div className="bubble-header" style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#166534' }}>JSON 샘플 데이터 파싱</span>
+                                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#166534' }}>{t('labels.parseJsonSampleData', {ns: 'devices'})}</span>
                                     <button onClick={() => setShowJsonParser(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}><i className="fas fa-times"></i></button>
                                 </div>
                                 <div style={{ padding: '16px' }}>
                                     <p style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>
-                                        디바이스에서 수신되는 JSON 페이로드를 아래에 붙여넣으세요.<br />
-                                        자동으로 키 구조를 분석하여 행을 생성합니다.
+                                        Paste the JSON payload received from the device below.<br />
+                                        Key structure will be auto-analyzed and rows generated.
                                     </p>
                                     <textarea
                                         className="custom-scrollbar"
@@ -921,23 +923,23 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                             borderRadius: '6px', fontWeight: 700, cursor: 'pointer'
                                         }}
                                     >
-                                        구조 분석 및 자동 생성
+                                        Analyze & Auto-generate
                                     </button>
                                 </div>
                             </div>
                         )}
                         <span className="stats-text" style={{ marginLeft: '12px' }}>
-                            총 <strong>{points.filter(p => p.name || p.address).length}</strong>개 입력됨
+                            Total <strong>{points.filter(p => p.name || p.address).length}</strong> entered
                         </span>
                     </div>
                     <div className="footer-right">
-                        <button className="cancel-btn" onClick={onClose}>취소</button>
+                        <button className="cancel-btn" onClick={onClose}>{t('cancel', {ns: 'common'})}</button>
                         <button
                             className={`save-btn ${isProcessing || points.some(p => (p.name || p.address) && !p.isValid) || !points.some(p => p.name || p.address) ? 'disabled' : ''}`}
                             onClick={handleSaveAll}
                             disabled={isProcessing || points.some(p => (p.name || p.address) && !p.isValid) || !points.some(p => p.name || p.address)}
                         >
-                            {isProcessing ? '저장 중...' : '일괄 등록 완료'}
+                            {isProcessing ? 'Saving...' : 'Bulk Register'}
                         </button>
                     </div>
                 </footer>

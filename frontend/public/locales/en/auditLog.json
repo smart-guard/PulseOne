@@ -1,0 +1,81 @@
+{
+    "title": "System Audit Log",
+    "description": "Review system configuration changes and user activity history.",
+    "loading": "Loading...",
+    "empty": "No logs recorded.",
+    "stats": {
+        "todayLog": "Today's Logs",
+        "threatDetect": "Threats Detected",
+        "lastRecord": "Last Record",
+        "minuteAgo": "1 min ago"
+    },
+    "filter": {
+        "entityType": "Entity Type",
+        "all": "All",
+        "device": "Device",
+        "template": "Template",
+        "user": "User",
+        "system": "System"
+    },
+    "table": {
+        "time": "Time",
+        "operator": "Operator",
+        "action": "Action",
+        "target": "Target",
+        "targetName": "Target Name",
+        "detail": "Detail"
+    },
+    "action": {
+        "create": "Create",
+        "update": "Update",
+        "delete": "Delete",
+        "instantiate": "Instantiate",
+        "action": "Action"
+    },
+    "error": {
+        "loadFail": "An error occurred while loading audit logs."
+    },
+    "labels": {
+        "basicInfo": "Basic Info",
+        "statusOccurredAt": "Status / Occurred At",
+        "loginHistory": "Login History",
+        "totalLogins": "Total Logins",
+        "successful": "Successful",
+        "activeUsers": "Active Users",
+        "avgSessionMin": "Avg Session (min)",
+        "recentFailures": "Recent Failures",
+        "timeRange": "Time Range",
+        "filter": "Filter",
+        "status": "Status",
+        "loginMethod": "Login Method",
+        "password": "Password",
+        "sso": "SSO",
+        "apiKey": "API Key",
+        "method": "Method",
+        "locationdevice": "Location/Device",
+        "session": "Session",
+        "ipAddress": "IP Address",
+        "inProgress": "In Progress",
+        "noSession": "No Session",
+        "noLoginHistory": "No login history",
+        "loginRecordDetails": "Login Record Details",
+        "userInfo": "User Info",
+        "username": "Username:",
+        "name": "Name:",
+        "email": "Email:",
+        "role": "Role:",
+        "loginInfo": "Login Info",
+        "loginTime": "Login Time:",
+        "logoutTime": "Logout Time:",
+        "sessionDuration": "Session Duration:",
+        "loginMethod1": "Login Method:",
+        "status1": "Status:",
+        "failureReason": "Failure Reason:",
+        "ipAddress1": "IP Address:",
+        "browser": "Browser:",
+        "os": "OS:",
+        "device": "Device:",
+        "location": "Location:",
+        "userAgent": "User Agent:"
+    }
+}

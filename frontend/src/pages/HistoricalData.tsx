@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../styles/base.css';
 import '../styles/historical-data.css';
 import { isBlobValue, getBlobDownloadUrl } from '../utils/dataUtils';
@@ -66,6 +67,7 @@ interface SiteMetadata {
 
 const HistoricalData: React.FC = () => {
   const [historicalData, setHistoricalData] = useState<HistoricalDataPoint[]>([]);
+  const { t } = useTranslation(['historicalData', 'common']);
   const [aggregatedData, setAggregatedData] = useState<AggregatedData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [metadata, setMetadata] = useState<{ factories: SiteMetadata[] }>({ factories: [] });
@@ -76,7 +78,7 @@ const HistoricalData: React.FC = () => {
     categories: [],
     qualities: ['good', 'uncertain', 'bad'],
     dateRange: {
-      start: new Date(Date.now() - 24 * 60 * 60 * 1000), // 24시간 전
+      start: new Date(Date.now() - 24 * 60 * 60 * 1000), // 24 hr 전
       end: new Date()
     },
     aggregation: 'none',
@@ -205,7 +207,7 @@ const HistoricalData: React.FC = () => {
           };
         });
 
-        // 집계 모드인 경우 aggregatedData 설정
+        // Aggregation Mode인 경우 aggregatedData 설정
         if (aggregation !== 'none') {
           const mappedAggregated: AggregatedData[] = historical_data.map((item: any) => ({
             timestamp: new Date(item.time),
@@ -274,12 +276,12 @@ const HistoricalData: React.FC = () => {
     );
   };
 
-  // 차트 데이터 변환
+  // Chart 데이터 변환
   const getChartData = () => {
     const dataToUse = queryCondition.aggregation === 'none' ? historicalData : aggregatedData;
     if (dataToUse.length === 0) return [];
 
-    // 타임스탬프별로 그룹화
+    // Timestamp별로 그룹화
     const timeMap = new Map<number, any>();
 
     dataToUse.forEach(item => {
@@ -309,7 +311,7 @@ const HistoricalData: React.FC = () => {
     loadHistoricalData();
   }, [queryCondition.dateRange, queryCondition.aggregation, queryCondition.interval]);
 
-  // 빠른 날짜 설정
+  // 빠른 Date 설정
   const setQuickDateRange = (hours: number) => {
     const end = new Date();
     const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
@@ -420,7 +422,7 @@ const HistoricalData: React.FC = () => {
     <div className="historical-data-container">
       {/* 페이지 헤더 */}
       <div className="page-header">
-        <h1 className="page-title">이력 데이터 조회</h1>
+        <h1 className="page-title">{t('title', { ns: 'historicalData' })}</h1>
         <div className="page-actions">
           <button
             className="btn btn-outline"
@@ -428,7 +430,7 @@ const HistoricalData: React.FC = () => {
             disabled={isLoading}
           >
             <i className="fas fa-sync-alt"></i>
-            새로고침
+            Refresh
           </button>
           <div className="export-buttons">
             <button
@@ -437,7 +439,7 @@ const HistoricalData: React.FC = () => {
               disabled={historicalData.length === 0}
             >
               <i className="fas fa-file-csv"></i>
-              CSV 내보내기
+              Export CSV
             </button>
             <button
               className="btn btn-primary"
@@ -445,7 +447,7 @@ const HistoricalData: React.FC = () => {
               disabled={historicalData.length === 0}
             >
               <i className="fas fa-file-code"></i>
-              JSON 내보내기
+              Export JSON
             </button>
           </div>
         </div>
@@ -455,12 +457,10 @@ const HistoricalData: React.FC = () => {
       <div className="query-panel">
         <div className="query-section">
           <div className="query-header-row">
-            <h3 className="query-title">조회 조건</h3>
-
             {/* 기본 조건 */}
             <div className="query-filter-bar single-line">
               <div className="filter-group date-range">
-                <label>조회 기간</label>
+                <label>{t('labels.timeRange', { ns: 'historicalData' })}</label>
                 <div className="date-range-wrapper">
                   <input
                     type="datetime-local"
@@ -485,7 +485,7 @@ const HistoricalData: React.FC = () => {
               </div>
 
               <div className="filter-group quick-ranges">
-                <label>빠른 설정</label>
+                <label>{t('labels.quickSelect', { ns: 'historicalData' })}</label>
                 <div className="quick-date-buttons">
                   <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(1)}>1H</button>
                   <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(6)}>6H</button>
@@ -496,7 +496,7 @@ const HistoricalData: React.FC = () => {
               </div>
 
               <div className="filter-group">
-                <label>집계 방식</label>
+                <label>{t('aggregation', { ns: 'historicalData' })}</label>
                 <select
                   value={queryCondition.aggregation}
                   onChange={(e) => setQueryCondition(prev => ({
@@ -505,16 +505,16 @@ const HistoricalData: React.FC = () => {
                   }))}
                   className="condition-select"
                 >
-                  <option value="none">원본</option>
-                  <option value="avg">평균</option>
-                  <option value="min">최소</option>
-                  <option value="max">최대</option>
+                  <option value="none">{t('aggNone', { ns: 'historicalData' })}</option>
+                  <option value="avg">{t('aggAvg', { ns: 'historicalData' })}</option>
+                  <option value="min">{t('aggMin', { ns: 'historicalData' })}</option>
+                  <option value="max">{t('aggMax', { ns: 'historicalData' })}</option>
                 </select>
               </div>
 
               {queryCondition.aggregation !== 'none' && (
                 <div className="filter-group">
-                  <label>간격</label>
+                  <label>{t('interval', { ns: 'historicalData' })}</label>
                   <select
                     value={queryCondition.interval}
                     onChange={(e) => setQueryCondition(prev => ({
@@ -523,9 +523,9 @@ const HistoricalData: React.FC = () => {
                     }))}
                     className="condition-select interval-select"
                   >
-                    <option value="1m">1분</option>
-                    <option value="1h">1시간</option>
-                    <option value="1d">1일</option>
+                    <option value="1m">1 min</option>
+                    <option value="1h">1 hr</option>
+                    <option value="1d">1 day</option>
                   </select>
                 </div>
               )}
@@ -539,7 +539,7 @@ const HistoricalData: React.FC = () => {
                     disabled={isLoading}
                   >
                     <i className="fas fa-search"></i>
-                    조회
+                    Query
                   </button>
                 </div>
 
@@ -550,7 +550,7 @@ const HistoricalData: React.FC = () => {
                     onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
                   >
                     <i className={`fas fa-chevron-${showAdvancedFilter ? 'up' : 'down'}`}></i>
-                    고급 필터
+                    Advanced Filter
                   </button>
                 </div>
               </div>
@@ -560,9 +560,9 @@ const HistoricalData: React.FC = () => {
           {showAdvancedFilter && (
             <div className="advanced-conditions">
               <div className="hierarchical-filter-header">
-                <h3>고급 검색 조건</h3>
+                <h3>{t('advancedSearchCondition', { ns: 'historicalData' })}</h3>
                 <button className="btn btn-xs btn-outline btn-reset" onClick={handleResetFilters}>
-                  <i className="fas fa-undo"></i> 전체 초기화
+                  <i className="fas fa-undo"></i> Reset All
                 </button>
               </div>
 
@@ -570,10 +570,10 @@ const HistoricalData: React.FC = () => {
                 {/* 사이트 선택 */}
                 <div className="drilldown-column">
                   <div className="column-header">
-                    <label>사이트 (공장)</label>
+                    <label>{t('labels.siteFactory', { ns: 'historicalData' })}</label>
                     <div className="column-actions">
-                      <button onClick={() => setQueryCondition(prev => ({ ...prev, factories: availableFactories, deviceIds: [], pointNames: [] }))}>전체</button>
-                      <button onClick={() => setQueryCondition(prev => ({ ...prev, factories: [], deviceIds: [], pointNames: [] }))}>해제</button>
+                      <button onClick={() => setQueryCondition(prev => ({ ...prev, factories: availableFactories, deviceIds: [], pointNames: [] }))}>All</button>
+                      <button onClick={() => setQueryCondition(prev => ({ ...prev, factories: [], deviceIds: [], pointNames: [] }))}>{t('deselectAll', { ns: 'historicalData' })}</button>
                     </div>
                   </div>
                   <div className="drilldown-list">
@@ -598,10 +598,10 @@ const HistoricalData: React.FC = () => {
                 {/* 디바이스 선택 */}
                 <div className="drilldown-column">
                   <div className="column-header">
-                    <label>디바이스</label>
+                    <label>{t('device', { ns: 'historicalData' })}</label>
                     <div className="column-actions">
-                      <button onClick={() => setQueryCondition(prev => ({ ...prev, deviceIds: availableDevices, pointNames: [] }))}>전체</button>
-                      <button onClick={() => setQueryCondition(prev => ({ ...prev, deviceIds: [], pointNames: [] }))}>해제</button>
+                      <button onClick={() => setQueryCondition(prev => ({ ...prev, deviceIds: availableDevices, pointNames: [] }))}>All</button>
+                      <button onClick={() => setQueryCondition(prev => ({ ...prev, deviceIds: [], pointNames: [] }))}>{t('deselectAll', { ns: 'historicalData' })}</button>
                     </div>
                   </div>
                   <div className="drilldown-list">
@@ -620,17 +620,17 @@ const HistoricalData: React.FC = () => {
                         <span className="item-text">{device}</span>
                       </div>
                     ))}
-                    {availableDevices.length === 0 && <div className="list-empty">공장을 먼저 선택하세요</div>}
+                    {availableDevices.length === 0 && <div className="list-empty">{t('labels.pleaseSelectASiteFirst', { ns: 'historicalData' })}</div>}
                   </div>
                 </div>
 
-                {/* 데이터 포인트 선택 */}
+                {/* Data Point 선택 */}
                 <div className="drilldown-column">
                   <div className="column-header">
-                    <label>데이터 포인트</label>
+                    <label>{t('dataPoint', { ns: 'historicalData' })}</label>
                     <div className="column-actions">
-                      <button onClick={() => setQueryCondition(prev => ({ ...prev, pointNames: availablePoints.map(p => p.id) }))}>전체</button>
-                      <button onClick={() => setQueryCondition(prev => ({ ...prev, pointNames: [] }))}>해제</button>
+                      <button onClick={() => setQueryCondition(prev => ({ ...prev, pointNames: availablePoints.map(p => p.id) }))}>All</button>
+                      <button onClick={() => setQueryCondition(prev => ({ ...prev, pointNames: [] }))}>{t('deselectAll', { ns: 'historicalData' })}</button>
                     </div>
                   </div>
                   <div className="drilldown-list">
@@ -649,18 +649,18 @@ const HistoricalData: React.FC = () => {
                         <span className="item-text">{point.name}</span>
                       </div>
                     ))}
-                    {availablePoints.length === 0 && <div className="list-empty">디바이스를 먼저 선택하세요</div>}
+                    {availablePoints.length === 0 && <div className="list-empty">{t('labels.pleaseSelectADeviceFirst', { ns: 'historicalData' })}</div>}
                   </div>
                 </div>
               </div>
 
               <div className="quality-filter-row">
-                <label>데이터 품질</label>
+                <label>{t('dataQuality', { ns: 'historicalData' })}</label>
                 <div className="filter-tags">
                   {[
-                    { val: 'good', label: '양호' },
-                    { val: 'uncertain', label: '불확실' },
-                    { val: 'bad', label: '불량' }
+                    { val: 'good', label: 'Good' },
+                    { val: 'uncertain', label: 'Uncertain' },
+                    { val: 'bad', label: 'Bad' }
                   ].map(quality => (
                     <button
                       key={quality.val}
@@ -683,13 +683,13 @@ const HistoricalData: React.FC = () => {
         </div>
       </div>
 
-      {/* 결과 통계 */}
+      {/* Result Statistics */}
       <div className="result-stats">
         <div className="stats-info">
           <div className="stats-item">
-            <span className="stats-label">TOTAL</span>
+            <span className="stats-label">{t('labels.total', { ns: 'historicalData' })}</span>
             <span className="total-records">{totalRecords.toLocaleString()}</span>
-            <span className="stats-unit">REC</span>
+            <span className="stats-unit">{t('labels.rec', { ns: 'historicalData' })}</span>
           </div>
           <div className="stats-divider"></div>
           <div className="stats-item date-range-display">
@@ -716,21 +716,21 @@ const HistoricalData: React.FC = () => {
               onClick={() => setViewMode('table')}
             >
               <i className="fas fa-table"></i>
-              <span>테이블</span>
+              <span>{t('viewTable', { ns: 'historicalData' })}</span>
             </button>
             <button
               className={`view-toggle-btn ${viewMode === 'chart' ? 'active' : ''}`}
               onClick={() => setViewMode('chart')}
             >
               <i className="fas fa-chart-line"></i>
-              <span>차트</span>
+              <span>{t('viewChart', { ns: 'historicalData' })}</span>
             </button>
             <button
               className={`view-toggle-btn ${viewMode === 'both' ? 'active' : ''}`}
               onClick={() => setViewMode('both')}
             >
               <i className="fas fa-columns"></i>
-              <span>전체보기</span>
+              <span>{t('labels.viewAll', { ns: 'historicalData' })}</span>
             </button>
           </div>
         </div>
@@ -741,14 +741,14 @@ const HistoricalData: React.FC = () => {
         {isLoading ? (
           <div className="loading-container">
             <div className="loading-spinner"></div>
-            <span>데이터를 조회하고 있습니다...</span>
+            <span>{t('loading', { ns: 'historicalData' })}</span>
           </div>
         ) : (
           <>
             {(viewMode === 'chart' || viewMode === 'both') && (
               <div className="chart-section">
                 <div className="chart-header">
-                  <h3>시계열 차트</h3>
+                  <h3>{t('labels.timeseriesChart', { ns: 'historicalData' })}</h3>
                   <div className="point-tag-selector">
                     {availablePoints.map(point => (
                       <button
@@ -770,11 +770,11 @@ const HistoricalData: React.FC = () => {
                     <button
                       className="btn-chart-action"
                       onClick={() => setSelectedPoints(availablePoints.map(p => p.id))}
-                    >전체 선택</button>
+                    >{t('labels.selectAll', { ns: 'historicalData' })}</button>
                     <button
                       className="btn-chart-action"
                       onClick={() => setSelectedPoints([])}
-                    >선택 해제</button>
+                    >{t('labels.clearSelection', { ns: 'historicalData' })}</button>
                   </div>
                 </div>
                 <div className="chart-container">
@@ -820,11 +820,11 @@ const HistoricalData: React.FC = () => {
                   ) : (
                     <div className="chart-placeholder">
                       <i className="fas fa-chart-line chart-icon"></i>
-                      <p>시계열 차트가 여기에 표시됩니다</p>
+                      <p>{t('labels.timeseriesChartWillAppearHere', { ns: 'historicalData' })}</p>
                       <p className="text-sm text-neutral-500">
                         {selectedPoints.length > 0
-                          ? '표시할 데이터가 없습니다 (조회 조건을 확인하세요)'
-                          : '표시할 데이터 포인트를 선택하세요'}
+                          ? 'No data to display (check query conditions)'
+                          : 'Select Data Points to display'}
                       </p>
                     </div>
                   )}
@@ -836,7 +836,7 @@ const HistoricalData: React.FC = () => {
               <div className="table-section">
                 {viewMode === 'both' && (
                   <div className="section-divider-header">
-                    <h3>상세 데이터 명세</h3>
+                    <h3>{t('labels.detailedDataSpecification', { ns: 'historicalData' })}</h3>
                   </div>
                 )}
                 <div className="data-table-container">
@@ -845,21 +845,21 @@ const HistoricalData: React.FC = () => {
                       <tr>
                         {queryCondition.aggregation === 'none' ? (
                           <>
-                            <th className="num-cell">No.</th>
-                            <th className="device-cell">디바이스</th>
-                            <th className="point-cell">포인트명</th>
-                            <th className="value-cell">값</th>
-                            <th className="quality-cell">품질</th>
-                            <th className="timestamp-cell">타임스탬프</th>
-                            <th className="factory-cell">공장</th>
+                            <th className="num-cell">{t('labels.no', { ns: 'historicalData' })}</th>
+                            <th className="device-cell">{t('device', { ns: 'historicalData' })}</th>
+                            <th className="point-cell">{t('labels.pointName', { ns: 'historicalData' })}</th>
+                            <th className="value-cell">{t('labels.value', { ns: 'historicalData' })}</th>
+                            <th className="quality-cell">{t('labels.quality', { ns: 'historicalData' })}</th>
+                            <th className="timestamp-cell">{t('labels.timestamp', { ns: 'historicalData' })}</th>
+                            <th className="factory-cell">{t('labels.factory', { ns: 'historicalData' })}</th>
                           </>
                         ) : (
                           <>
-                            <th className="num-cell">No.</th>
-                            <th className="point-cell">포인트명</th>
-                            <th className="timestamp-cell">타임스탬프</th>
-                            <th className="value-cell">집계값</th>
-                            <th className="count-cell">데이터 수</th>
+                            <th className="num-cell">{t('labels.no', { ns: 'historicalData' })}</th>
+                            <th className="point-cell">{t('labels.pointName', { ns: 'historicalData' })}</th>
+                            <th className="timestamp-cell">{t('labels.timestamp', { ns: 'historicalData' })}</th>
+                            <th className="value-cell">Aggregated Value</th>
+                            <th className="count-cell">Count</th>
                           </>
                         )}
                       </tr>
@@ -931,9 +931,9 @@ const HistoricalData: React.FC = () => {
                   {(queryCondition.aggregation === 'none' ? currentData : aggregatedData).length === 0 && (
                     <div className="empty-state">
                       <i className="fas fa-database empty-icon"></i>
-                      <div className="empty-title">조회 결과가 없습니다</div>
+                      <div className="empty-title">{t('labels.noResultsFound', { ns: 'historicalData' })}</div>
                       <div className="empty-description">
-                        조회 조건을 변경하여 다시 시도해보세요.
+                        Try changing the query conditions.
                       </div>
                     </div>
                   )}
@@ -943,7 +943,7 @@ const HistoricalData: React.FC = () => {
                 {totalPages > 1 && (
                   <div className="pagination-container">
                     <div className="pagination-info">
-                      {startIndex + 1}-{Math.min(endIndex, totalRecords)} / {totalRecords} 항목
+                      {startIndex + 1}-{Math.min(endIndex, totalRecords)} / {totalRecords} items
                     </div>
 
                     <div className="pagination-controls">
@@ -955,10 +955,10 @@ const HistoricalData: React.FC = () => {
                         }}
                         className="page-size-select"
                       >
-                        <option value={50}>50개씩</option>
-                        <option value={100}>100개씩</option>
-                        <option value={200}>200개씩</option>
-                        <option value={500}>500개씩</option>
+                        <option value={50}>50 / page</option>
+                        <option value={100}>100 / page</option>
+                        <option value={200}>200 / page</option>
+                        <option value={500}>500 / page</option>
                       </select>
 
                       <button

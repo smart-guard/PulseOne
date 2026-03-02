@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate } from 'react-router-dom';
 import GatewayListTab from './export-gateway/tabs/GatewayListTab';
 import ExportGatewayWizard from './export-gateway/wizards/ExportGatewayWizard';
@@ -43,6 +44,7 @@ const ExportGatewaySettings: React.FC = () => {
         navigate(`/system/export-gateways/${newTab}`);
     };
     const [gateways, setGateways] = useState<Gateway[]>([]);
+    const { t } = useTranslation(['dataExport', 'common']);
     const [assignments, setAssignments] = useState<Record<number, Assignment[]>>({});
     const [targets, setTargets] = useState<ExportTarget[]>([]);
     const [templates, setTemplates] = useState<PayloadTemplate[]>([]);
@@ -160,8 +162,8 @@ const ExportGatewaySettings: React.FC = () => {
         try {
             await exportGatewayApi.deleteGateway(gateway.id);
             await confirm({
-                title: '삭제 완료',
-                message: '게이트웨이가 성공적으로 삭제되었습니다.',
+                title: 'Delete Complete',
+                message: 'Gateway deleted successfully.',
                 showCancelButton: false,
                 confirmButtonType: 'success'
             });
@@ -169,8 +171,8 @@ const ExportGatewaySettings: React.FC = () => {
         } catch (e) {
             console.error(e);
             await confirm({
-                title: '삭제 실패',
-                message: '삭제 중 오류가 발생했습니다.',
+                title: 'Delete Failed',
+                message: 'Error during delete.',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -188,25 +190,25 @@ const ExportGatewaySettings: React.FC = () => {
         <>
             <ManagementLayout>
                 <PageHeader
-                    title="데이터 내보내기 설정"
-                    description="외부 시스템(HTTP/MQTT)으로 데이터를 전송하기 위한 게이트웨이 및 데이터 매핑을 설정합니다."
+                    title="Data Export Settings"
+                    description="Configure gateways and data mappings for transmitting data to external systems (HTTP/MQTT)."
                     icon="fas fa-satellite-dish"
                 />
 
                 <div className="mgmt-stats-panel" style={{ marginBottom: '24px' }}>
-                    <StatCard label="전체 게이트웨이" value={gateways.length} type="neutral" />
-                    <StatCard label="온라인" value={onlineCount} type="success" />
-                    <StatCard label="오프라인" value={gateways.length - onlineCount} type="error" />
+                    <StatCard label="Total Gateways" value={gateways.length} type="neutral" />
+                    <StatCard label="Online" value={onlineCount} type="success" />
+                    <StatCard label="Offline" value={gateways.length - onlineCount} type="error" />
                 </div>
 
                 <div style={{ marginBottom: '20px' }}>
                     <FilterBar
                         filters={[
                             ...(isAdmin ? [{
-                                label: '테넌트 필터',
+                                label: 'Tenant Filter',
                                 value: currentTenantId ? String(currentTenantId) : 'all',
                                 options: [
-                                    { label: '전체 테넌트', value: 'all' },
+                                    { label: 'All Tenants', value: 'all' },
                                     ...tenants.map(t => ({ label: t.company_name, value: String(t.id) }))
                                 ],
                                 onChange: (val: string) => {
@@ -219,10 +221,10 @@ const ExportGatewaySettings: React.FC = () => {
                                 }
                             }] : []),
                             {
-                                label: '사이트 필터',
+                                label: 'Site Filter',
                                 value: currentSiteId ? String(currentSiteId) : 'all',
                                 options: [
-                                    { label: '전체 사이트 (Global)', value: 'all' },
+                                    { label: 'All Sites (Global)', value: 'all' },
                                     ...sites.map(s => ({ label: s.name, value: String(s.id) }))
                                 ],
                                 onChange: (val) => setCurrentSiteId(val === 'all' ? null : Number(val))
@@ -241,8 +243,8 @@ const ExportGatewaySettings: React.FC = () => {
                 <div className="mgmt-filter-bar" style={{ marginBottom: '20px', borderBottom: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', overflow: 'visible' }}>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'nowrap', overflow: 'auto' }}>
                         {[
-                            { key: 'gateways', icon: 'fa-server', label: '게이트웨이 설정' },
-                            { key: 'profiles', icon: 'fa-file-export', label: '데이터 매핑' },
+                            { key: 'gateways', icon: 'fa-server', label: 'Gateway Settings' },
+                            { key: 'profiles', icon: 'fa-file-export', label: 'Data Mapping' },
                             { key: 'targets', icon: 'fa-external-link-alt', label: '내보내기 대상' },
                             { key: 'templates', icon: 'fa-code', label: '페이로드 템플릿' },
                             { key: 'schedules', icon: 'fa-calendar-alt', label: '스케줄 관리' },

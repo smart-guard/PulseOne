@@ -9,9 +9,22 @@ class ControlLogService {
     constructor() {
         this._knex = null;
         this._redisClient = null;
+        this._io = null;                         // Socket.IO instance (Phase 2)
         this._pendingVerifications = new Map(); // requestId → timer
         this._pendingAlarmMatches = new Map();
         this._initialized = false;
+    }
+
+    // ─── Socket.IO 주입 (app.js에서 호출) ────────────────────────
+    setIo(io) {
+        this._io = io;
+    }
+
+    // ─── 실시간 emit Helper ────────────────────────────────────
+    _emitUpdate(request_id, payload) {
+        if (this._io) {
+            this._io.emit('control:log:update', { request_id, ...payload });
+        }
     }
 
     // ─── lazy getters ──────────────────────────────────────────
@@ -136,15 +149,16 @@ class ControlLogService {
         const now = new Date().toISOString();
 
         try {
-            await this.knex('control_logs').where({ request_id }).update({
+            const updatePayload = {
                 execution_result,
                 execution_error: error_message || null,
                 executed_at: now,
                 duration_ms: duration_ms || null,
-                // 비동기 프로토콜은 partial, 실패는 failure, 성공은 일단 pending(검증 대기)
                 final_status: is_async ? 'partial' : success ? 'pending' : 'failure',
                 verification_result: (is_async || !success) ? 'skipped' : 'pending'
-            });
+            };
+            await this.knex('control_logs').where({ request_id }).update(updatePayload);
+            this._emitUpdate(request_id, updatePayload);
 
             if (success && !is_async) {
                 // 동기 프로토콜 성공: 20초 후 값 검증
@@ -167,12 +181,27 @@ class ControlLogService {
     // ─── 타임아웃 처리 ─────────────────────────────────────────
     async _markTimeout(request_id) {
         try {
-            await this.knex('control_logs').where({ request_id }).update({
+            const updatePayload = {
                 execution_result: 'timeout',
                 final_status: 'timeout',
                 verification_result: 'skipped'
-            });
+            };
+            await this.knex('control_logs').where({ request_id }).update(updatePayload);
+            this._emitUpdate(request_id, updatePayload);
             console.warn(`[ControlLog] ⏱ Timeout: ${request_id}`);
+
+            // Phase 7: 실패 알림
+            try {
+                const row = await this.knex('control_logs').where({ request_id }).first();
+                const notif = require('./NotificationService');
+                notif.send(
+                    row?.tenant_id,
+                    '⏱ 제어 타임아웃',
+                    `Collector에서 응답이 없습니다 (${row?.point_name || request_id})`,
+                    { request_id, point_name: row?.point_name },
+                    'warning'
+                );
+            } catch (_) { }
         } catch (err) {
             console.error('[ControlLog] _markTimeout error:', err.message);
         }
@@ -196,12 +225,14 @@ class ControlLogService {
             const verified = actualVal == String(requested_value);
             const now = new Date().toISOString();
 
-            await this.knex('control_logs').where({ request_id }).update({
+            const updatePayload = {
                 verification_result: verified ? 'verified' : 'unverified',
                 verified_value: actualVal,
                 verified_at: now,
                 final_status: verified ? 'success' : 'partial'
-            });
+            };
+            await this.knex('control_logs').where({ request_id }).update(updatePayload);
+            this._emitUpdate(request_id, updatePayload);
 
             console.log(`[ControlLog] ${verified ? '✅ Verified' : '⚠️ Unverified'}: ${request_id} (got=${actualVal}, expected=${requested_value})`);
         } catch (err) {

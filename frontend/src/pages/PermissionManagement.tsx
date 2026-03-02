@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { StatCard } from '../components/common/StatCard';
@@ -22,6 +23,7 @@ interface EnhancedRole extends Role {
 
 const PermissionManagement: React.FC = () => {
   const [roles, setRoles] = useState<EnhancedRole[]>([]);
+    const { t } = useTranslation(['permissions', 'common']);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all'); // all, system, custom
@@ -105,20 +107,20 @@ const PermissionManagement: React.FC = () => {
   return (
     <ManagementLayout>
       <PageHeader
-        title="권한 관리"
-        description="시스템 역할(Role)과 권한(Permission)을 정의하고 관리합니다."
+        title="Permission Management"
+        description="Define and manage system roles and permissions."
         icon="fas fa-shield-alt"
         actions={
           <button className="btn btn-primary" onClick={handleCreate}>
-            <i className="fas fa-plus"></i> 새 역할 생성
+            <i className="fas fa-plus"></i> New Role
           </button>
         }
       />
 
       <div className="mgmt-stats-panel">
-        <StatCard label="전체 역할" value={stats.total} type="primary" />
-        <StatCard label="시스템 역할" value={stats.system} type="blueprint" />
-        <StatCard label="사용자 정의 역할" value={stats.custom} type="success" />
+        <StatCard label="Total Roles" value={stats.total} type="primary" />
+        <StatCard label="System Roles" value={stats.system} type="blueprint" />
+        <StatCard label="Custom Roles" value={stats.custom} type="success" />
       </div>
 
       <FilterBar
@@ -126,12 +128,12 @@ const PermissionManagement: React.FC = () => {
         onSearchChange={setSearchTerm}
         filters={[
           {
-            label: '유형',
+            label: 'Type',
             value: filterType,
             options: [
-              { label: '전체', value: 'all' },
-              { label: '시스템 역할', value: 'system' },
-              { label: '사용자 정의', value: 'custom' }
+              { label: 'All', value: 'all' },
+              { label: 'System Roles', value: 'system' },
+              { label: 'Custom', value: 'custom' }
             ],
             onChange: setFilterType
           }
@@ -148,11 +150,11 @@ const PermissionManagement: React.FC = () => {
           <table className="mgmt-table">
             <thead>
               <tr>
-                <th style={{ width: '20%' }}>역할명 (ID)</th>
-                <th style={{ width: '35%' }}>설명</th>
-                <th style={{ width: '15%' }}>유형</th>
-                <th style={{ width: '15%' }}>할당된 사용자</th>
-                <th style={{ width: '15%' }}>등록일</th>
+                <th style={{ width: '20%' }}>{t('table.roleName', {ns: 'permissions'})}</th>
+                <th style={{ width: '35%' }}>{t('table.description', {ns: 'permissions'})}</th>
+                <th style={{ width: '15%' }}>{t('table.type', {ns: 'permissions'})}</th>
+                <th style={{ width: '15%' }}>Assigned Users</th>
+                <th style={{ width: '15%' }}>Registered At</th>
               </tr>
             </thead>
             <tbody>

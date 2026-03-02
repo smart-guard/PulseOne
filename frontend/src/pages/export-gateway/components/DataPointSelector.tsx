@@ -114,15 +114,15 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ siteId, selectedP
         }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>장치 선택 필터</label>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>Device Filter</label>
                     <Select
-                        placeholder="장치 선택 (전체/장치별)"
+                        placeholder="Select device (All / By Device)"
                         style={{ width: '100%', height: '36px' }}
                         value={selectedDeviceId ?? null}
                         onChange={(val) => setSelectedDeviceId(val ?? undefined)}
                         getPopupContainer={trigger => trigger.parentElement}
                         options={[
-                            { value: null, label: '전체 장치 (All Devices)' },
+                            { value: null, label: 'All Devices' },
                             ...devices.map(d => ({
                                 value: d.id,
                                 label: d.device_type ? `${d.name} [${d.device_type}]` : d.name
@@ -131,7 +131,7 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ siteId, selectedP
                     />
                 </div>
                 <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>키워드 검색</label>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>Keyword Search</label>
                     <div className="search-box" style={{ position: 'relative' }}>
                         <i className="fas fa-search" style={{
                             position: 'absolute',
@@ -144,7 +144,7 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ siteId, selectedP
                         <input
                             type="text"
                             className="mgmt-input sm"
-                            placeholder="명칭 또는 주소 입력..."
+                            placeholder="Enter name or address..."
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
                             style={{ paddingLeft: '36px', height: '36px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
@@ -164,7 +164,7 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ siteId, selectedP
                                 style={{ fontSize: '10px', height: '18px', padding: '0 6px', lineHeight: '1' }}
                                 onClick={() => onAddAll(allPoints)}
                             >
-                                <i className="fas fa-plus-double" /> 전체 추가
+                                <i className="fas fa-plus-double" /> Add All
                             </button>
                         )}
                     </div>

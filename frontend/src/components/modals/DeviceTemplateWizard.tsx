@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { ManufactureApiService } from '../../api/services/manufactureApi';
 import { TemplateApiService } from '../../api/services/templateApi';
@@ -28,6 +29,7 @@ const DeviceTemplateWizard: React.FC<DeviceTemplateWizardProps> = ({
 }) => {
     const { confirm } = useConfirmContext();
     const [step, setStep] = useState(1);
+    const { t } = useTranslation(['deviceTemplates', 'common']);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -278,7 +280,7 @@ const DeviceTemplateWizard: React.FC<DeviceTemplateWizardProps> = ({
                 }
             }
         } catch (err) {
-            setError('초기 데이터를 불러오는 중 오류가 발생했습니다.');
+            setError('Error loading initial data.');
         } finally {
             setLoading(false);
         }
@@ -299,7 +301,7 @@ const DeviceTemplateWizard: React.FC<DeviceTemplateWizardProps> = ({
                 setStep(2);
             }
         } catch (err) {
-            setError('템플릿 정보를 불러오는 중 오류가 발생했습니다.');
+            setError('Error loading template information.');
         } finally {
             setLoading(false);
         }
@@ -329,7 +331,7 @@ const DeviceTemplateWizard: React.FC<DeviceTemplateWizardProps> = ({
                 setModels(Array.isArray(res.data) ? res.data : (res.data.items || []));
             }
         } catch (err) {
-            setError('모델 정보를 불러오는 중 오류가 발생했습니다.');
+            setError('Error loading model information.');
         } finally {
             setLoading(false);
         }
@@ -346,7 +348,7 @@ const DeviceTemplateWizard: React.FC<DeviceTemplateWizardProps> = ({
                 setTemplates(Array.isArray(res.data) ? res.data : (res.data.items || []));
             }
         } catch (err) {
-            setError('마스터 모델 목록을 불러오는 중 오류가 발생했습니다.');
+            setError('Error loading master model list.');
         } finally {
             setLoading(false);
         }
@@ -364,8 +366,8 @@ const DeviceTemplateWizard: React.FC<DeviceTemplateWizardProps> = ({
     const handleCreate = async () => {
         if (!selectedTemplate || !deviceName || !selectedSite) {
             confirm({
-                title: '필수 정보 누락',
-                message: '모든 필수 정보를 입력해주세요.',
+                title: 'Required Fields Missing',
+                message: 'Please fill in all required fields.',
                 confirmButtonType: 'warning',
                 showCancelButton: false
             });
@@ -376,8 +378,8 @@ const DeviceTemplateWizard: React.FC<DeviceTemplateWizardProps> = ({
         if (selectedProtocol && (selectedProtocol.protocol_type.includes('TCP') || ['MQTT', 'BACNET', 'OPC_UA', 'ROS'].includes(selectedProtocol.protocol_type))) {
             if (!ipAddress || !portNumber) {
                 confirm({
-                    title: '접속 정보 누락',
-                    message: '접속 IP 주소와 포트 번호는 필수입니다.',
+                    title: 'Connection Info Missing',
+                    message: 'IP address and port number are required.',
                     confirmButtonType: 'warning',
                     showCancelButton: false
                 });
@@ -394,8 +396,8 @@ const DeviceTemplateWizard: React.FC<DeviceTemplateWizardProps> = ({
             for (const [key, field] of Object.entries(schema) as any) {
                 if (field.required && (instanceConfig[key] === undefined || instanceConfig[key] === '')) {
                     confirm({
-                        title: '설정 누락',
-                        message: `${field.label} 필드는 필수입니다.`,
+                        title: 'Settings Missing',
+                        message: `${field.label} field is required.`,
                         confirmButtonType: 'warning',
                         showCancelButton: false
                     });
@@ -415,8 +417,8 @@ const DeviceTemplateWizard: React.FC<DeviceTemplateWizardProps> = ({
 
         if (idConflict) {
             confirm({
-                title: 'ID 충돌 감지',
-                message: `ID ${conflictId}번은 해당 경로(Endpoint)에서 이미 사용 중입니다.\n다른 ID를 선택해주세요.`,
+                title: 'ID Conflict Detected',
+                message: `ID ${conflictId} is already in use on this endpoint.\nPlease choose a different ID.`,
                 confirmButtonType: 'danger',
                 showCancelButton: false
             });
@@ -439,33 +441,33 @@ const DeviceTemplateWizard: React.FC<DeviceTemplateWizardProps> = ({
         }).join('\n') : '';
 
         const confirmationMsg = `
-아래 설정으로 디바이스를 생성하시겠습니까?
+Create a device with the following settings?
 
-■ 기본 정보
-- 디바이스 명: ${deviceName}
-- 설치 사이트: ${selectedSiteName}
-- 담당 콜렉터: ${selectedCollectorName}
+■ Basic Info
+- Device Name: ${deviceName}
+- Site: ${selectedSiteName}
+- Collector: ${selectedCollectorName}
 
-■ 통신 접속
-- 프로토콜: ${selectedProtocol?.display_name || '-'}
-- 엔드포인트: ${finalEndpoint || '-'}
-${protocolParams ? `\n■ 상세 사양\n${protocolParams}` : ''}
+■ Connection
+- Protocol: ${selectedProtocol?.display_name || '-'}
+- Endpoint: ${finalEndpoint || '-'}
+${protocolParams ? `\n■ Detail Specs\n${protocolParams}` : ''}
 
-■ 운영 및 안정성
-- 폴링 / 타임아웃: ${pollingInterval}ms / ${timeout}ms
-- 재시도: ${retryCount}회 (간격: ${retryInterval}ms)
-- 백오프: 초기 ${backoffTime}ms (최대 ${maxBackoffTime}ms, x${backoffMultiplier}배율)
-- 버퍼 / 큐: R:${readBufferSize} / W:${writeBufferSize} / Q:${queueSize}
-- 검증: 이상치 탐지(${isOutlierDetection ? 'ON' : 'OFF'}), 데드밴드(${isDeadband ? 'ON' : 'OFF'})
-${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.keys(deviceMetadata).length > 0 ? `- 메타데이터: 포함됨 (JSON)\n` : ''}
+■ Operation & Reliability
+- Polling / Timeout: ${pollingInterval}ms / ${timeout}ms
+- Retry: ${retryCount}x (interval: ${retryInterval}ms)
+- Backoff: initial ${backoffTime}ms (max ${maxBackoffTime}ms, x${backoffMultiplier}multiplier)
+- Buffer / Queue: R:${readBufferSize} / W:${writeBufferSize} / Q:${queueSize}
+- Validation: Outlier Detection(${isOutlierDetection ? 'ON' : 'OFF'}), Deadband(${isDeadband ? 'ON' : 'OFF'})
+${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.keys(deviceMetadata).length > 0 ? `- Metadata: included (JSON)\n` : ''}
 
-■ 데이터 구성
-- 데이터포인트: ${templateDataPoints.length} 개
+■ Data Config
+- Data Points: ${templateDataPoints.length} pt(s)
         `.trim();
 
         // Confirmation before saving
         const confirmed = await confirm({
-            title: '최종 등록 확인',
+            title: 'Final Registration Confirm',
             message: confirmationMsg,
             confirmButtonType: 'primary',
             showCancelButton: true
@@ -513,8 +515,8 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
 
             if (res.success && res.data) {
                 await confirm({
-                    title: '생성 완료',
-                    message: '디바이스가 성공적으로 생성되었습니다.',
+                    title: 'Creation Complete',
+                    message: 'Device created successfully.',
                     confirmButtonType: 'success',
                     showCancelButton: false
                 });
@@ -522,16 +524,16 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                 onClose();
             } else {
                 confirm({
-                    title: '생성 실패',
-                    message: res.message || '디바이스 생성에 실패했습니다.',
+                    title: 'Creation Failed',
+                    message: res.message || 'Failed to create device.',
                     confirmButtonType: 'danger',
                     showCancelButton: false
                 });
             }
         } catch (err) {
             confirm({
-                title: '오류 발생',
-                message: '디바이스 생성 중 오류가 발생했습니다.',
+                title: 'Error Occurred',
+                message: 'An error occurred while creating the device.',
                 confirmButtonType: 'danger',
                 showCancelButton: false
             });
@@ -548,7 +550,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
 
                 <div className="mgmt-modal-header">
                     <h3 className="mgmt-modal-title">
-                        <i className="fas fa-magic text-primary"></i> 마스터 모델로 디바이스 추가
+                        <i className="fas fa-magic text-primary"></i> Add Device from Master Model
                     </h3>
                     <button className="mgmt-close-btn" onClick={onClose}><i className="fas fa-times"></i></button>
                 </div>
@@ -556,22 +558,22 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                 <div className="wizard-steps-container">
                     <div className={`wizard-step ${step === 1 ? 'active' : step > 1 ? 'completed' : ''}`}>
                         <div className="step-num">{step > 1 ? <i className="fas fa-check"></i> : '1'}</div>
-                        <div className="step-label">마스터 모델 선택</div>
+                        <div className="step-label">{t('labels.selectMasterModel', {ns: 'deviceTemplates'})}</div>
                     </div>
                     <div className="step-line"></div>
                     <div className={`wizard-step ${step === 2 ? 'active' : step > 2 ? 'completed' : ''}`}>
                         <div className="step-num">{step > 2 ? <i className="fas fa-check"></i> : '2'}</div>
-                        <div className="step-label">접속 설정</div>
+                        <div className="step-label">{t('labels.connectionSetup', {ns: 'deviceTemplates'})}</div>
                     </div>
                     <div className="step-line"></div>
                     <div className={`wizard-step ${step === 3 ? 'active' : step > 3 ? 'completed' : ''}`}>
                         <div className="step-num">{step > 3 ? <i className="fas fa-check"></i> : '3'}</div>
-                        <div className="step-label">데이터 포인트</div>
+                        <div className="step-label">{t('labels.dataPoints', {ns: 'deviceTemplates'})}</div>
                     </div>
                     <div className="step-line"></div>
                     <div className={`wizard-step ${step === 4 ? 'active' : ''}`}>
                         <div className="step-num">4</div>
-                        <div className="step-label">운영 및 안정성</div>
+                        <div className="step-label">{t('labels.operationReliability', {ns: 'deviceTemplates'})}</div>
                     </div>
                 </div>
 
@@ -585,28 +587,28 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
 
                     {step === 1 && (
                         <div className="wizard-content">
-                            <h4 className="wizard-title">1. 복제하여 사용할 마스터 모델(템플릿)을 선택하십시오.</h4>
+                            <h4 className="wizard-title">1. Select the master model (template) to clone.</h4>
                             <div className="mgmt-modal-form-grid" style={{ marginTop: '20px' }}>
                                 <div className="mgmt-modal-form-group">
-                                    <label>제조사 (Manufacturer)</label>
+                                    <label>{t('filter.manufacturer', {ns: 'deviceTemplates'})}</label>
                                     <select
                                         className="mgmt-select"
                                         value={selectedManufacturer || ''}
                                         onChange={(e) => handleManufacturerSelect(Number(e.target.value))}
                                     >
-                                        <option value="">제조사 선택</option>
+                                        <option value="">{t('labels.selectManufacturer', {ns: 'deviceTemplates'})}</option>
                                         {manufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                     </select>
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>하드웨어 모델 (Model)</label>
+                                    <label>{t('labels.hardwareModel', {ns: 'deviceTemplates'})}</label>
                                     <select
                                         className="mgmt-select"
                                         value={selectedModel || ''}
                                         disabled={!selectedManufacturer}
                                         onChange={(e) => handleModelSelect(Number(e.target.value))}
                                     >
-                                        <option value="">모델 선택</option>
+                                        <option value="">{t('labels.selectModel', {ns: 'deviceTemplates'})}</option>
                                         {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                     </select>
                                 </div>
@@ -615,7 +617,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                             {selectedModel && (
                                 <div style={{ marginTop: '24px' }}>
                                     <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '12px', display: 'block' }}>
-                                        사용 가능한 마스터 모델 (Templates)
+                                        Available Master Models (Templates)
                                     </label>
                                     {templates.length > 0 ? (
                                         <div className="mgmt-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
@@ -642,7 +644,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                     ) : (
                                         <div className="info-box" style={{ background: '#f8fafc' }}>
                                             <i className="fas fa-info-circle"></i>
-                                            <span>선택한 모델에 등록된 마스터 모델이 없습니다.</span>
+                                            <span>{t('labels.noMasterModelsRegisteredForTheSelectedModel', {ns: 'deviceTemplates'})}</span>
                                         </div>
                                     )}
                                 </div>
@@ -653,39 +655,39 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
 
                     {step === 2 && selectedTemplate && (
                         <div className="wizard-content">
-                            <h4 className="wizard-title">2. 디바이스 식별 및 접속 정보를 설정하십시오.</h4>
+                            <h4 className="wizard-title">2. Set device identity and connection info.</h4>
 
                             <div className="wizard-section">
-                                <h5 className="wizard-section-title"><i className="fas fa-id-card"></i> 기본 식별 정보</h5>
+                                <h5 className="wizard-section-title"><i className="fas fa-id-card"></i> Basic Identity</h5>
                                 <div className="mgmt-modal-form-grid">
                                     <div className="mgmt-modal-form-group mgmt-span-full">
-                                        <label>디바이스 이름 *</label>
+                                        <label>Device Name *</label>
                                         <input
                                             className="mgmt-input"
                                             value={deviceName}
                                             onChange={e => setDeviceName(e.target.value)}
-                                            placeholder="예: 제1공장 인버터 #1"
+                                            placeholder="e.g. Factory1 Inverter #1"
                                         />
                                     </div>
                                     <div className="mgmt-modal-form-group">
-                                        <label>설치 사이트 *</label>
+                                        <label>Installation Site *</label>
                                         <select
                                             className="mgmt-select"
                                             value={selectedSite || ''}
                                             onChange={e => setSelectedSite(Number(e.target.value))}
                                         >
-                                            <option value="">사이트 선택</option>
+                                            <option value="">{t('labels.selectSite', {ns: 'deviceTemplates'})}</option>
                                             {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                         </select>
                                     </div>
                                     <div className="mgmt-modal-form-group">
-                                        <label>담당 콜렉터 (Edge Server) *</label>
+                                        <label>Assigned Collector (Edge Server) *</label>
                                         <select
                                             className="mgmt-select"
                                             value={selectedCollector || 0}
                                             onChange={e => setSelectedCollector(Number(e.target.value))}
                                         >
-                                            <option value={0}>콜렉터 선택</option>
+                                            <option value={0}>{t('labels.selectCollector', {ns: 'deviceTemplates'})}</option>
                                             {availableCollectors.map(c => (
                                                 <option key={c.id} value={c.id}>{c.name} (ID: {c.id})</option>
                                             ))}
@@ -695,14 +697,14 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                             </div>
 
                             <div className="wizard-section" style={{ marginTop: '20px' }}>
-                                <h5 className="wizard-section-title"><i className="fas fa-network-wired"></i> 통신 및 기술 사양 설정</h5>
+                                <h5 className="wizard-section-title"><i className="fas fa-network-wired"></i> Communication & Technical Spec Settings</h5>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', alignItems: 'start' }}>
                                     {/* Left Column: Connection Path & Main ID */}
                                     <div className="setup-column-left">
                                         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: '15px', marginBottom: portConflicts.length > 0 ? '15px' : '0' }}>
                                             {!selectedProtocol?.uses_serial ? (
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>IP 주소 및 포트 *</label>
+                                                    <label>IP Address & Port *</label>
                                                     <div className="ip-port-input-group">
                                                         <input
                                                             type="text"
@@ -723,12 +725,12 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                                 </div>
                                             ) : (
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>시리얼 포트 경로 *</label>
+                                                    <label>Serial Port Path *</label>
                                                     <input
                                                         className="mgmt-input"
                                                         value={endpoint}
                                                         onChange={e => setEndpoint(e.target.value)}
-                                                        placeholder="/dev/ttyUSB0 또는 COM1"
+                                                        placeholder="/dev/ttyUSB0 or COM1"
                                                     />
                                                 </div>
                                             )}
@@ -768,7 +770,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                         <div style={{ marginTop: '20px' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
                                                 <i className="fas fa-network-wired text-primary"></i>
-                                                <span style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>포트 사용 현황 (Network Map)</span>
+                                                <span style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>{t('labels.portUsageNetworkMap', {ns: 'deviceTemplates'})}</span>
                                             </div>
 
                                             {portConflicts.length > 0 ? (
@@ -802,7 +804,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                                         <div className="info-box success" style={{ marginTop: '15px', borderStyle: 'dashed' }}>
                                                             <i className="fas fa-magic"></i>
                                                             <div style={{ fontSize: '12px' }}>
-                                                                사용 가능한 다음 슬레이브 ID는 <strong>{suggestedId}</strong>번 입니다. (자동 적용됨)
+                                                                Next available Slave ID is <strong>{suggestedId}</strong>번 입니다. (자동 적용됨)
                                                             </div>
                                                         </div>
                                                     )}
@@ -810,7 +812,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                             ) : (
                                                 <div style={{ textAlign: 'center', padding: '30px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #f1f5f9', color: '#94a3b8' }}>
                                                     <i className="fas fa-plug" style={{ fontSize: '24px', marginBottom: '10px', display: 'block', opacity: 0.3 }}></i>
-                                                    <span style={{ fontSize: '12px' }}>현재 해당 포트에 연결된 디바이스가 없습니다.</span>
+                                                    <span style={{ fontSize: '12px' }}>{t('labels.noDevicesConnectedToThisPort', {ns: 'deviceTemplates'})}</span>
                                                 </div>
                                             )}
                                         </div>
@@ -883,7 +885,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                             <div className="wizard-main-content" style={{ padding: '30px' }}>
                                 <div className="data-points-column" style={{ display: 'flex', flexDirection: 'column' }}>
                                     <section className="wizard-section" style={{ flex: 1, display: 'flex', flexDirection: 'column', margin: 0 }}>
-                                        <h4 className="wizard-title">3. 데이터포인트 매핑 및 구성 ({templateDataPoints.length} Points)</h4>
+                                        <h4 className="wizard-title">3. Data Point Mapping & Config ({templateDataPoints.length} Points)</h4>
                                         <div style={{ flex: 1, minHeight: '500px', border: '1px solid #e2e8f0', borderRadius: '12px', background: 'white' }}>
                                             <DeviceDataPointsTab
                                                 deviceId={0}
@@ -907,26 +909,26 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                     {step === 4 && selectedTemplate && (
                         <div className="wizard-layout full-width" style={{ display: 'block' }}>
                             <div className="wizard-main-content" style={{ padding: '30px' }}>
-                                <h4 className="wizard-title">4. 상세 운영 및 서비스 안정성 설정을 완료하십시오.</h4>
+                                <h4 className="wizard-title">4. Complete detailed operational & reliability settings.</h4>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '30px' }}>
                                     {/* Column 1: Core Parameters */}
                                     <section className="wizard-section">
-                                        <h5 className="wizard-section-title"><i className="fas fa-cog"></i> 기본 운영 파라미터</h5>
+                                        <h5 className="wizard-section-title"><i className="fas fa-cog"></i> Basic Operation Parameters</h5>
                                         <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
                                             <div className="mgmt-modal-form-group">
-                                                <label>폴링 간격 (ms) *</label>
+                                                <label>Polling Interval (ms) *</label>
                                                 <input type="number" className="mgmt-input" value={pollingInterval} onChange={e => setPollingInterval(Math.max(10, Number(e.target.value)))} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>응답 타임아웃 (ms) *</label>
+                                                <label>Response Timeout (ms) *</label>
                                                 <input type="number" className="mgmt-input" value={timeout} onChange={e => setTimeoutVal(Math.max(100, Number(e.target.value)))} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>최대 재시도 (Count) *</label>
+                                                <label>Max Retry (Count) *</label>
                                                 <input type="number" className="mgmt-input" value={retryCount} onChange={e => setRetryCount(Math.max(0, Number(e.target.value)))} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>재시도 간격 (ms)</label>
+                                                <label>{t('labels.retryIntervalMs', {ns: 'deviceTemplates'})}</label>
                                                 <input type="number" className="mgmt-input" value={retryInterval} onChange={e => setRetryInterval(Number(e.target.value))} />
                                             </div>
                                         </div>
@@ -934,7 +936,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                         <div className="mgmt-modal-form-group" style={{ marginTop: '20px' }}>
                                             <div className="st-field-toggle">
                                                 <div className="toggle-header" style={{ marginBottom: '10px' }}>
-                                                    <label>Keep-Alive 세션 유지</label>
+                                                    <label>{t('labels.keepaliveSession', {ns: 'deviceTemplates'})}</label>
                                                     <label className="switch">
                                                         <input type="checkbox" checked={isKeepAlive} onChange={e => setIsKeepAlive(e.target.checked)} />
                                                         <span className="slider"></span>
@@ -942,7 +944,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                                 </div>
                                                 {isKeepAlive && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                        <span style={{ fontSize: '13px', color: '#64748b' }}>주기/타임아웃(s):</span>
+                                                        <span style={{ fontSize: '13px', color: '#64748b' }}>{t('labels.intervaltimeouts', {ns: 'deviceTemplates'})}</span>
                                                         <input type="number" className="mgmt-input" style={{ width: '70px' }} value={kaInterval} onChange={e => setKaInterval(Number(e.target.value))} />
                                                         <input type="number" className="mgmt-input" style={{ width: '70px' }} value={kaTimeout} onChange={e => setKaTimeout(Number(e.target.value))} />
                                                     </div>
@@ -953,18 +955,18 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
 
                                     {/* Column 2: Error & Backoff */}
                                     <section className="wizard-section">
-                                        <h5 className="wizard-section-title"><i className="fas fa-undo"></i> 에러 제어 및 지루 백오프</h5>
+                                        <h5 className="wizard-section-title"><i className="fas fa-undo"></i> Error Control & Exponential Backoff</h5>
                                         <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr' }}>
                                             <div className="mgmt-modal-form-group">
-                                                <label>초기 백오프 시간 (ms)</label>
+                                                <label>{t('labels.initialBackoffTimeMs', {ns: 'deviceTemplates'})}</label>
                                                 <input type="number" className="mgmt-input" value={backoffTime} onChange={e => setBackoffTime(Number(e.target.value))} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>최대 백오프 시간 (ms)</label>
+                                                <label>{t('labels.maxBackoffTimeMs', {ns: 'deviceTemplates'})}</label>
                                                 <input type="number" className="mgmt-input" value={maxBackoffTime} onChange={e => setMaxBackoffTime(Number(e.target.value))} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>지수 증폭 배율 (Multiplier)</label>
+                                                <label>{t('labels.exponentialMultiplier', {ns: 'deviceTemplates'})}</label>
                                                 <input type="number" step="0.1" className="mgmt-input" value={backoffMultiplier} onChange={e => setBackoffMultiplier(Number(e.target.value))} />
                                             </div>
                                         </div>
@@ -972,18 +974,18 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
 
                                     {/* Column 3: Advanced Buffer & Safety */}
                                     <section className="wizard-section">
-                                        <h5 className="wizard-section-title"><i className="fas fa-microchip"></i> 리소스 및 데이터 안전</h5>
+                                        <h5 className="wizard-section-title"><i className="fas fa-microchip"></i> Resources & Data Safety</h5>
                                         <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
                                             <div className="mgmt-modal-form-group">
-                                                <label>읽기 버퍼 크기</label>
+                                                <label>{t('labels.readBufferSize', {ns: 'deviceTemplates'})}</label>
                                                 <input type="number" className="mgmt-input" value={readBufferSize} onChange={e => setReadBufferSize(Number(e.target.value))} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>쓰기 버퍼 크기</label>
+                                                <label>{t('labels.writeBufferSize', {ns: 'deviceTemplates'})}</label>
                                                 <input type="number" className="mgmt-input" value={writeBufferSize} onChange={e => setWriteBufferSize(Number(e.target.value))} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>큐 사이즈</label>
+                                                <label>{t('labels.queueSize', {ns: 'deviceTemplates'})}</label>
                                                 <input type="number" className="mgmt-input" value={queueSize} onChange={e => setQueueSize(Number(e.target.value))} />
                                             </div>
                                         </div>
@@ -991,11 +993,11 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                         <div className="checkbox-list" style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                                             <label className="checkbox-wrap">
                                                 <input type="checkbox" checked={isOutlierDetection} onChange={e => setIsOutlierDetection(e.target.checked)} />
-                                                이상치 탐지 (Outlier Detection)
+                                                Outlier Detection
                                             </label>
                                             <label className="checkbox-wrap">
                                                 <input type="checkbox" checked={isDeadband} onChange={e => setIsDeadband(e.target.checked)} />
-                                                데드밴드 필터 사용 (Deadband)
+                                                Use Deadband Filter
                                             </label>
                                         </div>
                                     </section>
@@ -1003,11 +1005,11 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                     {/* Row 2: Logging & Metadata (Full Width spanned) */}
                                     <div style={{ gridColumn: 'span 3', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '30px', borderTop: '1px solid #f1f5f9', paddingTop: '30px' }}>
                                         <section className="wizard-section" style={{ margin: 0 }}>
-                                            <h5 className="wizard-section-title"><i className="fas fa-shield-alt"></i> 로깅 및 진단</h5>
+                                            <h5 className="wizard-section-title"><i className="fas fa-shield-alt"></i> Logging & Diagnostics</h5>
                                             <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr' }}>
                                                 <div className="st-field-toggle">
                                                     <div className="toggle-header">
-                                                        <label>성능 모니터링 활성화</label>
+                                                        <label>{t('labels.enablePerformanceMonitoring', {ns: 'deviceTemplates'})}</label>
                                                         <label className="switch">
                                                             <input type="checkbox" checked={isPerformanceMonitoring} onChange={e => setIsPerformanceMonitoring(e.target.checked)} />
                                                             <span className="slider"></span>
@@ -1016,7 +1018,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                                 </div>
                                                 <div className="st-field-toggle">
                                                     <div className="toggle-header">
-                                                        <label>통신 패킷 로깅 활성화</label>
+                                                        <label>{t('labels.enableCommunicationPacketLogging', {ns: 'deviceTemplates'})}</label>
                                                         <label className="switch">
                                                             <input type="checkbox" checked={isCommLogging} onChange={e => setIsCommLogging(e.target.checked)} />
                                                             <span className="slider"></span>
@@ -1025,7 +1027,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                                 </div>
                                                 <div className="st-field-toggle">
                                                     <div className="toggle-header">
-                                                        <label>정밀 디버깅 모드</label>
+                                                        <label>{t('labels.precisionDebuggingMode', {ns: 'deviceTemplates'})}</label>
                                                         <label className="switch">
                                                             <input type="checkbox" checked={isDiagnosticMode} onChange={e => setIsDiagnosticMode(e.target.checked)} />
                                                             <span className="slider"></span>
@@ -1036,19 +1038,19 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                         </section>
 
                                         <section className="wizard-section" style={{ margin: 0 }}>
-                                            <h5 className="wizard-section-title"><i className="fas fa-tags"></i> 분류 태그 및 시스템 메타데이터</h5>
+                                            <h5 className="wizard-section-title"><i className="fas fa-tags"></i> Classification Tags & System Metadata</h5>
                                             <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr' }}>
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>태그 (쉼표로 구분)</label>
+                                                    <label>{t('labels.tagsCommaseparated', {ns: 'deviceTemplates'})}</label>
                                                     <input type="text" className="mgmt-input" placeholder="Line1, Inverter, critical" value={deviceTags.join(', ')} onChange={e => setDeviceTags(e.target.value.split(',').map(s => s.trim()).filter(s => s))} />
                                                 </div>
                                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                                                     <div className="mgmt-modal-form-group">
-                                                        <label>메타데이터 (JSON)</label>
+                                                        <label>{t('labels.metadataJson', {ns: 'deviceTemplates'})}</label>
                                                         <textarea className="mgmt-input" style={{ height: '80px', fontSize: '12px', fontFamily: 'monospace' }} value={JSON.stringify(deviceMetadata, null, 2)} onChange={e => { try { setDeviceMetadata(JSON.parse(e.target.value)); } catch (err) { } }} />
                                                     </div>
                                                     <div className="mgmt-modal-form-group">
-                                                        <label>커스텀 필드 (JSON)</label>
+                                                        <label>{t('labels.customFieldsJson', {ns: 'deviceTemplates'})}</label>
                                                         <textarea className="mgmt-input" style={{ height: '80px', fontSize: '12px', fontFamily: 'monospace' }} value={JSON.stringify(customFields, null, 2)} onChange={e => { try { setCustomFields(JSON.parse(e.target.value)); } catch (err) { } }} />
                                                     </div>
                                                 </div>
@@ -1068,7 +1070,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                     <div className="footer-left">
                         {step > 1 && (
                             <button className="mgmt-btn mgmt-btn-outline btn-large" onClick={() => setStep(step - 1)}>
-                                <i className="fas fa-arrow-left"></i> 이전 단계로
+                                <i className="fas fa-arrow-left"></i> Previous Step
                             </button>
                         )}
                     </div>
@@ -1076,7 +1078,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                         {step === 1 ? (
                             selectedTemplate && (
                                 <button className="mgmt-btn mgmt-btn-primary btn-large" onClick={() => setStep(2)}>
-                                    다음: 접속 설정 진행 <i className="fas fa-arrow-right"></i>
+                                    Next: Connection Setup <i className="fas fa-arrow-right"></i>
                                 </button>
                             )
                         ) : step === 2 ? (
@@ -1085,7 +1087,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                 disabled={!deviceName || !selectedSite || (!endpoint && !ipAddress)}
                                 onClick={() => setStep(3)}
                             >
-                                다음: 데이터 포인트 매핑 <i className="fas fa-arrow-right"></i>
+                                Next: Data Point Mapping <i className="fas fa-arrow-right"></i>
                             </button>
                         ) : step === 3 ? (
                             <button className="mgmt-btn mgmt-btn-primary btn-large" onClick={() => setStep(4)}>

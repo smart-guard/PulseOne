@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import RoleApiService, { Role, Permission, CreateRoleRequest, UpdateRoleRequest } from '../../../api/services/roleApi';
 import { useConfirmContext } from '../../common/ConfirmProvider';
 import '../UserModal/UserModal.css'; // Shared styles
@@ -21,6 +22,7 @@ export const RoleModal: React.FC<RoleModalProps> = ({
 }) => {
     const { confirm } = useConfirmContext();
     const [loading, setLoading] = useState(false);
+    const { t } = useTranslation(['permissions', 'common']);
     const [availablePermissions, setAvailablePermissions] = useState<Permission[]>([]);
 
     const [formData, setFormData] = useState<Partial<CreateRoleRequest>>({
@@ -103,18 +105,18 @@ export const RoleModal: React.FC<RoleModalProps> = ({
         // System roles cannot be deleted usually, checked by API, but we should also warn in UI
         if (role.is_system) {
             await confirm({
-                title: '시스템 역할 삭제 불가',
-                message: '시스템 기본 역할은 삭제할 수 없습니다.',
-                confirmText: '확인',
+                title: 'Cannot Delete System Role',
+                message: 'Default system roles cannot be deleted.',
+                confirmText: 'Confirm',
                 confirmButtonType: 'primary'
             });
             return;
         }
 
         const confirmed = await confirm({
-            title: '역할 삭제',
-            message: `'${role.name}' 역할을 삭제하시겠습니까? 이 역할이 할당된 사용자는 권한을 잃을 수 있습니다.`,
-            confirmText: '삭제',
+            title: 'Delete Role',
+            message: `Are you sure you want to delete the '${role.name}' role? Users assigned to this role may lose their permissions.`,
+            confirmText: 'Delete',
             confirmButtonType: 'danger'
         });
 
@@ -139,7 +141,7 @@ export const RoleModal: React.FC<RoleModalProps> = ({
             <div className="modal-container user-modal">
                 <div className="modal-header">
                     <div className="modal-title">
-                        <h2>{role ? '역할 수정' : '새 역할 생성'}</h2>
+                        <h2>{role ? 'Edit Role' : 'Create New Role'}</h2>
                     </div>
                     <button className="close-btn" onClick={onClose} disabled={loading}>
                         <i className="fas fa-times"></i>
@@ -150,15 +152,15 @@ export const RoleModal: React.FC<RoleModalProps> = ({
                     <form id="role-form" onSubmit={handleSubmit}>
                         <div className="modal-form-grid">
                             <div className="modal-form-section">
-                                <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
+                                <h3><i className="fas fa-info-circle"></i> Basic Info</h3>
                                 <div className="modal-form-group">
-                                    <label className="required">역할명</label>
+                                    <label className="required">{t('roleModal.name', {ns: 'permissions'})}</label>
                                     <input
                                         type="text"
                                         className="form-control"
                                         value={formData.name}
                                         onChange={(e) => handleInputChange('name', e.target.value)}
-                                        placeholder="예: 보안 관리자"
+                                        placeholder="e.g. Security Manager"
                                         required
                                         disabled={loading || (role?.is_system === 1)} // System role name usually locked? Let's lock it to be safe
                                     />

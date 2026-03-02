@@ -37,6 +37,7 @@ import ExportGatewaySettings from './pages/ExportGatewaySettings';
 import ExportHistory from './pages/ExportHistory';
 import RedisManager from './pages/RedisManager';
 import SystemSettings from './pages/SystemSettings';
+import ControlSchedulePage from './pages/ControlSchedulePage';
 const App: React.FC = () => {
   // 🛠️ 개발 환경 초기화: 더미 토큰 설정
   React.useEffect(() => {
@@ -86,6 +87,7 @@ const App: React.FC = () => {
                   <Route path="historical" element={<HistoricalData />} />
                   <Route path="virtual-points" element={<VirtualPoints />} />
                   <Route path="export" element={<DataExport />} />
+                  <Route path="control-schedule" element={<ControlSchedulePage />} />
                   {/* 데이터 하위 경로 기본값 */}
                   <Route index element={<Navigate to="explorer" replace />} />
                 </Route>

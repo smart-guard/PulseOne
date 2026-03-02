@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { GroupApiService, DeviceGroup } from '../../../api/services/groupApi';
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
 
@@ -20,6 +21,7 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
     isCollapsed = false,
     onToggleCollapse
 }) => {
+    const { t } = useTranslation(['devices', 'common']);
     const [groups, setGroups] = useState<DeviceGroup[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
@@ -104,9 +106,9 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                 handleCancel();
             } else {
                 await confirm({
-                    title: '생성 실패',
-                    message: `그룹 생성에 실패했습니다: ${res.error || '알 수 없는 오류'}`,
-                    confirmText: '확인',
+                    title: 'Create Failed',
+                    message: `Group creation failed: ${res.error || 'Unknown error'}`,
+                    confirmText: 'OK',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -114,9 +116,9 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
         } catch (err: any) {
             console.error(err);
             await confirm({
-                title: '오류 발생',
-                message: `오류가 발생했습니다: ${err.message || '알 수 없는 오류'}`,
-                confirmText: '확인',
+                title: 'Error',
+                message: `An error occurred: ${err.message || 'Unknown error'}`,
+                confirmText: 'OK',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -140,9 +142,9 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                 handleCancel();
             } else {
                 await confirm({
-                    title: '수정 실패',
-                    message: `그룹 수정에 실패했습니다: ${res.error || '알 수 없는 오류'}`,
-                    confirmText: '확인',
+                    title: 'Edit Failed',
+                    message: `Group edit failed: ${res.error || 'Unknown error'}`,
+                    confirmText: 'OK',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -150,9 +152,9 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
         } catch (err: any) {
             console.error(err);
             await confirm({
-                title: '오류 발생',
-                message: `오류가 발생했습니다: ${err.message || '알 수 없는 오류'}`,
-                confirmText: '확인',
+                title: 'Error',
+                message: `An error occurred: ${err.message || 'Unknown error'}`,
+                confirmText: 'OK',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -163,10 +165,10 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
         e.stopPropagation();
 
         const isConfirmed = await confirm({
-            title: '그룹 삭제',
-            message: '정말 이 그룹을 삭제하시겠습니까?\n하위 그룹이나 장치가 포함되어 있다면 삭제되지 않을 수 있습니다.',
-            confirmText: '삭제',
-            cancelText: '취소',
+            title: 'Delete Group',
+            message: 'Are you sure you want to delete this group?\nGroups with subgroups or devices may not be deleted.',
+            confirmText: 'Delete',
+            cancelText: 'Cancel',
             confirmButtonType: 'danger'
         });
 
@@ -179,9 +181,9 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                 await loadGroups();
             } else {
                 await confirm({
-                    title: '삭제 실패',
-                    message: `삭제에 실패했습니다: ${res.error || '하위 그룹이나 장치가 있는지 확인해주세요.'}`,
-                    confirmText: '확인',
+                    title: 'Delete Failed',
+                    message: `Delete failed: ${res.error || 'Please check if there are subgroups or devices.'}`,
+                    confirmText: 'OK',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -189,9 +191,9 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
         } catch (err: any) {
             console.error(err);
             await confirm({
-                title: '오류 발생',
-                message: `삭제 중 오류가 발생했습니다: ${err.message || '알 수 없는 오류'}`,
-                confirmText: '확인',
+                title: 'Error',
+                message: `Error occurred while deleting: ${err.message || 'Unknown error'}`,
+                confirmText: 'OK',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -211,9 +213,9 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                 await loadGroups();
             } else {
                 await confirm({
-                    title: '이동 실패',
-                    message: `그룹 이동에 실패했습니다: ${res.error || '알 수 없는 오류'}`,
-                    confirmText: '확인',
+                    title: 'Move Failed',
+                    message: `그룹 이동에 실패했습니다: ${res.error || 'Unknown error'}`,
+                    confirmText: 'OK',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -221,9 +223,9 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
         } catch (error: any) {
             console.error('Failed to move group:', error);
             await confirm({
-                title: '오류 발생',
-                message: `이동 중 오류가 발생했습니다: ${error.message || '알 수 없는 오류'}`,
-                confirmText: '확인',
+                title: 'Error',
+                message: `이동 중 오류가 발생했습니다: ${error.message || 'Unknown error'}`,
+                confirmText: 'OK',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -242,7 +244,7 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                 className="group-inline-input"
                 value={formData.name}
                 onChange={e => setFormData({ name: e.target.value })}
-                placeholder="그룹 이름"
+                placeholder={t('devices:group')}
             />
             <div className="group-inline-actions">
                 <button type="submit" className="btn-icon-check" disabled={actionLoading}><i className="fas fa-check"></i></button>
@@ -287,30 +289,30 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                             <div className="item-actions">
                                 {moveTargetGroupId === null ? (
                                     <>
-                                        <button className="btn-mini-action add" onClick={(e) => handleCreateStart(group.id, e)} title="하위 그룹 추가">
+                                        <button className="btn-mini-action add" onClick={(e) => handleCreateStart(group.id, e)} title={t('devices:group') + ' Add'}>
                                             <i className="fas fa-plus"></i>
                                         </button>
-                                        <button className="btn-mini-action edit" onClick={(e) => { e.stopPropagation(); setMoveTargetGroupId(group.id); }} title="그룹 이동">
+                                        <button className="btn-mini-action edit" onClick={(e) => { e.stopPropagation(); setMoveTargetGroupId(group.id); }} title={t('devices:moveGroup')}>
                                             <i className="fas fa-expand-arrows-alt"></i>
                                         </button>
-                                        <button className="btn-mini-action edit" onClick={(e) => handleEditStart(group, e)} title="이름 변경">
+                                        <button className="btn-mini-action edit" onClick={(e) => handleEditStart(group, e)} title="Rename">
                                             <i className="fas fa-pen"></i>
                                         </button>
-                                        <button className="btn-mini-action delete" onClick={(e) => handleDelete(group.id, e)} title="삭제">
+                                        <button className="btn-mini-action delete" onClick={(e) => handleDelete(group.id, e)} title={t('devices:delete')}>
                                             <i className="fas fa-trash"></i>
                                         </button>
                                     </>
                                 ) : moveTargetGroupId === group.id ? (
-                                    <button className="btn-mini-action cancel" onClick={(e) => { e.stopPropagation(); setMoveTargetGroupId(null); }} title="이동 취소">
-                                        <i className="fas fa-times"></i> 취소
+                                    <button className="btn-mini-action cancel" onClick={(e) => { e.stopPropagation(); setMoveTargetGroupId(null); }} title="Cancel Move">
+                                        <i className="fas fa-times"></i> Cancel
                                     </button>
                                 ) : (
                                     <button
                                         className="btn-mini-action confirm"
                                         onClick={(e) => { e.stopPropagation(); handleMoveGroup(moveTargetGroupId, group.id); }}
-                                        title="이치 위치로 이동"
+                                        title="Move here"
                                     >
-                                        <i className="fas fa-level-down-alt"></i> 여기로
+                                        <i className="fas fa-level-down-alt"></i> Here
                                     </button>
                                 )}
 
@@ -350,7 +352,7 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                 {!isCollapsed ? (
                     <div className="panel-header-main">
                         <div className="header-title-wrapper">
-                            <h3><i className="fas fa-sitemap"></i> {isManageMode ? '그룹 편집' : '계층 구조'}</h3>
+                            <h3><i className="fas fa-sitemap"></i> {isManageMode ? 'Edit Groups' : 'Hierarchy'}</h3>
                             {!isManageMode && (
                                 <button type="button" className="btn-icon-refresh" onClick={loadGroups} title="새로고침">
                                     <i className={`fas fa-sync-alt ${loading ? 'fa-spin' : ''}`}></i>
@@ -386,7 +388,7 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                             onClick={() => onGroupSelect('all')}
                         >
                             <i className="fas fa-th-list group-icon"></i>
-                            <span className="group-name">전체 장치</span>
+                            <span className="group-name">{t('devices:totalDevices')}</span>
                         </div>
                     )}
 
@@ -399,7 +401,7 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
 
                     {loading && groups.length === 0 ? (
                         <div className="tree-loading">
-                            <i className="fas fa-spinner fa-spin"></i> 로딩 중...
+                            <i className="fas fa-spinner fa-spin"></i> Loading...
                         </div>
                     ) : (
                         <div className="tree-list">
@@ -418,7 +420,7 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                                 className="btn-outline primary full-width"
                                 onClick={(e) => handleCreateStart('root', e)}
                             >
-                                <i className="fas fa-plus"></i> 최상위 그룹
+                                <i className="fas fa-plus"></i> Root Group
                             </button>
                             {moveTargetGroupId !== null && (
                                 <button
@@ -427,7 +429,7 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleMoveGroup(moveTargetGroupId, null); }}
                                     style={{ marginTop: '8px' }}
                                 >
-                                    <i className="fas fa-arrow-up"></i> 최상위(Root)로 이동
+                                    <i className="fas fa-arrow-up"></i> Move to Root
                                 </button>
                             )}
                             <button
@@ -439,7 +441,7 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                                     setIsManageMode(false);
                                     handleCancel();
                                 }}>
-                                <i className="fas fa-check"></i> 편집 완료
+                                <i className="fas fa-check"></i> Done
                             </button>
                         </div>
                     ) : (
@@ -452,7 +454,7 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                                 setIsManageMode(true);
                             }}
                         >
-                            <i className="fas fa-cog"></i> 그룹 관리
+                            <i className="fas fa-cog"></i> {t('devices:group')} Manage
                         </button>
                     )}
                 </div>

@@ -1,0 +1,51 @@
+{
+    "title": "Device Management",
+    "list": "Device List",
+    "add": "Add Device",
+    "edit": "Edit Device",
+    "delete": "Delete Device",
+    "detail": "Device Detail",
+    "protocol": "Protocol",
+    "endpoint": "Endpoint",
+    "status": "Status",
+    "lastSeen": "Last Seen",
+    "pollingInterval": "Polling Interval",
+    "dataPoints": "Data Points",
+    "dataPoint": {
+        "title": "Data Points",
+        "add": "Add Point",
+        "bulkRegister": "Bulk Register",
+        "bitAutoGen": "Bit Auto-Gen",
+        "address": "Address",
+        "name": "Name",
+        "dataType": "Data Type",
+        "accessMode": "Access Mode",
+        "unit": "Unit",
+        "scalingFactor": "Scaling Factor",
+        "scalingOffset": "Scaling Offset",
+        "description": "Description"
+    },
+    "template": {
+        "title": "Device Templates",
+        "apply": "Apply Template",
+        "load": "Load Template"
+    },
+    "site": "Site",
+    "group": "Group",
+    "filter": {
+        "all": "All",
+        "connected": "Connected",
+        "disconnected": "Disconnected",
+        "error": "Error"
+    },
+    "columns": {
+        "name": "Name",
+        "protocol": "Protocol",
+        "endpoint": "Endpoint",
+        "site": "Site",
+        "status": "Status",
+        "dataPoints": "Points",
+        "lastSeen": "Last Seen",
+        "actions": "Actions"
+    }
+}

@@ -104,9 +104,9 @@ const UserManagement: React.FC = () => {
 
   const handleRestore = async (user: User) => {
     const confirmed = await confirm({
-      title: '사용자 복구',
-      message: `'${user.full_name}(@${user.username})' 사용자를 복구하시겠습니까?`,
-      confirmText: '복구',
+      title: 'Restore User',
+      message: `Restore user '${user.full_name} (@${user.username})'?`,
+      confirmText: 'Restore',
       confirmButtonType: 'primary'
     });
 
@@ -123,13 +123,13 @@ const UserManagement: React.FC = () => {
 
   const getRoleLabel = (role: string) => {
     const labels: any = {
-      'system_admin': '시스템',
-      'company_admin': '관리자',
-      'site_admin': '사이트',
-      'manager': '매니저',
-      'engineer': '엔지니어',
-      'operator': '운영자',
-      'viewer': '조회자'
+      'system_admin': 'System',
+      'company_admin': 'Admin',
+      'site_admin': 'Site',
+      'manager': 'Manager',
+      'engineer': 'Engineer',
+      'operator': 'Operator',
+      'viewer': 'Viewer'
     };
     return labels[role] || role;
   };
@@ -137,20 +137,20 @@ const UserManagement: React.FC = () => {
   return (
     <ManagementLayout>
       <PageHeader
-        title="사용자 관리"
-        description="시스템 계정 및 권한을 관리합니다. 행을 클릭하여 상세 정보를 조회하거나 삭제된 계정을 복구할 수 있습니다."
+        title="User Management"
+        description="Manage system accounts and permissions. Click a row to view details or restore deleted accounts."
         icon="fas fa-users-cog"
         actions={
           <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreate}>
-            <i className="fas fa-user-plus"></i> 새 사용자 등록
+            <i className="fas fa-user-plus"></i> New User Registration
           </button>
         }
       />
 
       <div className="mgmt-stats-panel">
-        <StatCard label="전체 사용자" value={stats?.total_users || 0} type="primary" />
-        <StatCard label="활성 사용자" value={stats?.active_users || 0} type="success" />
-        <StatCard label="최근 24시간 활성" value={stats?.active_today || 0} type="neutral" />
+        <StatCard label="Total Users" value={stats?.total_users || 0} type="primary" />
+        <StatCard label="Active Users" value={stats?.active_users || 0} type="success" />
+        <StatCard label="Active (24h)" value={stats?.active_today || 0} type="neutral" />
       </div>
 
       <FilterBar
@@ -158,23 +158,23 @@ const UserManagement: React.FC = () => {
         onSearchChange={setSearchTerm}
         filters={[
           {
-            label: '고객사',
+            label: 'Company',
             value: selectedTenantId,
             options: [
-              { label: '전체', value: 'all' },
+              { label: 'All', value: 'all' },
               ...tenants.map(t => ({ label: t.company_name, value: t.id.toString() }))
             ],
             onChange: setSelectedTenantId
           },
           {
-            label: '역할',
+            label: 'Role',
             value: selectedRole,
             options: [
-              { label: '전체', value: 'all' },
-              { label: '관리자', value: 'company_admin' },
-              { label: '엔지니어', value: 'engineer' },
-              { label: '운영자', value: 'operator' },
-              { label: '조회자', value: 'viewer' }
+              { label: 'All', value: 'all' },
+              { label: 'Admin', value: 'company_admin' },
+              { label: 'Engineer', value: 'engineer' },
+              { label: 'Operator', value: 'operator' },
+              { label: 'Viewer', value: 'viewer' }
             ],
             onChange: setSelectedRole
           }
@@ -199,7 +199,7 @@ const UserManagement: React.FC = () => {
                 checked={includeDeleted}
                 onChange={(e) => setIncludeDeleted(e.target.checked)}
               />
-              삭제된 사용자 포함
+              Include Deleted Users
             </label>
           </div>
         }
@@ -210,12 +210,12 @@ const UserManagement: React.FC = () => {
           <table className="mgmt-table">
             <thead>
               <tr>
-                <th style={{ width: '10%' }}>이름</th>
-                <th style={{ width: '12%' }}>아이디</th>
-                <th style={{ width: '12%' }}>고객사</th>
-                <th style={{ width: '22%' }}>이메일</th>
-                <th style={{ width: '10%' }}>역할</th>
-                <th style={{ width: '12%' }}>부서</th>
+                <th style={{ width: '10%' }}>Name</th>
+                <th style={{ width: '12%' }}>Username</th>
+                <th style={{ width: '12%' }}>Company</th>
+                <th style={{ width: '22%' }}>Email</th>
+                <th style={{ width: '10%' }}>Role</th>
+                <th style={{ width: '12%' }}>Department</th>
                 <th style={{ width: '12%' }}>마지막 로그인</th>
                 <th style={{ width: '5%', textAlign: 'center' }}>상태</th>
               </tr>

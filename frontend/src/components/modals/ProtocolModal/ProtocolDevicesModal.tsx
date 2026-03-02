@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { DeviceApiService, Device } from '../../../api/services/deviceApi';
 import { Protocol } from '../../../api/services/protocolApi';
@@ -13,6 +14,7 @@ interface ProtocolDevicesModalProps {
 
 export const ProtocolDevicesModal: React.FC<ProtocolDevicesModalProps> = ({ isOpen, onClose, protocol }) => {
     const [devices, setDevices] = useState<Device[]>([]);
+    const { t } = useTranslation(['protocols', 'common']);
     const [loading, setLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(8);
@@ -61,9 +63,9 @@ export const ProtocolDevicesModal: React.FC<ProtocolDevicesModalProps> = ({ isOp
                 <div className="mgmt-modal-header">
                     <div className="mgmt-header-content">
                         <i className="fas fa-network-wired mgmt-header-icon"></i>
-                        <h3>{protocol.display_name} 사용 디바이스 목록</h3>
+                        <h3>{protocol.display_name}  Device List</h3>
                     </div>
-                    <button className="mgmt-close-btn" onClick={onClose} aria-label="닫기">
+                    <button className="mgmt-close-btn" onClick={onClose} aria-label="Close">
                         <i className="fas fa-times"></i>
                     </button>
                 </div>
@@ -72,7 +74,7 @@ export const ProtocolDevicesModal: React.FC<ProtocolDevicesModalProps> = ({ isOp
                     {loading ? (
                         <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--neutral-500)', flex: 1 }}>
                             <i className="fas fa-spinner fa-spin fa-3x"></i>
-                            <p style={{ marginTop: '16px', fontSize: '15px' }}>디바이스 목록을 불러오는 중...</p>
+                            <p style={{ marginTop: '16px', fontSize: '15px' }}>{t('labels.loadingDeviceList', {ns: 'protocols'})}</p>
                         </div>
                     ) : devices.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--neutral-400)', flex: 1 }}>

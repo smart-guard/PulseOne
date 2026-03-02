@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import exportGatewayApi, { PayloadTemplate } from '../../../api/services/exportGatewayApi';
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
 
@@ -11,6 +12,7 @@ interface TemplateManagementTabProps {
 
 const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, tenantId, isAdmin, tenants = [] }) => {
     const [templates, setTemplates] = useState<PayloadTemplate[]>([]);
+    const { t: tl } = useTranslation(['dataExport', 'common']);
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState<Partial<PayloadTemplate> | null>(null);
@@ -32,61 +34,61 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
 
     const VARIABLE_CATEGORIES = [
         {
-            name: '매핑 (Target Mapping)',
+            name: 'Mapping (Target Mapping)',
             items: [
-                { label: '매핑 명칭 (TARGET KEY)', value: '{{target_key}}', desc: '프로파일 탭에서 설정한 데이터의 최종 이름' },
-                { label: '데이터 값 (VALUE)', value: '{{measured_value}}', desc: 'Scale/Offset이 반영된 실제 측정값' },
-                { label: '타켓 설명 (DESC)', value: '{{target_description}}', desc: '프로파일에서 설정한 데이터 설명' }
+                { label: 'Mapping Name (TARGET KEY)', value: '{{target_key}}', desc: 'Final name of data configured in the Profile tab' },
+                { label: 'Data Value (VALUE)', value: '{{measured_value}}', desc: 'Actual measured value with Scale/Offset applied' },
+                { label: 'Target Description (DESC)', value: '{{target_description}}', desc: 'Data description set in Profile' }
             ]
         },
         {
-            name: '데이터 속성 (Attributes)',
+            name: 'Data Attributes (Attributes)',
             items: [
-                { label: '데이터 타입', value: '{{type}}', desc: 'num:숫자, bit:디지털, str:문자열 ({{data_type}}도 가능)' },
-                { label: '제어 가능 여부', value: '{{is_control}}', desc: '1:제어 가능, 0:읽기 전용 ({{is_writable}}도 가능)' }
+                { label: 'Data Type', value: '{{type}}', desc: 'num:number, bit:digital, str:string ({{data_type}} also supported)' },
+                { label: 'Controllable', value: '{{is_control}}', desc: '1:writable, 0:read-only ({{is_writable}} also supported)' }
             ]
         },
         {
-            name: '메타데이터 (Metadata)',
+            name: 'Metadata (Metadata)',
             items: [
-                { label: '사이트 ID', value: '{{site_id}}', desc: '표준 사이트 숫자 ID (Legacy: {{bd}})' },
-                { label: '사이트 명칭', value: '{{site_name}}', desc: '실제 사이트/건물 이름 (예: 구로본사)' },
-                { label: '디바이스 명칭', value: '{{device_name}}', desc: '실제 장비 이름 (예: 냉동기-01)' },
-                { label: '포인트 ID', value: '{{point_id}}', desc: '원본 포인트(Point) ID' },
-                { label: '원본 이름', value: '{{original_name}}', desc: '수집기 내부 원본 포인트명' }
+                { label: 'Site ID', value: '{{site_id}}', desc: 'Standard numeric site ID (Legacy: {{bd}})' },
+                { label: 'Site Name', value: '{{site_name}}', desc: 'Actual site/building name' },
+                { label: 'Device Name', value: '{{device_name}}', desc: 'Actual device name' },
+                { label: 'Point ID', value: '{{point_id}}', desc: 'Original Point ID' },
+                { label: 'Original Name', value: '{{original_name}}', desc: 'Internal original point name in collector' }
             ]
         },
         {
-            name: '상태 및 알람 (Status)',
+            name: 'Status & Alarms (Status)',
             items: [
-                { label: '통신 상태', value: '{{status_code}}', desc: '0:정상, 1:통신끊김' },
-                { label: '알람 등급', value: '{{alarm_level}}', desc: '0:정상, 1:주의, 2:경고' },
-                { label: '알람 상태명', value: '{{alarm_status}}', desc: 'NORMAL, WARNING, CRITICAL 등' }
+                { label: 'Comm Status', value: '{{status_code}}', desc: '0:normal, 1:disconnected' },
+                { label: 'Alarm Level', value: '{{alarm_level}}', desc: '0:normal, 1:caution, 2:warning' },
+                { label: 'Alarm State Name', value: '{{alarm_status}}', desc: 'NORMAL, WARNING, CRITICAL, etc.' }
             ]
         },
         {
-            name: '범위 및 한계 (Ranges)',
+            name: 'Ranges & Limits (Ranges)',
             items: [
-                { label: '계측 범위(Min)', value: '{{mi|array}}', desc: '미터링 최소 한계값 (배열 강제)' },
-                { label: '계측 범위(Max)', value: '{{mx|array}}', desc: '미터링 최대 한계값 (배열 강제)' },
-                { label: '정보 한계', value: '{{il}}', desc: '임계치 정보(Information Limit)' },
-                { label: '위험 한계', value: '{{xl}}', desc: '임계치 위험(Extra Limit)' }
+                { label: 'Measure Range (Min)', value: '{{mi|array}}', desc: 'Metering minimum limit (force array)' },
+                { label: 'Measure Range (Max)', value: '{{mx|array}}', desc: 'Metering maximum limit (force array)' },
+                { label: 'Info Limit', value: '{{il}}', desc: 'Information threshold limit' },
+                { label: 'Danger Limit', value: '{{xl}}', desc: 'Danger threshold limit' }
             ]
         },
         {
-            name: '시간 (Timestamp)',
+            name: 'Timestamp',
             items: [
-                { label: '표준 시간', value: '{{timestamp}}', desc: 'YYYY-MM-DD HH:mm:ss.fff' },
-                { label: 'ISO8601', value: '{{timestamp_iso8601}}', desc: '표준 시각 포맷' },
-                { label: 'Unix (ms)', value: '{{timestamp_unix_ms}}', desc: '1970년 기준 밀리초' }
+                { label: 'Standard Time', value: '{{timestamp}}', desc: 'YYYY-MM-DD HH:mm:ss.fff' },
+                { label: 'ISO8601', value: '{{timestamp_iso8601}}', desc: 'Standard datetime format' },
+                { label: 'Unix (ms)', value: '{{timestamp_unix_ms}}', desc: 'Milliseconds since 1970' }
             ]
         },
         {
-            name: '스마트 로직 (Smart Logic)',
+            name: 'Smart Logic',
             items: [
-                { label: '값 치환 (MAPPING)', value: '{{map:measured_value:참일때값:거짓일때값}}', desc: '값이 1이면 참, 0이면 거짓값을 출력 예: {map:target_key:A:B}' },
-                { label: '디지털 반전 (INVERT)', value: '{{map:measured_value:0:1}}', desc: '1일때 0, 0일때 1로 반전하여 전송' },
-                { label: '상태 텍스트 (TEXT)', value: '{{map:status_code:정상:장애}}', desc: '숫자 상태값을 읽기 쉬운 한글로 변환' }
+                { label: 'Value Substitution (MAPPING)', value: '{{map:measured_value:on_true:on_false}}', desc: 'Outputs true value if 1, false value if 0. e.g. {map:target_key:A:B}' },
+                { label: 'Digital Invert (INVERT)', value: '{{map:measured_value:0:1}}', desc: 'Invert: 1→0, 0→1' },
+                { label: 'Status Text (TEXT)', value: '{{map:status_code:normal:failure}}', desc: 'Convert numeric status to human-readable text' }
             ]
         }
     ];
@@ -97,10 +99,10 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
         mapping_name: "PRO_FILE_TARGET_KEY",
         measured_value: "45.2 (MEASURED_VALUE)",
         point_value: "45.2 (MEASURED_VALUE)",
-        target_description: "프로파일에 정의된 데이터 설명",
+        target_description: "Data description defined in Profile",
         site_id: "101",
-        site_name: "구로본사 (Headquarters)",
-        device_name: "냉동기-01 (AHU)",
+        site_name: "Guro HQ (Headquarters)",
+        device_name: "Chiller-01 (AHU)",
         type: "num",
         data_type: "num",
         is_control: 1,
@@ -113,7 +115,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
         nm: "PRO_FILE_TARGET_KEY",
         vl: "45.2 (MEASURED_VALUE)",
         tm: new Date().toISOString().replace('T', ' ').split('.')[0],
-        des: "프로파일에 정의된 데이터 설명",
+        des: "Data description defined in Profile",
         bd: "101",
         st: "0 (NORMAL)",
         al: "1 (WARNING)",
@@ -172,7 +174,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
             }
         } catch (e) {
             console.error("Preview rendering failed", e);
-            return "JSON 형식이 올바르지 않거나 렌더링 중 오류가 발생했습니다.";
+            return "Invalid JSON format or rendering error.";
         }
     };
 
@@ -238,10 +240,10 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
     const handleCloseModal = async () => {
         if (hasChanges) {
             const confirmed = await confirm({
-                title: '변경사항 유실 주의',
-                message: '수정 중인 내용이 있습니다. 저장하지 않고 닫으시면 모든 데이터가 사라집니다. 정말 닫으시겠습니까?',
-                confirmText: '닫기',
-                cancelText: '취소',
+                title: 'Unsaved Changes Warning',
+                message: 'You have unsaved changes. Closing without saving will lose all data. Continue?',
+                confirmText: 'Close',
+                cancelText: 'Cancel',
                 confirmButtonType: 'warning'
             });
             if (!confirmed) return;
@@ -255,8 +257,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
 
         if (!hasChanges && editingTemplate?.id) {
             await confirm({
-                title: '수정사항 없음',
-                message: '수정된 정보가 없습니다.',
+                title: 'No Changes',
+                message: 'No information has been modified.',
                 showCancelButton: false,
                 confirmButtonType: 'primary'
             });
@@ -267,8 +269,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
         try {
             if (editMode === 'advanced' && !isJsonValid) {
                 await confirm({
-                    title: 'JSON 형식 오류',
-                    message: '유효하지 않은 JSON 형식입니다. 코드를 수정해 주세요.',
+                    title: 'JSON Format Error',
+                    message: 'Invalid JSON format. Please correct the code.',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -295,9 +297,9 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                     // Note: We still save the original templateJson with placeholders as a STRING
                 } catch (parseError) {
                     await confirm({
-                        title: 'JSON 형식 오류',
-                        message: `유효하지 않은 JSON 형식입니다.\n\n[상세 내역]\n${parseError instanceof Error ? parseError.message : String(parseError)}\n\n팁: 중괄호를 제외한 나머지 구조가 올바른 JSON인지 확인해 주세요.`,
-                        confirmText: '확인',
+                        title: 'JSON Format Error',
+                        message: `Invalid JSON format.\n\n[Details]\n${parseError instanceof Error ? parseError.message : String(parseError)}\n\nTip: Check that the structure (excluding braces) is valid JSON.`,
+                        confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'danger'
                     });
@@ -318,8 +320,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
             }
 
             await confirm({
-                title: '저장 완료',
-                message: '템플릿이 성공적으로 저장되었습니다.',
+                title: 'Save Complete',
+                message: 'Template saved successfully.',
                 showCancelButton: false,
                 confirmButtonType: 'success'
             });
@@ -329,8 +331,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
             fetchTemplates();
         } catch (error) {
             await confirm({
-                title: '저장 실패',
-                message: '템플릿을 저장하는 중 오류가 발생했습니다.',
+                title: 'Save Failed',
+                message: 'Error occurred while saving template.',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -429,8 +431,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
             }
         } catch (e) {
             confirm({
-                title: '분석 실패',
-                message: '유효한 JSON 샘플을 입력해 주세요. (배열 형태도 지원합니다)',
+                title: 'Analysis Failed',
+                message: 'Please enter a valid JSON sample. (Arrays are also supported)',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -439,9 +441,9 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
 
     const handleDelete = async (id: number) => {
         const confirmed = await confirm({
-            title: '템플릿 삭제 확인',
-            message: '이 페이로드 템플릿을 삭제하시겠습니까? 이 템플릿을 사용하는 타겟들의 전송이 실패할 수 있습니다.',
-            confirmText: '삭제',
+            title: 'Confirm Template Delete',
+            message: 'Delete this payload template? Transmission may fail for targets using this template.',
+            confirmText: 'Delete',
             confirmButtonType: 'danger'
         });
 
@@ -450,14 +452,14 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
             await exportGatewayApi.deleteTemplate(id, tenantId);
             fetchTemplates();
         } catch (error) {
-            await confirm({ title: '삭제 실패', message: '템플릿을 삭제하는 중 오류가 발생했습니다.', showCancelButton: false, confirmButtonType: 'danger' });
+            await confirm({ title: 'Delete Failed', message: 'Error occurred while deleting the template.', showCancelButton: false, confirmButtonType: 'danger' });
         }
     };
 
     return (
         <div>
             <div className="mgmt-header-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>페이로드 템플릿 설정</h3>
+                <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>Payload Template Settings</h3>
                 <button className="btn btn-primary btn-sm" onClick={() => {
                     setEditingTemplate({
                         name: '',
@@ -484,7 +486,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                     setIsModalOpen(true);
                     setHasChanges(false);
                 }}>
-                    <i className="fas fa-plus" /> 템플릿 추가
+                    <i className="fas fa-plus" /> Add Template
                 </button>
             </div>
 
@@ -492,10 +494,10 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                 <table className="mgmt-table">
                     <thead>
                         <tr>
-                            <th>이름</th>
-                            <th>시스템 타입</th>
-                            <th>상태</th>
-                            <th>관리</th>
+                            <th>Name</th>
+                            <th>System Type</th>
+                            <th>Status</th>
+                            <th>Manage</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -505,7 +507,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                 <td><span className="mgmt-badge neutral">{t.system_type}</span></td>
                                 <td>
                                     <span className={`mgmt-badge ${t.is_active ? 'success' : 'neutral'}`}>
-                                        {t.is_active ? '활성' : '비활성'}
+                                        {t.is_active ? 'Active' : 'Inactive'}
                                     </span>
                                 </td>
                                 <td>
@@ -542,8 +544,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
 
                                             setIsModalOpen(true);
                                             setIsJsonValid(true);
-                                        }} style={{ width: 'auto' }}>수정</button>
-                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-error" onClick={() => handleDelete(t.id)} style={{ width: 'auto' }}>삭제</button>
+                                        }} style={{ width: 'auto' }}>{tl('edit', {ns: 'common'})}</button>
+                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-error" onClick={() => handleDelete(t.id)} style={{ width: 'auto' }}>{tl('delete', {ns: 'common'})}</button>
                                     </div>
                                 </td>
                             </tr>
@@ -551,7 +553,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                         {templates.length === 0 && !loading && (
                             <tr>
                                 <td colSpan={4} style={{ textAlign: 'center', padding: '40px', color: 'var(--neutral-400)' }}>
-                                    등록된 템플릿이 없습니다.
+                                    No templates registered.
                                 </td>
                             </tr>
                         )}
@@ -563,7 +565,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                 <div className="mgmt-modal-overlay">
                     <div className="mgmt-modal-content" style={{ maxWidth: '900px', width: '95%' }}>
                         <div className="mgmt-modal-header" style={{ padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h3 className="mgmt-modal-title" style={{ fontSize: '16px', margin: 0 }}>{editingTemplate?.id ? "템플릿 수정" : "페이로드 템플릿 추가"}</h3>
+                            <h3 className="mgmt-modal-title" style={{ fontSize: '16px', margin: 0 }}>{editingTemplate?.id ? "Edit Template" : "Add Payload Template"}</h3>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <button
                                     type="button"
@@ -573,7 +575,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                     style={{ height: '32px', fontSize: '13px', padding: '0 16px', borderRadius: '6px' }}
                                 >
                                     <i className="fas fa-save" style={{ marginRight: '6px' }} />
-                                    저장
+                                    Save
                                 </button>
                                 <button className="mgmt-modal-close" onClick={handleCloseModal}>&times;</button>
                             </div>
@@ -585,13 +587,13 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                     <div style={{ padding: '20px' }}>
                                         <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-800)', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <i className="fas fa-database" style={{ color: 'var(--primary-500)' }} />
-                                            데이터 탐색기
+                                            Data Explorer
                                         </div>
 
                                         {/* Recommended Section: Prominent for quick access */}
                                         <div style={{ marginBottom: '20px', padding: '12px', background: 'var(--primary-50)', borderRadius: '10px', border: '1px solid var(--primary-100)' }}>
                                             <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--primary-700)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                <i className="fas fa-star" /> 추천 항목
+                                                <i className="fas fa-star" /> Recommended
                                             </div>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                                                 <button
@@ -599,18 +601,18 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                     className="mgmt-badge primary"
                                                     style={{ cursor: 'pointer', border: 'none', fontSize: '11px', padding: '5px 10px', borderRadius: '6px', fontWeight: 600, background: 'var(--primary-500)', color: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
                                                     onClick={() => insertAtCursor('{{target_key}}')}
-                                                    title="매핑 명칭 (TARGET KEY)"
+                                                    title="Mapping Name (TARGET KEY)"
                                                 >
-                                                    매핑 명칭
+                                                    Mapping Name
                                                 </button>
                                                 <button
                                                     type="button"
                                                     className="mgmt-badge primary"
                                                     style={{ cursor: 'pointer', border: 'none', fontSize: '11px', padding: '5px 10px', borderRadius: '6px', fontWeight: 600, background: 'var(--primary-500)', color: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
                                                     onClick={() => insertAtCursor('{{measured_value}}')}
-                                                    title="데이터 값 (VALUE)"
+                                                    title="Data Value (VALUE)"
                                                 >
-                                                    데이터 값
+                                                    Data Value
                                                 </button>
                                             </div>
                                         </div>
@@ -643,45 +645,45 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                         <details style={{ cursor: 'pointer' }}>
                                             <summary style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', display: 'flex', alignItems: 'center', gap: '8px', outline: 'none', marginBottom: '10px' }}>
                                                 <i className="fas fa-magic" />
-                                                <span>고급 스마트 로직</span>
+                                                <span>Advanced Smart Logic</span>
                                                 <i className="fas fa-chevron-down" style={{ fontSize: '10px', marginLeft: 'auto', opacity: 0.5 }} />
                                             </summary>
 
                                             <div className="logic-sidebar-form" style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '10px', background: 'var(--neutral-100)', borderRadius: '8px', marginTop: '5px' }}>
                                                 <div>
-                                                    <label style={{ fontSize: '10px', color: 'var(--neutral-500)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>대상 데이터</label>
+                                                    <label style={{ fontSize: '10px', color: 'var(--neutral-500)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Target Data</label>
                                                     <select
                                                         className="mgmt-input"
                                                         style={{ height: '32px', fontSize: '12px', padding: '2px 8px', width: '100%' }}
                                                         value={logicSource}
                                                         onChange={e => setLogicSource(e.target.value)}
                                                     >
-                                                        <option value="measured_value">측정값 (measured_value)</option>
-                                                        <option value="status_code">통신상태 (status_code)</option>
-                                                        <option value="alarm_level">알람등급 (alarm_level)</option>
+                                                        <option value="measured_value">Measured Value (measured_value)</option>
+                                                        <option value="status_code">Comm Status (status_code)</option>
+                                                        <option value="alarm_level">Alarm Level (alarm_level)</option>
                                                     </select>
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '8px' }}>
                                                     <div style={{ flex: 1 }}>
-                                                        <label style={{ fontSize: '10px', color: 'var(--success-600)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>참(1)일 때</label>
+                                                        <label style={{ fontSize: '10px', color: 'var(--success-600)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>When True (1)</label>
                                                         <input
                                                             type="text"
                                                             className="mgmt-input"
                                                             style={{ height: '32px', fontSize: '12px' }}
                                                             value={logicTrueVal}
                                                             onChange={e => setLogicTrueVal(e.target.value)}
-                                                            placeholder="예: On"
+                                                            placeholder="e.g. On"
                                                         />
                                                     </div>
                                                     <div style={{ flex: 1 }}>
-                                                        <label style={{ fontSize: '10px', color: 'var(--danger-600)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>거짓(0)일 때</label>
+                                                        <label style={{ fontSize: '10px', color: 'var(--danger-600)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>When False (0)</label>
                                                         <input
                                                             type="text"
                                                             className="mgmt-input"
                                                             style={{ height: '32px', fontSize: '12px' }}
                                                             value={logicFalseVal}
                                                             onChange={e => setLogicFalseVal(e.target.value)}
-                                                            placeholder="예: Off"
+                                                            placeholder="e.g. Off"
                                                         />
                                                     </div>
                                                 </div>
@@ -694,11 +696,11 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                         insertAtCursor(tag);
                                                     }}
                                                 >
-                                                    태그 삽입
+                                                    Insert Tag
                                                 </button>
 
                                                 <div style={{ marginTop: '10px', borderTop: '1px solid var(--neutral-200)', paddingTop: '10px' }}>
-                                                    <div style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 600, marginBottom: '6px' }}>포맷 필터</div>
+                                                    <div style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 600, marginBottom: '6px' }}>Format Filter</div>
                                                     <button
                                                         type="button"
                                                         className="mgmt-badge primary"
@@ -734,7 +736,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                             }
                                                         }}
                                                     >
-                                                        JSON 배열 강제 (|array)
+                                                        Force JSON Array (|array)
                                                     </button>
                                                 </div>
                                             </div>
@@ -752,11 +754,11 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                 ✨
                                             </div>
                                             <div style={{ flex: 1 }}>
-                                                <div style={{ fontSize: '14px', fontWeight: 800, marginBottom: '6px', letterSpacing: '-0.02em' }}>템플릿 생성 가이드: 3단계면 충분합니다!</div>
+                                                <div style={{ fontSize: '14px', fontWeight: 800, marginBottom: '6px', letterSpacing: '-0.02em' }}>Template Creation Guide: Just 3 steps!</div>
                                                 <div style={{ display: 'flex', gap: '15px' }}>
-                                                    <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ background: '#fff', color: 'var(--primary-600)', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>1</span> 왼쪽에서 데이터 선택</div>
-                                                    <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ background: '#fff', color: 'var(--primary-600)', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>2</span> 표에 JSON 이름 입력</div>
-                                                    <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ background: '#fff', color: 'var(--primary-600)', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>3</span> 미리보기 확인 후 저장</div>
+                                                    <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ background: '#fff', color: 'var(--primary-600)', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>1</span> Select data on the left</div>
+                                                    <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ background: '#fff', color: 'var(--primary-600)', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>2</span> Enter JSON name in the table</div>
+                                                    <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ background: '#fff', color: 'var(--primary-600)', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>3</span> Preview, then Save</div>
                                                 </div>
                                             </div>
                                         </div>
@@ -767,8 +769,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                         <i className="fas fa-bolt" />
                                                     </div>
                                                     <div>
-                                                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--neutral-800)' }}>스마트 페이로드 생성기</div>
-                                                        <div style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>기존 JSON 샘플을 붙여넣으면 PulseOne 템플릿으로 자동 변환합니다.</div>
+                                                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--neutral-800)' }}>Smart Payload Builder</div>
+                                                        <div style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>Paste an existing JSON sample and Auto-converts to PulseOne template.</div>
                                                     </div>
                                                 </div>
                                                 <button
@@ -777,7 +779,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                     style={{ height: '36px', fontSize: '12px', width: 'auto', padding: '0 15px', borderColor: 'var(--primary-300)', color: 'var(--primary-600)' }}
                                                     onClick={() => setIsImportVisible(!isImportVisible)}
                                                 >
-                                                    {isImportVisible ? '숨기기' : '샘플 붙여넣기'}
+                                                    {isImportVisible ? 'Hide' : 'Paste Sample'}
                                                 </button>
                                             </div>
 
@@ -786,13 +788,13 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                     <textarea
                                                         className="mgmt-input"
                                                         style={{ height: '120px', fontFamily: '"Fira Code", monospace', fontSize: '12px', marginBottom: '10px' }}
-                                                        placeholder='[{"bd":9, "ty":"num", ...}] 형태의 JSON 샘플을 여기에 붙여넣으세요.'
+                                                        placeholder='Paste your JSON sample here, e.g. [{"bd":9, "ty":"num", ...}]'
                                                         value={sampleInput}
                                                         onChange={e => setSampleInput(e.target.value)}
                                                     />
                                                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                                                        <button type="button" className="mgmt-btn mgmt-btn-outline" style={{ height: '32px', fontSize: '12px', width: '80px' }} onClick={() => setIsImportVisible(false)}>취소</button>
-                                                        <button type="button" className="mgmt-btn btn-primary" style={{ height: '32px', fontSize: '12px', width: '100px' }} onClick={handleImportFromSample}>분석 및 적용</button>
+                                                        <button type="button" className="mgmt-btn mgmt-btn-outline" style={{ height: '32px', fontSize: '12px', width: '80px' }} onClick={() => setIsImportVisible(false)}>{tl('cancel', {ns: 'common'})}</button>
+                                                        <button type="button" className="mgmt-btn btn-primary" style={{ height: '32px', fontSize: '12px', width: '100px' }} onClick={handleImportFromSample}>Analyze & Apply</button>
                                                     </div>
                                                 </div>
                                             )}
@@ -801,7 +803,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                         {/* Name & System Type Row: Softer Inputs */}
                                         <div style={{ display: 'flex', gap: '20px', marginBottom: '25px' }}>
                                             <div style={{ flex: 2 }}>
-                                                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>템플릿 명칭</label>
+                                                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>Template Name</label>
                                                 <input
                                                     type="text"
                                                     className="mgmt-input"
@@ -809,23 +811,23 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                     style={{ height: '44px', fontSize: '14px', borderRadius: '10px', background: 'var(--neutral-50)', border: '1px solid var(--neutral-200)' }}
                                                     value={editingTemplate?.name || ''}
                                                     onChange={e => { setEditingTemplate({ ...editingTemplate, name: e.target.value }); setHasChanges(true); }}
-                                                    placeholder="예: 표준 JSON 페이로드"
+                                                    placeholder="e.g. Standard JSON Payload"
                                                 />
                                             </div>
                                             <div style={{ flex: 1 }}>
-                                                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>시스템 유형</label>
+                                                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>System Type</label>
                                                 <input
                                                     type="text"
                                                     className="mgmt-input"
                                                     style={{ height: '44px', fontSize: '14px', borderRadius: '10px', background: 'var(--neutral-50)', border: '1px solid var(--neutral-200)' }}
                                                     value={editingTemplate?.system_type || ''}
                                                     onChange={e => { setEditingTemplate({ ...editingTemplate, system_type: e.target.value }); setHasChanges(true); }}
-                                                    placeholder="Insite, AWS 등"
+                                                    placeholder="Insite, AWS, etc."
                                                 />
                                             </div>
                                             {isAdmin && !tenantId && (
                                                 <div style={{ flex: 1 }}>
-                                                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>소속 테넌트 <span style={{ color: 'red' }}>*</span></label>
+                                                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>Owner Tenant <span style={{ color: 'red' }}>*</span></label>
                                                     <select
                                                         className="mgmt-select"
                                                         required
@@ -833,7 +835,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                         value={editingTemplate?.tenant_id || ''}
                                                         onChange={e => { setEditingTemplate({ ...editingTemplate, tenant_id: parseInt(e.target.value) }); setHasChanges(true); }}
                                                     >
-                                                        <option value="">(테넌트 선택)</option>
+                                                        <option value="">(Select Tenant)</option>
                                                         {tenants.map(t => (
                                                             <option key={t.id} value={t.id}>{t.company_name}</option>
                                                         ))}
@@ -844,7 +846,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
 
                                         {/* Editor Section Header */}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                            <label style={{ margin: 0, fontWeight: 700, fontSize: '13px', color: 'var(--neutral-800)' }}>페이로드 구성 에디터</label>
+                                            <label style={{ margin: 0, fontWeight: 700, fontSize: '13px', color: 'var(--neutral-800)' }}>Payload Editor</label>
                                             <div className="mgmt-toggle-group" style={{ background: 'var(--neutral-100)', padding: '3px', borderRadius: '8px', display: 'flex' }}>
                                                 <button
                                                     type="button"
@@ -857,13 +859,13 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                         setEditMode('simple');
                                                         setIsJsonValid(true);
                                                     }}
-                                                >빌더 (Simple)</button>
+                                                >Builder (Simple)</button>
                                                 <button
                                                     type="button"
                                                     className={`mgmt-btn btn-xs ${editMode === 'advanced' ? 'btn-primary' : 'mgmt-btn-flat'}`}
                                                     style={{ height: '28px', fontSize: '11px', padding: '0 12px', borderRadius: '6px', fontWeight: editMode === 'advanced' ? 600 : 400 }}
                                                     onClick={() => setEditMode('advanced')}
-                                                >코드 (Advanced)</button>
+                                                >Code (Advanced)</button>
                                             </div>
                                         </div>
 
@@ -872,7 +874,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                             {editMode === 'simple' ? (
                                                 <div style={{ border: '1px solid var(--neutral-200)', borderRadius: '10px', overflow: 'hidden', background: '#fff' }}>
                                                     <div style={{ padding: '10px 15px', background: 'var(--neutral-50)', borderBottom: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--neutral-500)' }}>빌더 설정</span>
+                                                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--neutral-500)' }}>Builder Settings</span>
                                                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}>
                                                             <input
                                                                 type="checkbox"
@@ -880,14 +882,14 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                                 onChange={e => { setIsWrappedInArray(e.target.checked); setHasChanges(true); }}
                                                                 style={{ width: '14px', height: '14px' }}
                                                             />
-                                                            <span style={{ fontSize: '12px', color: 'var(--neutral-700)', fontWeight: 600 }}>결과물을 배열 ([ ])로 감싸기</span>
+                                                            <span style={{ fontSize: '12px', color: 'var(--neutral-700)', fontWeight: 600 }}>Wrap result in array ([ ])</span>
                                                         </label>
                                                     </div>
                                                     <table className="mgmt-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%' }}>
                                                         <thead style={{ background: 'var(--neutral-50)' }}>
                                                             <tr>
-                                                                <th style={{ padding: '10px 15px', fontSize: '12px', fontWeight: 600, width: '40%' }}>JSON 키 (Key)</th>
-                                                                <th style={{ padding: '10px 15px', fontSize: '12px', fontWeight: 600, width: '50%' }}>데이터 값 (Value)</th>
+                                                                <th style={{ padding: '10px 15px', fontSize: '12px', fontWeight: 600, width: '40%' }}>JSON Key</th>
+                                                                <th style={{ padding: '10px 15px', fontSize: '12px', fontWeight: 600, width: '50%' }}>Data Value (Value)</th>
                                                                 <th style={{ padding: '10px 15px', width: '50px' }}></th>
                                                             </tr>
                                                         </thead>
@@ -923,7 +925,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                                                 setHasChanges(true);
                                                                             }}
                                                                             onFocus={() => setLastFocusedElement({ id: `mapping-value-${idx}`, index: idx, field: 'value' })}
-                                                                            placeholder="텍스트 또는 변수 클릭"
+                                                                            placeholder="Click text or variable"
                                                                         />
                                                                     </td>
                                                                     <td style={{ padding: '8px 15px', textAlign: 'center' }}>
@@ -1010,8 +1012,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                 </div>
                             </div>
                             <div className="mgmt-modal-footer" style={{ padding: '15px 20px', borderTop: '1px solid var(--neutral-200)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                                <button type="button" className="mgmt-btn mgmt-btn-outline" style={{ height: '40px', fontSize: '14px', width: '100px' }} onClick={handleCloseModal}>취소</button>
-                                <button type="submit" className={`mgmt-btn btn-primary ${editMode === 'advanced' && !isJsonValid ? 'disabled' : ''}`} disabled={editMode === 'advanced' && !isJsonValid} style={{ height: '40px', fontSize: '14px', minWidth: '120px' }}>템플릿 저장</button>
+                                <button type="button" className="mgmt-btn mgmt-btn-outline" style={{ height: '40px', fontSize: '14px', width: '100px' }} onClick={handleCloseModal}>{tl('cancel', {ns: 'common'})}</button>
+                                <button type="submit" className={`mgmt-btn btn-primary ${editMode === 'advanced' && !isJsonValid ? 'disabled' : ''}`} disabled={editMode === 'advanced' && !isJsonValid} style={{ height: '40px', fontSize: '14px', minWidth: '120px' }}>템플릿 Save</button>
                             </div>
                         </form>
                     </div>

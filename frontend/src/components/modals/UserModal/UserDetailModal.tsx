@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { User } from '../../../api/services/userApi';
 import { roleApi, Role } from '../../../api/services/roleApi';
 import StatusBadge from '../../common/StatusBadge';
@@ -19,6 +20,7 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
     onRestore
 }) => {
     const [roles, setRoles] = useState<Role[]>([]);
+    const { t } = useTranslation(['permissions', 'common']);
 
     useEffect(() => {
         if (isOpen) {
@@ -44,13 +46,13 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
 
         // Legacy Fallback
         const labels: Record<string, string> = {
-            'system_admin': '시스템 관리자',
-            'company_admin': '기업 관리자',
-            'site_admin': '사이트 관리자',
-            'manager': '매니저',
-            'engineer': '엔지니어',
-            'operator': '운영자',
-            'viewer': '조회자'
+            'system_admin': 'System Admin',
+            'company_admin': 'Company Admin',
+            'site_admin': 'Site Admin',
+            'manager': 'Manager',
+            'engineer': 'Engineer',
+            'operator': 'Operator',
+            'viewer': 'Viewer'
         };
         return labels[roleId] || roleId;
     };
@@ -83,7 +85,7 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
                                 <i className="fas fa-user"></i>
                             </div>
                             <div>
-                                <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>사용자 상세 정보</h2>
+                                <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>{t('labels.userDetails', {ns: 'permissions'})}</h2>
                                 <p style={{ fontSize: '13px', color: 'var(--neutral-500)', margin: 0 }}>@{user.username} (ID: {user.id})</p>
                             </div>
                         </div>
@@ -100,29 +102,29 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
                         {/* LEFT COLUMN: Basic Info */}
                         <div className="left-col" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             <div className="mgmt-modal-form-section" style={{ border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '16px', height: '100%' }}>
-                                <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
+                                <h3><i className="fas fa-info-circle"></i> Basic Info</h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                     <div className="detail-item">
-                                        <span className="detail-label">성함</span>
+                                        <span className="detail-label">{t('labels.fullName', {ns: 'permissions'})}</span>
                                         <span className="detail-value highlight fs-15">{user.full_name}</span>
                                     </div>
                                     <div className="detail-item">
-                                        <span className="detail-label">이메일</span>
+                                        <span className="detail-label">{t('labels.email', {ns: 'permissions'})}</span>
                                         <span className="detail-value">{user.email}</span>
                                     </div>
                                     <div className="detail-item">
-                                        <span className="detail-label">연락처</span>
+                                        <span className="detail-label">{t('labels.contact', {ns: 'permissions'})}</span>
                                         <span className="detail-value">{user.phone || '-'}</span>
                                     </div>
                                     <div className="detail-item">
-                                        <span className="detail-label">부서 / 조직</span>
+                                        <span className="detail-label">{t('labels.department', {ns: 'permissions'})}</span>
                                         <span className="detail-value">{user.department || '-'}</span>
                                     </div>
                                     <div className="detail-item">
-                                        <span className="detail-label">계정 상태</span>
+                                        <span className="detail-label">{t('labels.accountStatus', {ns: 'permissions'})}</span>
                                         <span className="detail-value">
                                             <StatusBadge
-                                                status={user.is_deleted ? '삭제됨(비활성)' : (user.is_active ? '정상 활성' : '일시 중지')}
+                                                status={user.is_deleted ? 'Deleted (Inactive)' : (user.is_active ? 'Active' : 'Suspended')}
                                                 type={user.is_deleted ? 'error' : (user.is_active ? 'active' : 'inactive')}
                                             />
                                         </span>
@@ -135,10 +137,10 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
                         <div className="right-col" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             {/* Security & Permissions */}
                             <div className="mgmt-modal-form-section" style={{ border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '16px' }}>
-                                <h3><i className="fas fa-shield-alt"></i> 보안 및 권한</h3>
+                                <h3><i className="fas fa-shield-alt"></i> Security & Permissions</h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                     <div className="detail-item">
-                                        <span className="detail-label">배정 역할</span>
+                                        <span className="detail-label">{t('labels.assignedRole', {ns: 'permissions'})}</span>
                                         <span className="detail-value" style={{ marginTop: '4px' }}>
                                             <span className={`status-badge ${isSystemRole(user.role) ? 'status-purple' : 'status-success'}`} style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
                                                 <i className={`fas ${isSystemRole(user.role) ? 'fa-lock' : 'fa-user-tag'}`}></i>
@@ -148,7 +150,7 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
                                     </div>
 
                                     <div className="detail-item">
-                                        <span className="detail-label">활성화된 권한 정책</span>
+                                        <span className="detail-label">{t('labels.activePermissionPolicy', {ns: 'permissions'})}</span>
                                         <div className="detail-value" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
                                             {user.permissions && user.permissions.length > 0 ? (
                                                 user.permissions.map(p => (
@@ -161,12 +163,12 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
                                     </div>
 
                                     <div className="detail-item">
-                                        <span className="detail-label">사이트 접근 권한</span>
+                                        <span className="detail-label">{t('labels.siteAccess', {ns: 'permissions'})}</span>
                                         <div className="detail-value" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
                                             {/* Typically sites would be looked up by ID, presenting IDs for now or if passed context */}
                                             {user.site_access && user.site_access.length > 0 ? (
-                                                <span className="badge neutral">총 {user.site_access.length}개 사이트</span>
-                                            ) : <span className="text-neutral-400" style={{ fontSize: '13px' }}>전체 접근 가능 (System Admin)</span>}
+                                                <span className="badge neutral">{user.site_access.length} site(s) total</span>
+                                            ) : <span className="text-neutral-400" style={{ fontSize: '13px' }}>{t('labels.fullAccessSystemAdmin', {ns: 'permissions'})}</span>}
                                         </div>
                                     </div>
                                 </div>

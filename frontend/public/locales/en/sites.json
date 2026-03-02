@@ -1,0 +1,82 @@
+{
+    "title": "Site Management",
+    "description": "Manage physical locations and installation sites. Supports hierarchical structure (HQ-Branch-Floor, etc.).",
+    "register": "Register New Site",
+    "showDeleted": "Show Deleted Sites",
+    "topLevel": "Top Level",
+    "stats": {
+        "totalSites": "Total Sites",
+        "activeSites": "Active Sites",
+        "mainSites": "HQ/Main",
+        "edgeServerUsage": "Edge Server Usage (/{{max}})",
+        "onlineEdge": "Online Edge Server",
+        "offlineEdge": "Offline Edge Server"
+    },
+    "filter": {
+        "status": "Status",
+        "all": "All",
+        "active": "Active",
+        "inactive": "Inactive"
+    },
+    "table": {
+        "name": "Site Name",
+        "code": "Code",
+        "type": "Type",
+        "location": "Location/Address",
+        "edgeServer": "Edge Server",
+        "status": "Status",
+        "parentSite": "Parent Site"
+    },
+    "badge": {
+        "active": "Active",
+        "inactive": "Inactive"
+    },
+    "confirm": {
+        "restoreTitle": "Confirm Site Restoration",
+        "restoreMsg": "Are you sure you want to restore '{{name}}'?",
+        "restoreText": "Restore",
+        "restoreSuccessTitle": "Restoration Complete",
+        "restoreSuccessMsg": "Site has been successfully restored."
+    },
+    "loading": "An error occurred while loading site information.",
+    "modal": {
+        "createTitle": "Register Site"
+    },
+    "field": {
+        "name": "Site Name",
+        "code": "Site Code"
+    },
+    "section": {
+        "basic": "Basic Info"
+    },
+    "labels": {
+        "moveGroup": "Move Group",
+        "selectTargetGroup": "Select Target Group",
+        "ungroupNoGroup": "Ungroup (No Group)",
+        "failedToLoadSiteInformation": "Failed to load site information.",
+        "siteType": "Site Type",
+        "officebranch": "Office/Branch",
+        "factoryplant": "Factory/Plant",
+        "building": "Building",
+        "floor": "Floor",
+        "room": "Room",
+        "noneTopLevel": "None (Top Level)",
+        "address": "Address",
+        "managerName": "Manager Name",
+        "email": "Email",
+        "contact": "Contact",
+        "notAssigned": "Not Assigned",
+        "codeId": "Code / ID",
+        "timezone": "Timezone",
+        "contactPerson": "Contact Person",
+        "serverName": "Server Name",
+        "devices": "Devices",
+        "headquartersBusinessUnit": "Headquarters (Business Unit)",
+        "noneToplevelSite": "None (Top-level Site)",
+        "asiaseoulKst": "Asia/Seoul (KST)",
+        "utc": "UTC",
+        "europelondonGmtbst": "Europe/London (GMT/BST)",
+        "collectorName": "Collector Name",
+        "collectorDescription": "Collector Description"
+    }
+}

@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export interface CreateTemplateRequest {
   name: string;
@@ -54,6 +55,7 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
     auto_acknowledge: false,
     auto_clear: true
   });
+    const { t } = useTranslation(['deviceTemplates', 'common']);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -147,16 +149,16 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.name.trim()) newErrors.name = '템플릿 이름은 필수입니다';
-    if (!formData.description.trim()) newErrors.description = '설명은 필수입니다';
+    if (!formData.name.trim()) newErrors.name = 'Template name is required';
+    if (!formData.description.trim()) newErrors.description = 'Description is required';
 
     // 조건 검증
     if (formData.condition_type === 'threshold') {
-      if (formData.default_config.threshold === undefined) newErrors.threshold = '임계값은 필수입니다';
+      if (formData.default_config.threshold === undefined) newErrors.threshold = 'Threshold is required';
     }
     if (formData.condition_type === 'range') {
-      if (formData.default_config.high_limit === undefined) newErrors.high_limit = '상한값은 필수입니다';
-      if (formData.default_config.low_limit === undefined) newErrors.low_limit = '하한값은 필수입니다';
+      if (formData.default_config.high_limit === undefined) newErrors.high_limit = 'High limit is required';
+      if (formData.default_config.low_limit === undefined) newErrors.low_limit = 'Low limit is required';
     }
 
     setErrors(newErrors);
@@ -169,10 +171,10 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
     try {
       await onCreate(formData);
       onClose();
-      alert('템플릿이 성공적으로 생성되었습니다.');
+      alert('Template created successfully.');
     } catch (error) {
       console.error(error);
-      alert('템플릿 생성 실패');
+      alert('Template creation failed');
     }
   };
 
@@ -187,40 +189,40 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
       {
         id: 'temp_warning',
         icon: '🔥',
-        title: '고온 경고',
-        desc: '표준 고온 알람 템플릿',
+        title: 'High Temperature Alert',
+        desc: 'Standard high temperature alarm template',
         data: {
           category: 'temperature',
           condition_type: 'threshold',
           condition_template: 'value > {threshold}',
           default_config: { threshold: 80, deadband: 2 },
-          message_template: '{device_name}의 온도가 {threshold}°C를 초과했습니다 (현재: {value}°C)'
+          message_template: '{device_name} temperature exceeded {threshold}°C (Current: {value}°C)'
         }
       },
       {
         id: 'pressure_range',
         icon: '⚖️',
-        title: '압력 범위 이탈',
-        desc: '정상 범위(Low~High) 이탈 감지',
+        title: 'Pressure Out of Range',
+        desc: 'Detects deviation from normal range (Low~High)',
         data: {
           category: 'pressure',
           condition_type: 'range',
           condition_template: 'value < {low_limit} || value > {high_limit}',
           default_config: { high_limit: 80, low_limit: 20 },
-          message_template: '{device_name} 압력 범위 이탈! (현재: {value} bar)'
+          message_template: '{device_name} pressure out of range! (Current: {value} bar)'
         }
       },
       {
         id: 'pump_status',
         icon: '🔄',
-        title: '펌프 상태 모니터링',
-        desc: '가동 상태 모니터링',
+        title: 'Pump Status Monitoring',
+        desc: 'Monitors operational status',
         data: {
           category: 'digital',
           condition_type: 'pattern',
           condition_template: 'state == {trigger_state} FOR {hold_time}ms',
           default_config: { trigger_state: 'on_false', hold_time: 5000 },
-          message_template: '{device_name} 펌프가 5초 이상 정지 상태입니다'
+          message_template: '{device_name} pump has been stopped for more than 5 seconds'
         }
       }
     ];
@@ -243,7 +245,7 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
     <div className="modal-overlay">
       <div className="modal modal-container large">
         <div className="modal-header">
-          <h2 className="modal-title">새 템플릿 생성</h2>
+          <h2 className="modal-title">{t('labels.createNewTemplate', {ns: 'deviceTemplates'})}</h2>
           <button className="close-button" onClick={onClose}>
             <i className="fas fa-times"></i>
           </button>
@@ -253,7 +255,7 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
           {/* 1. 스마트 프리셋 섹션 */}
           <div className="form-section">
             <div className="section-title">
-              <i className="fas fa-magic"></i> 빠른 시작 (템플릿 프리셋)
+              <i className="fas fa-magic"></i> Quick Start (Template Presets)
             </div>
             <div className="preset-container">
               {PRESET_TEMPLATES.map(preset => (
@@ -271,73 +273,73 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
-            {/* 왼쪽 컬럼: 기본 정보 & 알림 설정 */}
+            {/* 왼쪽 컬럼: Basic Info & 알림 설정 */}
             <div className="left-column">
               <div className="form-section">
-                <div className="section-title">기본 정보</div>
+                <div className="section-title">{t('detailModal.basic', {ns: 'deviceTemplates'})}</div>
 
                 <div className="form-group">
-                  <label className="form-label">템플릿 이름 *</label>
+                  <label className="form-label">Template Name *</label>
                   <input
                     type="text"
                     className="form-input"
                     value={formData.name}
                     onChange={(e) => updateField('name', e.target.value)}
-                    placeholder="예: 고온 경고 템플릿"
+                    placeholder="e.g. High Temp Alert Template"
                   />
                   {errors.name && <div style={{ color: '#ef4444', fontSize: '12px' }}>{errors.name}</div>}
                 </div>
 
                 <div className="form-group" style={{ marginTop: '16px' }}>
-                  <label className="form-label">설명 *</label>
+                  <label className="form-label">Description *</label>
                   <textarea
                     className="form-textarea"
                     value={formData.description}
                     onChange={(e) => updateField('description', e.target.value)}
-                    placeholder="템플릿 설명"
+                    placeholder="Template description"
                     rows={2}
                   />
                 </div>
 
                 <div className="form-row" style={{ marginTop: '16px' }}>
                   <div className="form-group">
-                    <label className="form-label">카테고리</label>
+                    <label className="form-label">{t('createModal.category', {ns: 'deviceTemplates'})}</label>
                     <select
                       className="form-select"
                       value={formData.category}
                       onChange={(e) => updateField('category', e.target.value)}
                     >
-                      <option value="temperature">온도</option>
-                      <option value="pressure">압력</option>
-                      <option value="flow">유량</option>
-                      <option value="digital">디지털</option>
+                      <option value="temperature">{t('labels.temperature', {ns: 'deviceTemplates'})}</option>
+                      <option value="pressure">{t('labels.pressure', {ns: 'deviceTemplates'})}</option>
+                      <option value="flow">{t('labels.flowRate', {ns: 'deviceTemplates'})}</option>
+                      <option value="digital">{t('labels.digital', {ns: 'deviceTemplates'})}</option>
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">심각도</label>
+                    <label className="form-label">{t('labels.severity', {ns: 'deviceTemplates'})}</label>
                     <select
                       className="form-select"
                       value={formData.severity}
                       onChange={(e) => updateField('severity', e.target.value)}
                     >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                      <option value="critical">Critical</option>
+                      <option value="low">{t('labels.low', {ns: 'deviceTemplates'})}</option>
+                      <option value="medium">{t('labels.medium', {ns: 'deviceTemplates'})}</option>
+                      <option value="high">{t('labels.high', {ns: 'deviceTemplates'})}</option>
+                      <option value="critical">{t('labels.critical', {ns: 'deviceTemplates'})}</option>
                     </select>
                   </div>
                 </div>
               </div>
 
               <div className="form-section">
-                <div className="section-title">알림 옵션</div>
+                <div className="section-title">{t('labels.notificationOptions', {ns: 'deviceTemplates'})}</div>
                 <div className="checkbox-group">
                   <input type="checkbox" checked={formData.notification_enabled} onChange={(e) => updateField('notification_enabled', e.target.checked)} />
-                  <label>알림 활성화</label>
+                  <label>{t('labels.enableNotifications', {ns: 'deviceTemplates'})}</label>
                 </div>
                 <div className="checkbox-group">
                   <input type="checkbox" checked={formData.auto_clear} onChange={(e) => updateField('auto_clear', e.target.checked)} />
-                  <label>자동 해제</label>
+                  <label>{t('labels.autoClear', {ns: 'deviceTemplates'})}</label>
                 </div>
               </div>
             </div>
@@ -346,11 +348,11 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
             <div className="right-column">
               <div className="form-section">
                 <div className="section-title">
-                  <i className="fas fa-code-branch"></i> 로직 빌더 (Logic Builder)
+                  <i className="fas fa-code-branch"></i> Logic Builder
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">조건 타입</label>
+                  <label className="form-label">{t('labels.conditionType', {ns: 'deviceTemplates'})}</label>
                   <div className="btn-group" style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
                     {['threshold', 'range', 'pattern'].map(type => (
                       <button
@@ -359,8 +361,8 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
                         onClick={() => handleConditionTypeChange(type)}
                         type="button"
                       >
-                        {type === 'threshold' && '단일값'}
-                        {type === 'range' && '범위'}
+                        {type === 'threshold' && 'Single Value'}
+                        {type === 'range' && 'Range'}
                         {type === 'pattern' && '패턴'}
                       </button>
                     ))}
@@ -431,7 +433,7 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
                 </div>
 
                 <div className="form-group" style={{ marginTop: '24px' }}>
-                  <label className="form-label">메시지 템플릿</label>
+                  <label className="form-label">{t('labels.messageTemplate', {ns: 'deviceTemplates'})}</label>
                   <input
                     type="text"
                     className="form-input"
@@ -445,7 +447,7 @@ const TemplateCreateModal: React.FC<TemplateCreateModalProps> = ({
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>취소</button>
+          <button className="btn btn-secondary" onClick={onClose}>{t('cancel', {ns: 'common'})}</button>
           <button className="btn btn-primary" onClick={handleCreateClick} disabled={loading}>
             {loading ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-check"></i>}
             템플릿 생성

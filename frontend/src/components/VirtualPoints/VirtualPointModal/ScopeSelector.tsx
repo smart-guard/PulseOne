@@ -85,7 +85,7 @@ export const ScopeSelector: React.FC<ScopeSelectorProps> = ({
           fontWeight: '500', 
           color: '#374151' 
         }}>
-          적용 범위 *
+          Scope *
         </label>
         
         <select 
@@ -100,9 +100,9 @@ export const ScopeSelector: React.FC<ScopeSelectorProps> = ({
             cursor: 'pointer'
           }}
         >
-          <option value="global">전역 (모든 디바이스)</option>
-          <option value="site">사이트별</option>
-          <option value="device">특정 디바이스</option>
+          <option value="global">Global (All Devices)</option>
+          <option value="site">By Site</option>
+          <option value="device">Specific Device</option>
         </select>
       </div>
 
@@ -114,7 +114,7 @@ export const ScopeSelector: React.FC<ScopeSelectorProps> = ({
             fontWeight: '500', 
             color: '#374151' 
           }}>
-            {scopeType === 'device' ? '디바이스 선택' : '사이트 선택'} *
+            {scopeType === 'device' ? 'Select Device' : 'Select Site'} *
           </label>
 
           {loading ? (
@@ -142,7 +142,7 @@ export const ScopeSelector: React.FC<ScopeSelectorProps> = ({
               }}
             >
               <option value="">
-                {scopeType === 'device' ? '디바이스를 선택하세요' : '사이트를 선택하세요'}
+                {scopeType === 'device' ? 'Select a device' : 'Select a site'}
               </option>
               
               {scopeType === 'device' ? (

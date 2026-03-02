@@ -29,94 +29,94 @@ interface MenuItem {
 const menuItems: MenuItem[] = [
   {
     id: 'dashboard',
-    title: '대시보드',
+    title: 'Dashboard',
     icon: 'fas fa-tachometer-alt',
     path: '/dashboard'
   },
   {
     id: 'devices',
-    title: '디바이스 관리',
+    title: 'Device Management',
     icon: 'fas fa-network-wired',
     path: '/devices',
     children: [
-      { id: 'device-list', title: '디바이스 목록', icon: 'fas fa-list', path: '/devices/list' },
-      { id: 'device-add', title: '디바이스 추가', icon: 'fas fa-plus', path: '/devices/add' },
-      { id: 'device-groups', title: '디바이스 그룹', icon: 'fas fa-layer-group', path: '/devices/groups' },
-      { id: 'protocols', title: '프로토콜 설정', icon: 'fas fa-cogs', path: '/devices/protocols' }
+      { id: 'device-list', title: 'Device List', icon: 'fas fa-list', path: '/devices/list' },
+      { id: 'device-add', title: 'Add Device', icon: 'fas fa-plus', path: '/devices/add' },
+      { id: 'device-groups', title: 'Device Groups', icon: 'fas fa-layer-group', path: '/devices/groups' },
+      { id: 'protocols', title: 'Protocol Settings', icon: 'fas fa-cogs', path: '/devices/protocols' }
     ]
   },
   {
     id: 'data',
-    title: '데이터 관리',
+    title: 'Data Management',
     icon: 'fas fa-database',
     path: '/data',
     children: [
-      { id: 'data-explorer', title: '데이터 익스플로러', icon: 'fas fa-download', path: '/data/explorer' },
-      { id: 'realtime', title: '실시간 데이터', icon: 'fas fa-chart-line', path: '/data/realtime' },
-      { id: 'historical', title: '이력 데이터', icon: 'fas fa-history', path: '/data/historical' },
-      { id: 'virtual-points', title: '가상포인트', icon: 'fas fa-calculator', path: '/data/virtual-points' },
-      { id: 'data-export', title: '데이터 내보내기', icon: 'fas fa-download', path: '/data/export' }
+      { id: 'data-explorer', title: 'Data Explorer', icon: 'fas fa-download', path: '/data/explorer' },
+      { id: 'realtime', title: 'Real-time Data', icon: 'fas fa-chart-line', path: '/data/realtime' },
+      { id: 'historical', title: 'Historical Data', icon: 'fas fa-history', path: '/data/historical' },
+      { id: 'virtual-points', title: 'Virtual Points', icon: 'fas fa-calculator', path: '/data/virtual-points' },
+      { id: 'data-export', title: 'Data Export', icon: 'fas fa-download', path: '/data/export' }
     ]
   },
   {
     id: 'alarms',
-    title: '알람 관리',
+    title: 'Alarm Management',
     icon: 'fas fa-bell',
     path: '/alarms',
     children: [
-      { id: 'active-alarms', title: '활성 알람', icon: 'fas fa-exclamation-triangle', path: '/alarms/active' },
-      { id: 'alarm-history', title: '알람 이력', icon: 'fas fa-clock', path: '/alarms/history' },
-      { id: 'alarm-config', title: '알람 설정', icon: 'fas fa-cog', path: '/alarms/config' },
-      { id: 'alarm-type', title: '알람 종류', icon: 'fas fa-cog', path: '/alarms/type' },
-      { id: 'alarm-rules', title: '알람 규칙', icon: 'fas fa-cog', path: '/api/alarms/ruletemplates' },
-      { id: 'notification', title: '알림 설정', icon: 'fas fa-envelope', path: '/alarms/notification' }
+      { id: 'active-alarms', title: 'Active Alarms', icon: 'fas fa-exclamation-triangle', path: '/alarms/active' },
+      { id: 'alarm-history', title: 'Alarm History', icon: 'fas fa-clock', path: '/alarms/history' },
+      { id: 'alarm-config', title: 'Alarm Settings', icon: 'fas fa-cog', path: '/alarms/config' },
+      { id: 'alarm-type', title: 'Alarm Types', icon: 'fas fa-cog', path: '/alarms/type' },
+      { id: 'alarm-rules', title: 'Alarm Rules', icon: 'fas fa-cog', path: '/api/alarms/ruletemplates' },
+      { id: 'notification', title: 'Notification Settings', icon: 'fas fa-envelope', path: '/alarms/notification' }
     ]
   },
   {
     id: 'monitoring',
-    title: '시스템 모니터링',
+    title: 'System Monitoring',
     icon: 'fas fa-server',
     path: '/monitoring',
     children: [
-      { id: 'system-status', title: '시스템 상태', icon: 'fas fa-heartbeat', path: '/monitoring/status' },
-      { id: 'performance', title: '성능 지표', icon: 'fas fa-chart-bar', path: '/monitoring/performance' },
-      { id: 'logs', title: '로그 조회', icon: 'fas fa-file-alt', path: '/monitoring/logs' },
-      { id: 'health-check', title: '헬스 체크', icon: 'fas fa-stethoscope', path: '/monitoring/health' }
+      { id: 'system-status', title: 'System Status', icon: 'fas fa-heartbeat', path: '/monitoring/status' },
+      { id: 'performance', title: 'Performance Metrics', icon: 'fas fa-chart-bar', path: '/monitoring/performance' },
+      { id: 'logs', title: 'Log Viewer', icon: 'fas fa-file-alt', path: '/monitoring/logs' },
+      { id: 'health-check', title: 'Health Check', icon: 'fas fa-stethoscope', path: '/monitoring/health' }
     ]
   },
   {
     id: 'reports',
-    title: '보고서',
+    title: 'Reports',
     icon: 'fas fa-chart-pie',
     path: '/reports',
     children: [
-      { id: 'dashboard-reports', title: '대시보드 리포트', icon: 'fas fa-chart-area', path: '/reports/dashboard' },
-      { id: 'usage-reports', title: '사용량 리포트', icon: 'fas fa-chart-column', path: '/reports/usage' },
-      { id: 'custom-reports', title: '사용자 정의 리포트', icon: 'fas fa-edit', path: '/reports/custom' }
+      { id: 'dashboard-reports', title: 'Dashboard Reports', icon: 'fas fa-chart-area', path: '/reports/dashboard' },
+      { id: 'usage-reports', title: 'Usage Reports', icon: 'fas fa-chart-column', path: '/reports/usage' },
+      { id: 'custom-reports', title: 'Custom Reports', icon: 'fas fa-edit', path: '/reports/custom' }
     ]
   },
   {
     id: 'users',
-    title: '사용자 관리',
+    title: 'User Management',
     icon: 'fas fa-users',
     path: '/users',
     children: [
-      { id: 'user-list', title: '사용자 목록', icon: 'fas fa-user-friends', path: '/users/list' },
-      { id: 'user-history', title: '로그인 이력', icon: 'fas fa-user-friends', path: '/users/history' },
-      { id: 'roles', title: '역할 관리', icon: 'fas fa-user-tag', path: '/users/roles' },
-      { id: 'permissions', title: '권한 관리', icon: 'fas fa-shield-alt', path: '/users/permissions' }
+      { id: 'user-list', title: 'User List', icon: 'fas fa-user-friends', path: '/users/list' },
+      { id: 'user-history', title: 'Login History', icon: 'fas fa-user-friends', path: '/users/history' },
+      { id: 'roles', title: 'Role Management', icon: 'fas fa-user-tag', path: '/users/roles' },
+      { id: 'permissions', title: 'Permission Management', icon: 'fas fa-shield-alt', path: '/users/permissions' }
     ]
   },
   {
     id: 'settings',
-    title: '시스템 설정',
+    title: 'System Settings',
     icon: 'fas fa-cog',
     path: '/settings',
     children: [
-      { id: 'general', title: '일반 설정', icon: 'fas fa-sliders-h', path: '/settings/general' },
-      { id: 'network', title: '네트워크 설정', icon: 'fas fa-wifi', path: '/settings/network' },
-      { id: 'backup', title: '백업 설정', icon: 'fas fa-save', path: '/settings/backup' },
-      { id: 'security', title: '보안 설정', icon: 'fas fa-lock', path: '/settings/security' }
+      { id: 'general', title: 'General Settings', icon: 'fas fa-sliders-h', path: '/settings/general' },
+      { id: 'network', title: 'Network Settings', icon: 'fas fa-wifi', path: '/settings/network' },
+      { id: 'backup', title: 'Backup Settings', icon: 'fas fa-save', path: '/settings/backup' },
+      { id: 'security', title: 'Security Settings', icon: 'fas fa-lock', path: '/settings/security' }
     ]
   }
 ];
@@ -264,7 +264,7 @@ const MainLayout: React.FC = () => {
               <div className="user-avatar">
                 <i className="fas fa-user"></i>
               </div>
-              <span className="user-name">관리자</span>
+              <span className="user-name">Admin</span>
               <i className="fas fa-chevron-down"></i>
             </div>
           </div>

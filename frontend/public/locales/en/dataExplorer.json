@@ -1,0 +1,31 @@
+{
+    "status": {
+        "connected": "API Connected",
+        "connecting": "API Connecting",
+        "disconnected": "API Disconnected",
+        "devices": "device(s)",
+        "active": "active"
+    },
+    "lastUpdated": "Last updated",
+    "rtuMaster": "Masters",
+    "rtuSlave": "Slaves",
+    "autoRefresh": "Auto Refresh",
+    "sec": "s",
+    "min": "m",
+    "exportData": "Export Data",
+    "tree": {
+        "title": "Device Hierarchy",
+        "search": "Search tree..."
+    },
+    "data": {
+        "title": "Real-time Data",
+        "noPoints": " has no connected points or data could not be loaded."
+    },
+    "chart": {
+        "view": "Chart View",
+        "hide": "Hide Chart"
+    },
+    "error": {
+        "loadFailed": "Failed to load network structure."
+    }
+}

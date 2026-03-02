@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import alarmTemplatesApi, { AlarmTemplate } from '../../api/services/alarmTemplatesApi';
 import TemplatePropagateModal from './TemplatePropagateModal';
 import '../../styles/management.css';
@@ -19,7 +20,8 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
   onEdit,
   onApply
 }) => {
-  const [outdatedCount, setOutdatedCount] = React.useState(0);
+    const { t } = useTranslation(['alarms', 'common']);
+  const [Count, setOutdatedCount] = React.useState(0);
   const [showPropagateModal, setShowPropagateModal] = React.useState(false);
 
   React.useEffect(() => {
@@ -34,7 +36,7 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
       const rules = await alarmTemplatesApi.getOutdatedRules(template.id);
       setOutdatedCount(rules.length);
     } catch (error) {
-      console.error('Failed to check outdated rules', error);
+      console.error('Failed to check  rules', error);
       setOutdatedCount(0);
     }
   };
@@ -51,7 +53,7 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
 
   const renderConfigDetails = () => {
     const { condition_type, default_config: config } = template;
-    if (!config) return <div className="adm-empty-state">설정 정보가 없습니다.</div>;
+    if (!config) return <div className="adm-empty-state">{t('labels.noConfigurationDataAvailable', {ns: 'alarms'})}</div>;
 
     return (
       <div className="adm-logic-card">
@@ -61,25 +63,25 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
         <div className="adm-logic-body">
           {condition_type === 'threshold' && (
             <div className="adm-info-row">
-              <span className="label">High Threshold (상한값)</span>
+              <span className="label">{t('templates.highThreshold', {ns: 'alarms'})}</span>
               <span className="value highlight">{config.high_limit ?? '-'}</span>
             </div>
           )}
           {condition_type === 'range' && (
             <div className="adm-info-grid">
               <div className="adm-info-row">
-                <span className="label">Low Limit (하한)</span>
+                <span className="label">{t('templates.lowLimit', {ns: 'alarms'})}</span>
                 <span className="value">{config.low_limit ?? '-'}</span>
               </div>
               <div className="adm-info-row">
-                <span className="label">High Limit (상한)</span>
+                <span className="label">{t('templates.highLimit', {ns: 'alarms'})}</span>
                 <span className="value">{config.high_limit ?? '-'}</span>
               </div>
             </div>
           )}
           {condition_type === 'digital' && (
             <div className="adm-info-row">
-              <span className="label">Trigger Condition</span>
+              <span className="label">{t('labels.triggerCondition', {ns: 'alarms'})}</span>
               <span className="value highlight">{config.trigger_condition === '1' ? 'TRUE (1)' : 'FALSE (0)'}</span>
             </div>
           )}
@@ -107,8 +109,8 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
               <i className="fas fa-file-alt"></i>
             </div>
             <div className="adm-title-group">
-              <h3 className="adm-title">알람 템플릿 상세 정보</h3>
-              <p className="adm-subtitle">템플릿의 상세 설정 및 구성을 확인합니다.</p>
+              <h3 className="adm-title">{t('labels.alarmTemplateDetails', {ns: 'alarms'})}</h3>
+              <p className="adm-subtitle">Review the detailed settings and configuration of this template.</p>
             </div>
           </div>
           <button className="adm-close-btn" onClick={onClose} aria-label="Close">&times;</button>
@@ -119,48 +121,48 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
           {/* Sidebar */}
           <div className="adm-sidebar">
             <div className="adm-meta-block">
-              <label>템플릿 이름</label>
+              <label>{t('templates.name', {ns: 'alarms'})}</label>
               <div className="adm-name-text">{template.name}</div>
             </div>
 
             <div className="adm-meta-block">
-              <label>심각도 레벨</label>
+              <label>{t('templates.severityLabel', {ns: 'alarms'})}</label>
               <div className={`adm-badge ${getSeverityBadgeClass(template.severity)}`}>
                 {template.severity.toUpperCase()}
               </div>
             </div>
 
             <div className="adm-meta-block">
-              <label>카테고리</label>
+              <label>{t('modals.category', {ns: 'alarms'})}</label>
               <div className="adm-meta-val">{template.category}</div>
             </div>
 
             <div className="adm-meta-block">
-              <label>템플릿 유형</label>
+              <label>{t('templates.typeLabel', {ns: 'alarms'})}</label>
               <div className="adm-meta-val">{template.template_type.toUpperCase()}</div>
             </div>
 
             <div className="adm-meta-block">
-              <label>시스템 레벨</label>
+              <label>{t('templates.systemLevel', {ns: 'alarms'})}</label>
               <div className="adm-meta-val">
                 {template.is_system_template ? (
-                  <span className="adm-badge" style={{ background: '#1e293b', color: '#f8fafc', border: '1px solid #334155' }}>SYSTEM</span>
+                  <span className="adm-badge" style={{ background: '#1e293b', color: '#f8fafc', border: '1px solid #334155' }}>{t('labels.system', {ns: 'alarms'})}</span>
                 ) : (
-                  <span className="adm-badge" style={{ background: '#f1f5f9', color: '#64748b' }}>USER</span>
+                  <span className="adm-badge" style={{ background: '#f1f5f9', color: '#64748b' }}>{t('labels.user', {ns: 'alarms'})}</span>
                 )}
               </div>
             </div>
 
             <div className="adm-meta-block" style={{ marginTop: 'auto', paddingTop: '20px' }}>
-              <label>사용 통계</label>
-              <div className="adm-stat-text">{template.usage_count || 0}회 적용됨</div>
+              <label>{t('labels.usageStatistics', {ns: 'alarms'})}</label>
+              <div className="adm-stat-text">{template.usage_count || 0} time(s) applied</div>
             </div>
 
-            {outdatedCount > 0 && (
+            {Count > 0 && (
               <div className="adm-meta-block" style={{ paddingTop: '12px' }}>
-                <label style={{ color: '#d97706' }}>업데이트 필요</label>
+                <label style={{ color: '#d97706' }}>{t('labels.updateRequired', {ns: 'alarms'})}</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '14px', fontWeight: 600, color: '#d97706' }}>{outdatedCount}개 규칙</span>
+                  <span style={{ fontSize: '14px', fontWeight: 600, color: '#d97706' }}>{Count}개 규칙</span>
                   <button
                     onClick={() => setShowPropagateModal(true)}
                     style={{
@@ -184,19 +186,19 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
           {/* Main Content */}
           <div className="adm-main">
             <div className="adm-section">
-              <h4 className="adm-section-header">설명</h4>
+              <h4 className="adm-section-header">{t('detail.description', {ns: 'alarms'})}</h4>
               <div className="adm-description-text">
-                {template.description || '정의된 설명이 없습니다.'}
+                {template.description || 'No description defined.'}
               </div>
             </div>
 
             <div className="adm-section">
-              <h4 className="adm-section-header">로직 구성</h4>
+              <h4 className="adm-section-header">{t('labels.logicConfiguration', {ns: 'alarms'})}</h4>
               {renderConfigDetails()}
             </div>
 
             <div className="adm-section">
-              <h4 className="adm-section-header">메시지 템플릿</h4>
+              <h4 className="adm-section-header">{t('templates.messageTemplate', {ns: 'alarms'})}</h4>
               <div className="adm-message-card">
                 <i className="fas fa-comment-dots"></i>
                 <span className="adm-message-text">{template.message_template}</span>
@@ -205,11 +207,11 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
 
             <div className="adm-system-meta">
               <div className="adm-meta-pair">
-                <span className="label">생성일시</span>
+                <span className="label">{t('templates.createdAt', {ns: 'alarms'})}</span>
                 <span className="value">{new Date(template.created_at).toLocaleString('ko-KR')}</span>
               </div>
               <div className="adm-meta-pair">
-                <span className="label">최종 수정</span>
+                <span className="label">{t('templates.lastModified', {ns: 'alarms'})}</span>
                 <span className="value">{new Date(template.updated_at).toLocaleString('ko-KR')}</span>
               </div>
             </div>

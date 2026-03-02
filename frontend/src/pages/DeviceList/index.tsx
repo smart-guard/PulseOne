@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { Pagination } from '../../components/common/Pagination';
 import { PageHeader } from '../../components/common/PageHeader';
@@ -17,6 +18,7 @@ import MoveGroupModal from '../../components/modals/MoveGroupModal';
 import NetworkScanModal from '../../components/modals/NetworkScanModal';
 
 const DeviceList: React.FC = () => {
+  const { t } = useTranslation(['devices', 'common']);
   // URL Params 관리
   const [searchParams, setSearchParams] = useSearchParams();
   const { confirm } = useConfirmContext();
@@ -231,12 +233,12 @@ const DeviceList: React.FC = () => {
           setHasInitialLoad(true);
         }
       } else {
-        throw new Error(response.error || 'API 응답 오류');
+        throw new Error(response.error || 'API response error');
       }
 
     } catch (err) {
       console.error('❌ 디바이스 목록 로드 실패:', err);
-      setError(err instanceof Error ? err.message : '디바이스 목록을 불러올 수 없습니다');
+      setError(err instanceof Error ? err.message : 'Failed to load device list');
       setDevices([]);
       setTotalCount(0);
     } finally {
@@ -311,9 +313,9 @@ const DeviceList: React.FC = () => {
   const handleStartWorker = async (deviceId: number) => {
     const device = devices.find(d => d.id === deviceId);
     const confirmed = await confirm({
-      title: '워커 시작 확인',
-      message: `워커를 시작하시겠습니까?\n\n디바이스: ${device?.name || deviceId}`,
-      confirmText: '시작',
+      title: t('devices:worker.startConfirmTitle'),
+      message: `${t('devices:worker.startConfirmMsg', { name: device?.name || deviceId })}`,
+      confirmText: t('devices:worker.start'),
       confirmButtonType: 'primary'
     });
 
@@ -325,14 +327,14 @@ const DeviceList: React.FC = () => {
           await loadDevices(true);
           // Optional: Add success message here if desired
         } else {
-          throw new Error(response.error || '워커 시작 실패');
+          throw new Error(response.error || 'Worker start failed');
         }
       } catch (err: any) {
         setIsProcessing(false);
         await confirm({
-          title: '워커 시작 실패',
-          message: `오류가 발생했습니다: ${err.message}`,
-          confirmText: '확인',
+          title: 'Worker Start Failed',
+          message: `An error occurred: ${err.message}`,
+          confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'danger'
         });
@@ -345,9 +347,9 @@ const DeviceList: React.FC = () => {
   const handleStopWorker = async (deviceId: number) => {
     const device = devices.find(d => d.id === deviceId);
     const confirmed = await confirm({
-      title: '워커 정지 확인',
-      message: `워커를 정지하시겠습니까?\n\n디바이스: ${device?.name || deviceId}`,
-      confirmText: '정지',
+      title: t('devices:worker.stopConfirmTitle'),
+      message: `${t('devices:worker.stopConfirmMsg', { name: device?.name || deviceId })}`,
+      confirmText: t('devices:worker.stop'),
       confirmButtonType: 'danger'
     });
 
@@ -358,14 +360,14 @@ const DeviceList: React.FC = () => {
         if (response.success) {
           await loadDevices(true);
         } else {
-          throw new Error(response.error || '워커 정지 실패');
+          throw new Error(response.error || 'Worker stop failed');
         }
       } catch (err: any) {
         setIsProcessing(false);
         await confirm({
-          title: '워커 정지 실패',
-          message: `오류가 발생했습니다: ${err.message}`,
-          confirmText: '확인',
+          title: 'Worker Stop Failed',
+          message: `An error occurred: ${err.message}`,
+          confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'danger'
         });
@@ -378,9 +380,9 @@ const DeviceList: React.FC = () => {
   const handleRestartWorker = async (deviceId: number) => {
     const device = devices.find(d => d.id === deviceId);
     const confirmed = await confirm({
-      title: '워커 재시작 확인',
-      message: `워커를 재시작하시겠습니까?\n\n디바이스: ${device?.name || deviceId}`,
-      confirmText: '재시작',
+      title: t('devices:worker.restartConfirmTitle'),
+      message: `${t('devices:worker.restartConfirmMsg', { name: device?.name || deviceId })}`,
+      confirmText: t('devices:worker.restart'),
       confirmButtonType: 'warning'
     });
 
@@ -391,14 +393,14 @@ const DeviceList: React.FC = () => {
         if (response.success) {
           await loadDevices(true);
         } else {
-          throw new Error(response.error || '워커 재시작 실패');
+          throw new Error(response.error || 'Worker restart failed');
         }
       } catch (err: any) {
         setIsProcessing(false);
         await confirm({
-          title: '워커 재시작 실패',
-          message: `오류가 발생했습니다: ${err.message}`,
-          confirmText: '확인',
+          title: 'Worker Restart Failed',
+          message: `An error occurred: ${err.message}`,
+          confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'danger'
         });
@@ -410,9 +412,9 @@ const DeviceList: React.FC = () => {
 
   const handleRestoreDevice = async (device: Device) => {
     const confirmed = await confirm({
-      title: '디바이스 복구 확인',
-      message: `장치명: ${device.name}\n모델: ${device.model || 'N/A'}\n제조사: ${device.manufacturer || 'N/A'}\n종류: ${device.device_type || 'N/A'}\n\n이 디바이스를 정말로 복구하시겠습니까?`,
-      confirmText: '복구',
+      title: t('devices:restore.confirmTitle'),
+      message: t('devices:restore.confirmMsg', { name: device.name, model: device.model || 'N/A', manufacturer: device.manufacturer || 'N/A', type: device.device_type || 'N/A' }),
+      confirmText: t('devices:restore.confirm'),
       confirmButtonType: 'primary'
     });
 
@@ -428,21 +430,21 @@ const DeviceList: React.FC = () => {
           setIsProcessing(false); // Hide spinner
           // 성공 알림 추가
           await confirm({
-            title: '복구 완료',
-            message: `"${device.name}" 디바이스가 성공적으로 복구되었습니다.`,
-            confirmText: '확인',
+            title: 'Restore Complete',
+            message: `Device "${device.name}" has been restored successfully.`,
+            confirmText: 'OK',
             showCancelButton: false,
             confirmButtonType: 'success'
           });
         } else {
-          throw new Error(response.error || '복구 실패');
+          throw new Error(response.error || 'Restore failed');
         }
       } catch (err: any) {
         setIsProcessing(false);
         await confirm({
-          title: '복구 실패',
-          message: `오류가 발생했습니다: ${err.message}`,
-          confirmText: '확인',
+          title: 'Restore Failed',
+          message: `An error occurred: ${err.message}`,
+          confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'danger'
         });
@@ -509,18 +511,18 @@ const DeviceList: React.FC = () => {
         setIsProcessing(false);
         // 성공 알림 추가
         await confirm({
-          title: '그룹 이동 완료',
-          message: `${moveCount}개의 디바이스가 새로운 그룹으로 이동되었습니다.`,
-          confirmText: '확인',
+          title: 'Group Move Complete',
+          message: `${moveCount} device(s) moved to the new group.`,
+          confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'success'
         });
       } else {
         setIsProcessing(false);
         await confirm({
-          title: '그룹 이동 실패',
-          message: `오류가 발생했습니다: ${response.error || '알 수 없는 오류'}`,
-          confirmText: '확인',
+          title: 'Group Move Failed',
+          message: `Error: ${response.error || 'Unknown error'}`,
+          confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'danger'
         });
@@ -528,9 +530,9 @@ const DeviceList: React.FC = () => {
     } catch (err: any) {
       setIsProcessing(false);
       await confirm({
-        title: '오류 발생',
+        title: 'Error',
         message: err.message,
-        confirmText: '확인',
+        confirmText: 'OK',
         showCancelButton: false,
         confirmButtonType: 'danger'
       });
@@ -543,9 +545,9 @@ const DeviceList: React.FC = () => {
     if (selectedDevices.length === 0) return;
 
     const confirmed = await confirm({
-      title: '대량 삭제 확인',
-      message: `선택한 ${selectedDevices.length}개의 디바이스를 정말 삭제하시겠습니까?`,
-      confirmText: '삭제',
+      title: t('devices:bulkDelete.confirmTitle'),
+      message: t('devices:bulkDelete.confirmMsg', { count: selectedDevices.length }),
+      confirmText: t('devices:delete'),
       confirmButtonType: 'danger'
     });
 
@@ -563,18 +565,18 @@ const DeviceList: React.FC = () => {
           setIsProcessing(false);
           // 성공 알림 추가
           await confirm({
-            title: '삭제 완료',
-            message: `${deletedCount}개의 디바이스가 성공적으로 삭제되었습니다.`,
-            confirmText: '확인',
+            title: 'Delete Complete',
+            message: `${deletedCount} device(s) deleted successfully.`,
+            confirmText: 'OK',
             showCancelButton: false,
             confirmButtonType: 'success'
           });
         } else {
           setIsProcessing(false);
           await confirm({
-            title: '장치 삭제 실패',
-            message: `오류가 발생했습니다: ${response.error || '알 수 없는 오류'}`,
-            confirmText: '확인',
+            title: 'Device Delete Failed',
+            message: `Error: ${response.error || 'Unknown error'}`,
+            confirmText: 'OK',
             showCancelButton: false,
             confirmButtonType: 'danger'
           });
@@ -582,9 +584,9 @@ const DeviceList: React.FC = () => {
       } catch (err: any) {
         setIsProcessing(false);
         await confirm({
-          title: '오류 발생',
+          title: 'Error',
           message: err.message,
-          confirmText: '확인',
+          confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'danger'
         });
@@ -650,19 +652,19 @@ const DeviceList: React.FC = () => {
     <>
       <ManagementLayout className="page-devices">
         <PageHeader
-          title="디바이스 관리"
-          description="산업 현장의 디바이스를 마스터 모델 기반으로 관리하고 모니터링합니다."
+          title={t('devices:title')}
+          description={t('devices:description')}
           icon="fas fa-network-wired"
           actions={
             <div style={{ display: 'flex', gap: '8px' }}>
               <button className="mgmt-btn mgmt-btn-outline primary" onClick={() => setIsWizardOpen(true)} disabled={isProcessing}>
-                <i className="fas fa-magic"></i> 마스터 모델로 추가
+                <i className="fas fa-magic"></i> {t('devices:addFromTemplate')}
               </button>
               <button className="mgmt-btn mgmt-btn-outline" onClick={() => setIsScanModalOpen(true)} disabled={isProcessing}>
-                <i className="fas fa-search-location"></i> 네트워크 스캔
+                <i className="fas fa-search-location"></i> {t('devices:networkScan')}
               </button>
               <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreateDevice} disabled={isProcessing}>
-                <i className="fas fa-plus"></i> 수동 등록
+                <i className="fas fa-plus"></i> {t('devices:manualRegister')}
               </button>
             </div>
           }
@@ -696,8 +698,8 @@ const DeviceList: React.FC = () => {
               </div>
               <span>
                 {activeProtocolName && <span style={{ color: 'var(--primary-900)' }}>{activeProtocolName}</span>}
-                {instanceIdFilter !== 'all' && <span style={{ marginLeft: '4px', opacity: 0.7 }}>(인스턴스 #{instanceIdFilter})</span>}
-                <span style={{ marginLeft: '8px', fontWeight: 500, color: 'var(--neutral-500)' }}>필터가 적용된 상태입니다.</span>
+                {instanceIdFilter !== 'all' && <span style={{ marginLeft: '4px', opacity: 0.7 }}>{t('devices:instanceFilter', { id: instanceIdFilter })}</span>}
+                <span style={{ marginLeft: '8px', fontWeight: 500, color: 'var(--neutral-500)' }}>{t('devices:filterApplied')}</span>
               </span>
             </div>
             <button
@@ -722,17 +724,17 @@ const DeviceList: React.FC = () => {
               }}
             >
               <i className="fas fa-times-circle"></i>
-              필터 해제
+              {t('devices:clearFilter')}
             </button>
           </div>
         )}
 
         {deviceStats && (
           <div className="mgmt-stats-panel">
-            <StatCard title="전체 디바이스" value={deviceStats.total_devices || 0} icon="fas fa-network-wired" type="primary" />
-            <StatCard title="활성" value={deviceStats.active_devices || 0} icon="fas fa-check-circle" type="success" />
-            <StatCard title="사용 중" value={deviceStats.enabled_devices || 0} icon="fas fa-toggle-on" type="neutral" />
-            <StatCard title="프로토콜 수" value={Object.keys(deviceStats.by_protocol || {}).length} icon="fas fa-plug" type="warning" />
+            <StatCard title={t('devices:totalDevices')} value={deviceStats.total_devices || 0} icon="fas fa-network-wired" type="primary" />
+            <StatCard title={t('devices:activeDevices')} value={deviceStats.active_devices || 0} icon="fas fa-check-circle" type="success" />
+            <StatCard title={t('devices:enabledDevices')} value={deviceStats.enabled_devices || 0} icon="fas fa-toggle-on" type="neutral" />
+            <StatCard title={t('devices:protocolCount')} value={Object.keys(deviceStats.by_protocol || {}).length} icon="fas fa-plug" type="warning" />
           </div>
         )}
 
@@ -758,33 +760,33 @@ const DeviceList: React.FC = () => {
           activeFilterCount={(searchTerm ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0) + (protocolFilter !== 'all' ? 1 : 0) + (connectionFilter !== 'all' ? 1 : 0) + (includeDeleted ? 1 : 0) + (protocolIdFilter !== 'all' ? 1 : 0) + (instanceIdFilter !== 'all' ? 1 : 0)}
           filters={[
             {
-              label: '상태',
+              label: t('devices:statusFilter'),
               value: statusFilter,
               onChange: setStatusFilter,
               options: [
-                { value: 'all', label: '전체 상태' },
-                { value: 'online', label: '온라인' },
-                { value: 'offline', label: '오프라인' },
-                { value: 'error', label: '오류' }
+                { value: 'all', label: t('devices:filter.all') },
+                { value: 'online', label: t('devices:filter.connected') },
+                { value: 'offline', label: t('devices:filter.disconnected') },
+                { value: 'error', label: t('devices:filter.error') }
               ]
             },
             {
-              label: '프로토콜',
+              label: t('devices:protocol'),
               value: protocolFilter,
               onChange: setProtocolFilter,
               options: [
-                { value: 'all', label: '전체 프로토콜' },
+                { value: 'all', label: t('devices:allProtocols') },
                 ...availableProtocols.map(p => ({ value: p, label: p }))
               ]
             },
             {
-              label: '연결 확인',
+              label: t('devices:connectionCheck'),
               value: connectionFilter,
               onChange: setConnectionFilter,
               options: [
-                { value: 'all', label: '전체' },
-                { value: 'connected', label: '연결됨' },
-                { value: 'disconnected', label: '끊김' }
+                { value: 'all', label: t('devices:filter.all') },
+                { value: 'connected', label: t('devices:filter.connected') },
+                { value: 'disconnected', label: t('devices:filter.disconnected') }
               ]
             }
           ]}
@@ -799,7 +801,7 @@ const DeviceList: React.FC = () => {
                     setCurrentPage(1);
                   }}
                 />
-                <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--neutral-700)' }}>삭제된 디바이스 보기</span>
+                <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--neutral-700)' }}>{t('devices:showDeleted')}</span>
               </label>
             </div>
           }
@@ -814,7 +816,7 @@ const DeviceList: React.FC = () => {
             }}
             selectedDevicesCount={selectedDevices.length}
             onMoveSelectedToGroup={(groupId) => {
-              if (window.confirm(`${selectedDevices.length}개의 장치를 이 그룹으로 이동하시겠습니까?`)) {
+              if (window.confirm(`Move ${selectedDevices.length} device(s) to this group?`)) {
                 handleBulkMoveToGroup(groupId);
               }
             }}
@@ -833,15 +835,15 @@ const DeviceList: React.FC = () => {
             {isInitialLoading ? (
               <div className="device-list-loading">
                 <i className="fas fa-spinner fa-spin"></i>
-                <span>디바이스 목록을 불러오는 중...</span>
+                <span>{t('devices:loading')}</span>
               </div>
             ) : devices.length === 0 ? (
               <div className="device-list-empty">
                 <i className="fas fa-network-wired"></i>
-                <h3>등록된 디바이스가 없습니다</h3>
-                <p>{selectedGroupId === 'all' ? '새 디바이스를 추가하여 시작하세요' : '이 그룹에 등록된 장치가 없습니다'}</p>
+                <h3>{t('devices:noDevices')}</h3>
+                <p>{selectedGroupId === 'all' ? t('devices:noDevicesHint') : t('devices:noDevicesInGroup')}</p>
                 {selectedGroupId === 'all' && (
-                  <button onClick={handleCreateDevice}><i className="fas fa-plus"></i> 첫 번째 디바이스 추가</button>
+                  <button onClick={handleCreateDevice}><i className="fas fa-plus"></i> {t('devices:addFirst')}</button>
                 )}
               </div>
             ) : (
@@ -887,19 +889,19 @@ const DeviceList: React.FC = () => {
           </div>
         </div>
 
-        {/* 대량 작업 바 */}
+        {/* Bulk Action 바 */}
         {selectedDevices.length > 0 && (
           <div className="bulk-action-bar active">
             <div className="bulk-info">
               <span className="count">{selectedDevices.length}</span>
-              <span>개의 디바이스 선택됨</span>
+              <span>{t('devices:selectedCount')}</span>
             </div>
             <div className="bulk-actions">
               <button className="btn-bulk" onClick={() => setIsMoveGroupModalOpen(true)}>
-                <i className="fas fa-exchange-alt"></i> 그룹 이동
+                <i className="fas fa-exchange-alt"></i> {t('devices:moveGroup')}
               </button>
               <button className="btn-bulk danger" onClick={handleBulkDelete}>
-                <i className="fas fa-trash"></i> 삭제
+                <i className="fas fa-trash"></i> {t('devices:delete')}
               </button>
               <div className="separator"></div>
               <button className="btn-close-bulk" onClick={() => setSelectedDevices([])}>
@@ -979,7 +981,7 @@ const DeviceList: React.FC = () => {
         <div className="processing-overlay">
           <div className="processing-content">
             <i className="fas fa-spinner fa-spin"></i>
-            <span>처리 중...</span>
+            <span>Processing...</span>
           </div>
         </div>
       )}

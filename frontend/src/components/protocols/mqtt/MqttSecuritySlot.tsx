@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ProtocolInstance, ProtocolApiService } from '../../../api/services/protocolApi';
 import { useConfirmContext } from '../../common/ConfirmProvider';
 
@@ -10,6 +11,7 @@ interface MqttSecuritySlotProps {
 
 const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate }) => {
     const { confirm } = useConfirmContext();
+    const { t } = useTranslation(['protocols', 'common']);
     const [loading, setLoading] = useState(false);
     const [localParams, setLocalParams] = useState<any>(instance.connection_params || {});
     const [originalParams, setOriginalParams] = useState<any>(instance.connection_params || {});
@@ -24,13 +26,13 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
 
     const handleToggleStatus = async (enabled: boolean) => {
         const message = enabled
-            ? `[${instance.instance_name}] 인스턴스를 활성화하시겠습니까?`
-            : `[${instance.instance_name}] 인스턴스를 비활성화하면 해당 vhost(${instance.vhost})를 사용하는 모든 센서의 접속이 중단됩니다.`;
+            ? `Activate instance [${instance.instance_name}]?`
+            : `Deactivating [${instance.instance_name}] will stop all sensors using vhost (${instance.vhost}).`;
 
         const ok = await confirm({
-            title: enabled ? '인스턴스 활성화' : '인스턴스 비활성화',
+            title: enabled ? 'Activate Instance' : 'Deactivate Instance',
             message,
-            confirmText: enabled ? '활성화' : '서비스 중단',
+            confirmText: enabled ? 'Activate' : 'Stop Service',
             confirmButtonType: enabled ? 'primary' : 'danger'
         });
 
@@ -49,9 +51,9 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
 
     const handleReissueApiKey = async () => {
         const ok = await confirm({
-            title: 'API Key 재발급',
-            message: 'API Key를 재발급하면 기존 Key를 사용하는 모든 센서의 접속이 즉시 차단됩니다. 계속하시겠습니까?',
-            confirmText: '재발급 실행',
+            title: 'Reissue API Key',
+            message: 'Reissuing the API Key will immediately block all sensors using the old key. Continue?',
+            confirmText: 'Reissue',
             confirmButtonType: 'danger'
         });
 
@@ -93,14 +95,14 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
         // Credential changes (EXTERNAL ONLY)
         if (instance.broker_type === 'EXTERNAL') {
             if (localParams.username !== originalParams.username) changes.push(`Username: ${originalParams.username || 'N/A'} ➔ ${localParams.username}`);
-            if (localParams.password !== originalParams.password) changes.push(`Password: 수정됨`);
+            if (localParams.password !== originalParams.password) changes.push(`Password: modified`);
         }
 
         if (changes.length === 0) {
             await confirm({
-                title: '알림',
-                message: '변경사항이 없습니다.',
-                confirmText: '확인',
+                title: 'Notice',
+                message: 'No changes to save.',
+                confirmText: 'OK',
                 confirmButtonType: 'primary',
                 showCancelButton: false
             });
@@ -108,9 +110,9 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
         }
 
         const ok = await confirm({
-            title: '변경사항 저장',
-            message: `다음 변경사항을 저장하시겠습니까?\n\n${changes.map(c => `• ${c}`).join('\n')}`,
-            confirmText: '저장하기',
+            title: 'Save Changes',
+            message: `Save the following changes?\n\n${changes.map(c => `• ${c}`).join('\n')}`,
+            confirmText: 'Save',
             confirmButtonType: 'primary'
         });
 
@@ -122,9 +124,9 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
                 onUpdate();
 
                 await confirm({
-                    title: '성공',
-                    message: '설정이 성공적으로 저장되었습니다.',
-                    confirmText: '확인',
+                    title: 'Success',
+                    message: 'Settings saved successfully.',
+                    confirmText: 'OK',
                     confirmButtonType: 'primary',
                     showCancelButton: false
                 });
@@ -143,7 +145,7 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
             {/* B. Credentials Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 <div style={{ padding: '24px', background: '#fff', borderRadius: '12px', border: '1px solid var(--neutral-200)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800 }}>접속 인증 관리</h4>
+                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800 }}>{t('labels.connectionAuthManagement', {ns: 'protocols'})}</h4>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                         <div className="form-group">
@@ -159,7 +161,7 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
                             />
                         </div>
                         <div className="form-group">
-                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '4px', display: 'block' }}>Broker Port</label>
+                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '4px', display: 'block' }}>{t('labels.brokerPort', {ns: 'protocols'})}</label>
                             <input
                                 type="number"
                                 value={localParams.port || 1883}
@@ -172,7 +174,7 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
                     {instance.broker_type === 'EXTERNAL' && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '-8px' }}>
                             <div className="form-group">
-                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '4px', display: 'block' }}>MQTT Username</label>
+                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '4px', display: 'block' }}>{t('labels.mqttUsername', {ns: 'protocols'})}</label>
                                 <input
                                     type="text"
                                     value={localParams.username || ''}
@@ -182,7 +184,7 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
                                 />
                             </div>
                             <div className="form-group">
-                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '4px', display: 'block' }}>MQTT Password</label>
+                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '4px', display: 'block' }}>{t('labels.mqttPassword', {ns: 'protocols'})}</label>
                                 <input
                                     type="password"
                                     value={localParams.password || ''}
@@ -195,7 +197,7 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
                     )}
 
                     <div className="form-group">
-                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '4px', display: 'block' }}>Calculated Endpoint URL (MQTT)</label>
+                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '4px', display: 'block' }}>{t('labels.calculatedEndpointUrlMqtt', {ns: 'protocols'})}</label>
                         <div style={{ position: 'relative' }}>
                             <input
                                 type="text"
@@ -207,8 +209,8 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
                             />
                             <div style={{ fontSize: '10px', color: 'var(--neutral-400)', marginTop: '4px' }}>
                                 {instance.broker_type === 'EXTERNAL'
-                                    ? '* 외부 브로커 주소를 정확히 입력하십시오. Vhost 경로가 없는 표준 MQTT 연결을 사용합니다.'
-                                    : '* 외부 센서나 디바이스에서 접속할 때는 이 URL을 사용하세요.'}
+                                    ? '* Enter the external broker address accurately. Standard MQTT connection without Vhost path will be used.'
+                                    : '* Use this URL when connecting from external sensors or devices.'}
                             </div>
                         </div>
                     </div>
@@ -228,8 +230,8 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
                                 border: '1px solid var(--primary-200)'
                             }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary-800)' }}>Authentication Token (API Key)</label>
-                                    <button onClick={handleReissueApiKey} disabled={loading} style={{ padding: '2px 6px', fontSize: '10px', background: '#fff', border: '1px solid var(--primary-300)', borderRadius: '4px', cursor: 'pointer' }}>재발급</button>
+                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary-800)' }}>{t('labels.authenticationTokenApiKey', {ns: 'protocols'})}</label>
+                                    <button onClick={handleReissueApiKey} disabled={loading} style={{ padding: '2px 6px', fontSize: '10px', background: '#fff', border: '1px solid var(--primary-300)', borderRadius: '4px', cursor: 'pointer' }}>{t('labels.reissue', {ns: 'protocols'})}</button>
                                 </div>
                                 <input
                                     type="text"
@@ -264,10 +266,10 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
                                 }}
                             >
                                 <i className="fas fa-save"></i>
-                                변경사항 저장
+                                Save Changes
                             </button>
                             <span style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 600 }}>
-                                * 설정 저장 시 해당 {instance.broker_type === 'EXTERNAL' ? '브로커로 연결을 시도' : '호스트/포트 정보가 업데이트'}됩니다.
+                                * 설정 저장 시 해당 {instance.broker_type === 'EXTERNAL' ? 'connecting to broker' : 'host/port info will be updated'}됩니다.
                             </span>
                         </div>
                     </div>
@@ -276,26 +278,26 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
                 <div style={{ padding: '24px', background: 'var(--neutral-50)', borderRadius: '12px', border: '1px solid var(--neutral-200)', flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                         <i className="fas fa-info-circle" style={{ color: 'var(--primary-600)' }}></i>
-                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800 }}>MQTT 현장 장치 연동 가이드</h4>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800 }}>{t('labels.mqttFieldDeviceIntegrationGuide', {ns: 'protocols'})}</h4>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                         <div style={{ paddingBottom: '12px', borderBottom: '1px solid var(--neutral-200)' }}>
-                            <p style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, color: 'var(--neutral-500)' }}>BROKER ADDRESS (HOST/PORT)</p>
+                            <p style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, color: 'var(--neutral-500)' }}>{t('labels.brokerAddressHostport', {ns: 'protocols'})}</p>
                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                 <code style={{ fontSize: '13px', fontWeight: 800 }}>{localParams.host || window.location.hostname}</code>
                                 <span style={{ color: 'var(--neutral-300)' }}>:</span>
                                 <code style={{ fontSize: '13px', fontWeight: 800 }}>{localParams.port || 1883}</code>
                             </div>
-                            <span style={{ fontSize: '11px', color: 'var(--neutral-400)' }}>내부망 또는 도메인 주소로 연결하되, 포트 개방 여부를 확인하십시오.</span>
+                            <span style={{ fontSize: '11px', color: 'var(--neutral-400)' }}>Use internal network or domain address for 연결하되, 포트 개방 여부를 확인하십시오.</span>
                         </div>
 
                         <div style={{ paddingBottom: '12px', borderBottom: '1px solid var(--neutral-200)' }}>
-                            <p style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, color: 'var(--neutral-500)' }}>CREDENTIALS (USER/PASS)</p>
+                            <p style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, color: 'var(--neutral-500)' }}>{t('labels.credentialsUserpass', {ns: 'protocols'})}</p>
                             <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '8px', fontSize: '12px' }}>
-                                <span style={{ color: 'var(--neutral-600)' }}>Username:</span>
+                                <span style={{ color: 'var(--neutral-600)' }}>{t('labels.username', {ns: 'protocols'})}</span>
                                 <code style={{ fontWeight: 800 }}>pulseone</code>
-                                <span style={{ color: 'var(--neutral-600)' }}>Password:</span>
+                                <span style={{ color: 'var(--neutral-600)' }}>{t('labels.password', {ns: 'protocols'})}</span>
                                 <code style={{ fontWeight: 800 }}>[위 발급된 API Key]</code>
                             </div>
                             <p style={{ fontSize: '11px', color: 'var(--neutral-400)', margin: '4px 0 0 0' }}>API Key는 인스턴스 전용 비밀번호 역할을 병행합니다.</p>
@@ -303,10 +305,10 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
 
                         {instance.broker_type === 'INTERNAL' && (
                             <div>
-                                <p style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, color: 'var(--neutral-500)' }}>ISOLATION (VHOST/PATH)</p>
+                                <p style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, color: 'var(--neutral-500)' }}>{t('labels.isolationVhostpath', {ns: 'protocols'})}</p>
                                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '6px' }}>
                                     <div style={{ fontSize: '12px' }}>
-                                        <span style={{ color: 'var(--neutral-600)' }}>Vhost/Path:</span>
+                                        <span style={{ color: 'var(--neutral-600)' }}>{t('labels.vhostpath', {ns: 'protocols'})}</span>
                                         <code style={{ fontWeight: 800, marginLeft: '8px' }}>{instance.vhost}</code>
                                     </div>
                                 </div>

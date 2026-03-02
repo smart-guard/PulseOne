@@ -33,7 +33,7 @@ const AuditLogPage: React.FC = () => {
                 setTotalCount(response.data.pagination?.total_count || 0);
             }
         } catch (err) {
-            setError('감사 로그를 불러오는 중 오류가 발생했습니다.');
+            setError('Error loading audit logs.');
         } finally {
             setLoading(false);
         }
@@ -45,11 +45,11 @@ const AuditLogPage: React.FC = () => {
 
     const getActionBadge = (action: string) => {
         switch (action) {
-            case 'CREATE': return <span className="badge success">생성</span>;
-            case 'UPDATE': return <span className="badge warning">수정</span>;
-            case 'DELETE': return <span className="badge danger">삭제</span>;
-            case 'INSTANTIATE': return <span className="badge primary">인스턴스화</span>;
-            case 'ACTION': return <span className="badge info">동작</span>;
+            case 'CREATE': return <span className="badge success">Created</span>;
+            case 'UPDATE': return <span className="badge warning">Modified</span>;
+            case 'DELETE': return <span className="badge danger">Deleted</span>;
+            case 'INSTANTIATE': return <span className="badge primary">Instantiate</span>;
+            case 'ACTION': return <span className="badge info">Action</span>;
             default: return <span className="badge neutral">{action}</span>;
         }
     };
@@ -57,15 +57,15 @@ const AuditLogPage: React.FC = () => {
     return (
         <ManagementLayout>
             <PageHeader
-                title="시스템 감사 로그"
-                description="시스템 구성 변경 및 사용자 작업 이력을 확인합니다."
+                title="System Audit Log"
+                description="View system configuration changes and user activity history."
                 icon="fas fa-clipboard-check"
             />
 
             <div className="mgmt-stats-panel">
-                <StatCard label="오늘의 로그" value={totalCount} type="primary" />
-                <StatCard label="위험 탐지" value="0" type="error" />
-                <StatCard label="마지막 기록" value="1분 전" type="neutral" />
+                <StatCard label="Today's Logs" value={totalCount} type="primary" />
+                <StatCard label="Threats Detected" value="0" type="error" />
+                <StatCard label="Last Entry" value="1 min ago" type="neutral" />
             </div>
 
             <FilterBar
@@ -78,15 +78,15 @@ const AuditLogPage: React.FC = () => {
                 activeFilterCount={(searchTerm ? 1 : 0) + (entityTypeFilter !== 'all' ? 1 : 0)}
                 filters={[
                     {
-                        label: '엔티티 타입',
+                        label: 'Entity Type',
                         value: entityTypeFilter,
                         onChange: setEntityTypeFilter,
                         options: [
-                            { value: 'all', label: '전체' },
-                            { value: 'DEVICE', label: '디바이스' },
-                            { value: 'TEMPLATE', label: '템플릿' },
-                            { value: 'USER', label: '사용자' },
-                            { value: 'SYSTEM', label: '시스템' }
+                            { value: 'all', label: 'All' },
+                            { value: 'DEVICE', label: 'Device' },
+                            { value: 'TEMPLATE', label: 'Template' },
+                            { value: 'USER', label: 'User' },
+                            { value: 'SYSTEM', label: 'System' }
                         ]
                     }
                 ]}
@@ -96,19 +96,19 @@ const AuditLogPage: React.FC = () => {
                 <table className="mgmt-table">
                     <thead>
                         <tr>
-                            <th>일시</th>
-                            <th>작업자</th>
-                            <th>작업</th>
-                            <th>대상</th>
-                            <th>대상 이름</th>
-                            <th>상세 내용</th>
+                            <th>Timestamp</th>
+                            <th>Operator</th>
+                            <th>Action</th>
+                            <th>Target</th>
+                            <th>Target Name</th>
+                            <th>Details</th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>불러오는 중...</td></tr>
+                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>Loading...</td></tr>
                         ) : logs.length === 0 ? (
-                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>기록된 로그가 없습니다.</td></tr>
+                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>No logs recorded.</td></tr>
                         ) : (
                             logs.map(log => (
                                 <tr key={log.id}>

@@ -1,0 +1,112 @@
+{
+    "title": "제조사 관리",
+    "description": "하드웨어 제조사 정보를 관리합니다. 모델 상세 관리는 '디바이스 마스터 모델' 페이지에서 가능합니다.",
+    "register": "새 제조사 등록",
+    "detail": "상세보기",
+    "edit": "수정",
+    "delete": "삭제",
+    "restore": "복구하기",
+    "noDescription": "제조사 설명이 없습니다.",
+    "cardView": "카드 보기",
+    "listView": "리스트 보기",
+    "showDeleted": "삭제된 제조사 보기",
+    "stats": {
+        "totalManufacturers": "전체 제조사",
+        "totalModels": "전체 모델",
+        "countries": "제조사 국가"
+    },
+    "filter": {
+        "status": "상태",
+        "all": "전체",
+        "active": "활성",
+        "inactive": "비활성"
+    },
+    "table": {
+        "name": "제조사명",
+        "description": "설명",
+        "modelCount": "모델 수",
+        "country": "국가",
+        "status": "상태",
+        "deleted": "삭제됨"
+    },
+    "badge": {
+        "active": "활성",
+        "inactive": "비활성",
+        "deleted": "삭제됨"
+    },
+    "confirm": {
+        "deleteTitle": "제조사 삭제 확인",
+        "deleteMsg": "'{{name}}' 제조사를 삭제하시겠습니까? 연결된 모델이 있는 경우 삭제할 수 없습니다.",
+        "deleteText": "삭제",
+        "deleteSuccessTitle": "삭제 완료",
+        "deleteSuccessMsg": "제조사가 성공적으로 삭제되었습니다.",
+        "deleteFailTitle": "삭제 실패",
+        "restoreTitle": "제조사 복구 확인",
+        "restoreMsg": "'{{name}}' 제조사를 복구하시겠습니까?",
+        "restoreText": "복구",
+        "restoreSuccessTitle": "복구 완료",
+        "restoreSuccessMsg": "제조사가 성공적으로 복구되었습니다.",
+        "restoreFailTitle": "복구 실패",
+        "errorTitle": "오류 발생"
+    },
+    "loading": "제조사 정보를 불러오는 중 오류가 발생했습니다.",
+    "modal": {
+        "createTitle": "제조사 등록"
+    },
+    "field": {
+        "name": "제조사명",
+        "description": "설명"
+    },
+    "countries": {
+        "KR": "대한민국",
+        "US": "미국",
+        "DE": "독일",
+        "JP": "일본",
+        "CN": "중국",
+        "TW": "대만",
+        "FR": "프랑스",
+        "GB": "영국",
+        "IT": "이탈리아",
+        "CH": "스위스",
+        "VN": "베트남",
+        "CA": "캐나다",
+        "NL": "네덜란드",
+        "SE": "스웨덴",
+        "IL": "이스라엘",
+        "FI": "핀란드",
+        "AT": "오스트리아",
+        "BE": "벨기에",
+        "DK": "덴마크",
+        "NO": "노르웨이",
+        "ES": "스페인",
+        "BR": "브라질",
+        "IN": "인도",
+        "MX": "멕시코",
+        "SG": "싱가포르",
+        "MY": "말레이시아",
+        "TH": "태국",
+        "AU": "호주",
+        "RU": "러시아",
+        "TR": "터키",
+        "CZ": "체코",
+        "PL": "폴란드",
+        "PT": "포르투갈",
+        "HU": "헝가리",
+        "IE": "아일랜드",
+        "GR": "그리스",
+        "LU": "룩셈부르크",
+        "ID": "인도네시아",
+        "PH": "필리핀",
+        "AE": "아랍에미리트",
+        "SA": "사우디아라비아",
+        "ZA": "남아프리카"
+    },
+    "labels": {
+        "website": "Website",
+        "logoImageUrl": "로고 이미지 URL",
+        "failedToLoadManufacturerInformation": "Failed to load manufacturer information.",
+        "selectACountry": "Select a country",
+        "activeStatus": "Active Status",
+        "manufacturerLogo": "Manufacturer Logo"
+    }
+}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Input, Form, Descriptions, Badge, Typography, Divider } from 'antd';
 import { CheckCircleOutlined, InfoCircleOutlined, UserOutlined, ClockCircleOutlined, MessageOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -27,14 +28,15 @@ const AlarmActionModal: React.FC<AlarmActionModalProps> = ({
     onCancel,
     loading = false
 }) => {
-    const [comment, setComment] = useState('시스템 확인');
+    const [comment, setComment] = useState('System Check');
+    const { t } = useTranslation(['alarms', 'common']);
     const isAcknowledge = type === 'acknowledge';
-    const title = isAcknowledge ? '알람 확인 (Acknowledge)' : '알람 해제 (Clear)';
+    const title = isAcknowledge ? 'Acknowledge Alarm' : 'Clear Alarm';
     const color = isAcknowledge ? '#1890ff' : '#52c41a';
 
     useEffect(() => {
         if (isOpen) {
-            setComment(isAcknowledge ? '시스템 확인' : '상황 종료 및 조치 완료');
+            setComment(isAcknowledge ? 'System Check' : 'Situation resolved and action completed');
         }
     }, [isOpen, type, isAcknowledge]);
 
@@ -64,7 +66,7 @@ const AlarmActionModal: React.FC<AlarmActionModalProps> = ({
             onOk={handleOk}
             onCancel={onCancel}
             confirmLoading={loading}
-            okText={isAcknowledge ? '확인 처리' : '해제 처리'}
+            okText={isAcknowledge ? 'Acknowledge' : 'Clear'}
             cancelText="취소"
             centered
             width={520}

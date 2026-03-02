@@ -1,0 +1,56 @@
+{
+    "title": "히스토리 데이터",
+    "description": "수집된 히스토리 데이터를 조회하고 분석합니다.",
+    "search": "포인트 검색",
+    "export": "내보내기",
+    "filter": {
+        "dateRange": "기간 선택",
+        "from": "시작",
+        "to": "종료",
+        "apply": "적용",
+        "reset": "초기화",
+        "aggregation": "집계 방식",
+        "raw": "원본값",
+        "avg": "평균",
+        "min": "최솟값",
+        "max": "최댓값",
+        "interval": "집계 간격"
+    },
+    "chart": {
+        "title": "시계열 차트",
+        "noData": "표시할 데이터가 없습니다.",
+        "loading": "차트 로딩 중...",
+        "placeholder": "시계열 차트가 여기에 표시됩니다"
+    },
+    "table": {
+        "timestamp": "시각",
+        "value": "값",
+        "quality": "품질",
+        "unit": "단위"
+    },
+    "loading": "데이터를 불러오는 중...",
+    "noData": "선택한 기간에 데이터가 없습니다.",
+    "labels": {
+        "queryConditions": "Query Conditions",
+        "timeRange": "시간 범위",
+        "quickSelect": "Quick Select",
+        "siteFactory": "Site (Factory)",
+        "pleaseSelectASiteFirst": "Please select a site first",
+        "pleaseSelectADeviceFirst": "Please select a device first",
+        "total": "TOTAL",
+        "rec": "REC",
+        "viewAll": "View All",
+        "timeseriesChart": "Time-series Chart",
+        "selectAll": "Select All",
+        "clearSelection": "Clear Selection",
+        "timeseriesChartWillAppearHere": "Time-series chart will appear here",
+        "detailedDataSpecification": "Detailed Data Specification",
+        "no": "No.",
+        "pointName": "포인트명",
+        "value": "값",
+        "quality": "품질",
+        "timestamp": "Timestamp",
+        "factory": "공장",
+        "noResultsFound": "No results found"
+    }
+}

@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import apiClient from '../../../api/client';
 
 // ── 타입 ────────────────────────────────────────────────────────────────────
@@ -50,9 +51,9 @@ const AnalysisPanel: React.FC<{ entry: PacketEntry }> = ({ entry }) => {
         <div className="a-item a-full">
           <span className="a-label">💡 해석</span>
           {d.name ? (
-            <span>포인트 <strong>{d.name}</strong> (ID:{r.point_id}) 폴링 완료 — 원시값 {r.raw} → 스케일값 {d.value}</span>
+            <span>Point <strong>{d.name}</strong> (ID:{r.point_id}) polled — raw {r.raw} → scaled {d.value}</span>
           ) : (
-            <span>Modbus 폴링 데이터 (ID:{r.point_id})</span>
+            <span>Modbus poll data (ID:{r.point_id})</span>
           )}
         </div>
       </div>
@@ -70,8 +71,8 @@ const AnalysisPanel: React.FC<{ entry: PacketEntry }> = ({ entry }) => {
           })()}</pre>
         </div>
         <div className="a-item a-full">
-          <span className="a-label">💡 해석</span>
-          토픽 <strong>{entry.raw}</strong>으로 메시지 수신 — 페이로드 {entry.decoded.length}자
+          <span className="a-label">💡 Interpretation</span>
+          Received message on topic <strong>{entry.raw}</strong> — payload {entry.decoded.length} chars
         </div>
       </div>
     );
@@ -84,15 +85,15 @@ const AnalysisPanel: React.FC<{ entry: PacketEntry }> = ({ entry }) => {
     const pduType = bytes[0] ? parseInt(bytes[0], 16) : null;
     return (
       <div className="analysis-grid">
-        <div className="a-item"><span className="a-label">📏 길이</span>{byteCount} bytes</div>
+        <div className="a-item"><span className="a-label">📏 Length</span>{byteCount} bytes</div>
         <div className="a-item"><span className="a-label">🔖 PDU Type (byte0)</span>0x{bytes[0] ?? '--'}</div>
         <div className="a-item a-full"><span className="a-label">🔢 HEX Dump</span>
           <pre className="hex-dump">{entry.raw}</pre>
         </div>
         <div className="a-item a-full">
-          <span className="a-label">💡 해석</span>
-          BACnet 패킷 수신 ({byteCount} bytes)
-          {pduType !== null && `, PDU 타입 0x${bytes[0]}`}
+          <span className="a-label">💡 Interpretation</span>
+          BACnet packet received ({byteCount} bytes)
+          {pduType !== null && `, PDU type 0x${bytes[0]}`}
         </div>
       </div>
     );
@@ -100,8 +101,8 @@ const AnalysisPanel: React.FC<{ entry: PacketEntry }> = ({ entry }) => {
 
   return (
     <div className="analysis-grid">
-      <div className="a-item a-full"><span className="a-label">RAW</span>{entry.raw}</div>
-      <div className="a-item a-full"><span className="a-label">DECODED</span>{entry.decoded}</div>
+      <div className="a-item a-full"><span className="a-label">Raw</span>{entry.raw}</div>
+      <div className="a-item a-full"><span className="a-label">Decoded</span>{entry.decoded}</div>
     </div>
   );
 };
@@ -111,6 +112,7 @@ interface Props { deviceId: number; }
 
 const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
   const [entries, setEntries] = useState<PacketEntry[]>([]);
+    const { t } = useTranslation(['devices', 'common']);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<number[]>([]);
@@ -134,10 +136,10 @@ const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
         setEntries(result.data.entries);
         setLogDir(result.data.log_dir);
       } else {
-        setError(result.message || '로그 조회 실패');
+        setError(result.message || 'Log fetch failed');
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : '네트워크 오류');
+      setError(e instanceof Error ? e.message : 'Network error');
     } finally {
       setIsLoading(false);
     }
@@ -176,9 +178,9 @@ const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
       {/* 컨트롤 바 */}
       <div className="plt-controls">
         <div className="plt-left">
-          <span className="plt-title">통신 패킷 로그</span>
+          <span className="plt-title">{t('labels.communicationPacketLog', {ns: 'devices'})}</span>
           <span className="plt-subtitle">
-            {logDir ? <code>{logDir}</code> : '로그 파일 조회'}
+            {logDir ? <code>{logDir}</code> : 'Fetching log file'}
           </span>
         </div>
         <div className="plt-right">
@@ -190,14 +192,14 @@ const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
           />
           <input
             type="text"
-            placeholder="검색..."
+            placeholder="Search..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="plt-search"
           />
           <label className="plt-realtime">
             <input type="checkbox" checked={isRealTime} onChange={e => setIsRealTime(e.target.checked)} />
-            실시간
+            Real-time
           </label>
           <button className="plt-btn" onClick={load} disabled={isLoading} title="새로고침">
             <span className={isLoading ? 'spin' : ''}>⟳</span>
@@ -210,17 +212,16 @@ const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
         <div className="plt-error">
           ⚠️ {error}
           {error.includes('ENOENT') || error.includes('없') ? (
-            <span> — packet_logging_enabled=true 설정 후 재시작하면 로그가 생성됩니다.</span>
+            <span> — Enable packet_logging_enabled=true in settings and restart to generate logs.</span>
           ) : null}
         </div>
       )}
 
       {!error && !isLoading && entries.length === 0 && (
         <div className="plt-empty">
-          <div>📭 패킷 로그 없음</div>
+          <div>📭 No packet logs</div>
           <div className="plt-empty-hint">
-            시스템 설정에서 <strong>packet_logging_enabled = true</strong>로 설정하면
-            <br />Modbus / MQTT / BACnet 통신 데이터가 <code>logs/packets/</code>에 기록됩니다.
+            Set <strong>packet_logging_enabled = true</strong> in System Settings<br />to record Modbus / MQTT / BACnet communications in <code>logs/packets/</code>.
           </div>
         </div>
       )}
@@ -231,10 +232,10 @@ const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
           <table className="plt-table">
             <thead>
               <tr>
-                <th style={{ width: 180 }}>시간</th>
-                <th style={{ width: 90 }}>프로토콜</th>
-                <th>RAW</th>
-                <th>DECODED</th>
+                <th style={{ width: 180 }}>{t('logTab.time', {ns: 'devices'})}</th>
+                <th style={{ width: 90 }}>{t('protocol', {ns: 'devices'})}</th>
+                <th>Raw</th>
+                <th>Decoded</th>
               </tr>
             </thead>
             <tbody>
@@ -261,7 +262,7 @@ const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
                       <td colSpan={4}>
                         <div className="plt-analysis">
                           <div className="plt-analysis-header">
-                            🔬 엔지니어 해석 — {e.protocol} @ {e.timestamp}
+                            🔬 Engineer Interpretation — {e.protocol} @ {e.timestamp}
                           </div>
                           <AnalysisPanel entry={e} />
                         </div>

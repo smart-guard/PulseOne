@@ -1,0 +1,31 @@
+{
+    "status": {
+        "connected": "API 연결됨",
+        "connecting": "API 연결 중",
+        "disconnected": "API 연결 끊김",
+        "devices": "장치",
+        "active": "활성"
+    },
+    "lastUpdated": "마지막 업데이트",
+    "rtuMaster": "마스터",
+    "rtuSlave": "슬레이브",
+    "autoRefresh": "자동 새로고침",
+    "sec": "초",
+    "min": "분",
+    "exportData": "데이터 내보내기",
+    "tree": {
+        "title": "장치 계층 구조",
+        "search": "트리 검색..."
+    },
+    "data": {
+        "title": "실시간 데이터",
+        "noPoints": "에 연결된 포인트가 없거나 데이터를 불러올 수 없습니다."
+    },
+    "chart": {
+        "view": "차트 보기",
+        "hide": "차트 숨기기"
+    },
+    "error": {
+        "loadFailed": "네트워크 구조를 불러오지 못했습니다."
+    }
+}

@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ProtocolApiService, Protocol } from '../../../api/services/protocolApi';
 import { StatCard } from '../../common/StatCard';
@@ -17,6 +18,7 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
     // 탭 상태를 URL 파라미터와 동기화
     const activeTab = (urlTab as any) || 'monitoring';
     const [brokerStatus, setBrokerStatus] = useState<any>(null);
+    const { t } = useTranslation(['protocols', 'common']);
     const [loading, setLoading] = useState(false);
 
     // 프로토콜 정보 수정을 위한 로컬 상태
@@ -65,13 +67,13 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
 
     const handleToggleBroker = async (enabled: boolean) => {
         const message = enabled
-            ? 'MQTT 브로커 서비스를 활성화하시겠습니까?'
-            : '브로커를 비활성화하면 연결된 모든 센서의 통신이 중단됩니다. 계속하시겠습니까?';
+            ? 'Enable MQTT broker service?'
+            : 'Disabling the broker will interrupt communication for all connected sensors. Continue?';
 
         const ok = await confirm({
-            title: enabled ? '서비스 활성화' : '서비스 비활성화',
+            title: enabled ? 'Enable Service' : 'Disable Service',
             message,
-            confirmText: enabled ? '활성화' : '서비스 중단',
+            confirmText: enabled ? 'Enable' : 'Stop Service',
             confirmButtonType: enabled ? 'primary' : 'danger'
         });
 
@@ -92,9 +94,9 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
 
     const handleReissueApiKey = async () => {
         const ok = await confirm({
-            title: 'API Key 재발급',
-            message: 'API Key를 재발급하면 기존 Key를 사용하는 모든 센서의 접속이 끊어집니다. 계속하시겠습니까?',
-            confirmText: '재발급 실행',
+            title: 'Reissue API Key',
+            message: 'Reissuing the API Key will disconnect all sensors using the old key. Continue?',
+            confirmText: 'Reissue',
             confirmButtonType: 'danger'
         });
 
@@ -155,12 +157,12 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                     </div>
                     <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: 'var(--neutral-900)' }}>{protocol.display_name} 관리 센터</h2>
+                            <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: 'var(--neutral-900)' }}>{protocol.display_name} Management Center</h2>
                             <span className={`mgmt-status-pill ${isBrokerEnabled ? (brokerStatus?.is_healthy ? 'active' : 'warning') : 'inactive'}`} style={{ fontSize: '11px' }}>
-                                {isBrokerEnabled ? (brokerStatus?.is_healthy ? '운영 중' : '주의') : '비활성'}
+                                {isBrokerEnabled ? (brokerStatus?.is_healthy ? 'Running' : 'Warning') : 'Inactive'}
                             </span>
                         </div>
-                        <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: 'var(--neutral-500)' }}>{protocol.description || 'MQTT 브로커 서비스 운영 및 보안 설정'}</p>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: 'var(--neutral-500)' }}>{protocol.description || 'MQTT broker service operation and security settings'}</p>
                     </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
@@ -168,7 +170,7 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                         ID: {protocol.id} | Ver: {protocol.min_firmware_version || '1.0.0'}
                     </div>
                     <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={onRefresh}>
-                        <i className="fas fa-sync-alt" style={{ marginRight: '6px' }}></i> 상태 새로고침
+                        <i className="fas fa-sync-alt" style={{ marginRight: '6px' }}></i> Refresh Status
                     </button>
                 </div>
             </div>
@@ -184,10 +186,10 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                 alignSelf: 'flex-start'
             }}>
                 {[
-                    { id: 'monitoring', label: '실시간 관제', icon: 'fa-chart-line' },
-                    { id: 'clients', label: '접속 기기 목록', icon: 'fa-microchip' },
-                    { id: 'info', label: '기술 상세 사양', icon: 'fa-code' },
-                    { id: 'security', label: '브로커 보안 설정', icon: 'fa-shield-halved' }
+                    { id: 'monitoring', label: 'Live Monitor', icon: 'fa-chart-line' },
+                    { id: 'clients', label: 'Connected Devices', icon: 'fa-microchip' },
+                    { id: 'info', label: 'Technical Specs', icon: 'fa-code' },
+                    { id: 'security', label: 'Broker Security', icon: 'fa-shield-halved' }
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -230,20 +232,20 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                 {activeTab === 'monitoring' && (
                     <div className="monitoring-view">
                         <div className="mgmt-stats-panel" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px', marginBottom: '32px' }}>
-                            <StatCard label="현재 활성 세션" value={brokerStatus?.stats?.connections || 0} type="primary" />
-                            <StatCard label="메시지 수신속도" value={(brokerStatus?.stats?.message_rates?.publish || 0).toFixed(1) + ' msg/s'} type="success" />
-                            <StatCard label="메시지 전송속도" value={(brokerStatus?.stats?.message_rates?.deliver || 0).toFixed(1) + ' msg/s'} type="success" />
-                            <StatCard label="엔진 점유 메모리" value={brokerStatus?.health_details?.memory?.used || '0 MB'} type="warning" />
+                            <StatCard label="Active Sessions" value={brokerStatus?.stats?.connections || 0} type="primary" />
+                            <StatCard label="Msg Receive Rate" value={(brokerStatus?.stats?.message_rates?.publish || 0).toFixed(1) + ' msg/s'} type="success" />
+                            <StatCard label="Msg Send Rate" value={(brokerStatus?.stats?.message_rates?.deliver || 0).toFixed(1) + ' msg/s'} type="success" />
+                            <StatCard label="Engine Memory" value={brokerStatus?.health_details?.memory?.used || '0 MB'} type="warning" />
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
                             <div className="mgmt-card">
                                 <h3 className="mgmt-card-title" style={{ fontSize: '15px' }}>
-                                    <i className="fas fa-microchip" style={{ color: 'var(--primary-600)', marginRight: '8px' }}></i> 하드웨어 리소스 지표
+                                    <i className="fas fa-microchip" style={{ color: 'var(--primary-600)', marginRight: '8px' }}></i> Hardware Resource Metrics
                                 </h3>
                                 <div style={{ marginBottom: '20px', marginTop: '16px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px', color: 'var(--neutral-600)', fontWeight: 600 }}>
-                                        <span>메모리 안정성 임계치</span>
+                                        <span>{t('labels.memoryStabilityThreshold', {ns: 'protocols'})}</span>
                                         <span style={{ color: 'var(--neutral-900)' }}>{brokerStatus?.health_details?.memory?.used || '0MB'} / {brokerStatus?.health_details?.memory?.limit || '∞'}</span>
                                     </div>
                                     <div style={{ width: '100%', height: '8px', backgroundColor: 'var(--neutral-100)', borderRadius: '4px', overflow: 'hidden' }}>
@@ -256,21 +258,21 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                                     </div>
                                 </div>
                                 <div style={{ fontSize: '12px', color: 'var(--neutral-500)', lineHeight: '1.5', backgroundColor: 'var(--neutral-50)', padding: '12px', borderRadius: '8px', borderLeft: '3px solid var(--primary-500)' }}>
-                                    본 지표는 PulseOne 내장 RabbitMQ 서버의 실시간 통계를 바탕으로 합니다.
+                                    These metrics are based on real-time statistics from PulseOne's built-in RabbitMQ server.
                                 </div>
                             </div>
 
                             <div className="mgmt-card">
                                 <h3 className="mgmt-card-title" style={{ fontSize: '15px' }}>
-                                    <i className="fas fa-database" style={{ color: 'var(--primary-600)', marginRight: '8px' }}></i> 메시징 큐 통계
+                                    <i className="fas fa-database" style={{ color: 'var(--primary-600)', marginRight: '8px' }}></i> Messaging Queue Stats
                                 </h3>
                                 <div style={{ display: 'grid', gap: '12px', marginTop: '16px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', backgroundColor: 'var(--neutral-50)', borderRadius: '8px', alignItems: 'center' }}>
-                                        <span style={{ color: 'var(--neutral-600)', fontSize: '13px', fontWeight: 600 }}>생성된 전용 큐 (Queues)</span>
+                                        <span style={{ color: 'var(--neutral-600)', fontSize: '13px', fontWeight: 600 }}>{t('labels.dedicatedQueuesCreated', {ns: 'protocols'})}</span>
                                         <span style={{ fontWeight: 800, fontSize: '18px', color: 'var(--neutral-900)' }}>{brokerStatus?.stats?.queues || 0}</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', backgroundColor: 'var(--neutral-50)', borderRadius: '8px', alignItems: 'center' }}>
-                                        <span style={{ color: 'var(--neutral-600)', fontSize: '13px', fontWeight: 600 }}>활성 컨슈머 (Consumers)</span>
+                                        <span style={{ color: 'var(--neutral-600)', fontSize: '13px', fontWeight: 600 }}>{t('labels.activeConsumers', {ns: 'protocols'})}</span>
                                         <span style={{ fontWeight: 800, fontSize: '18px', color: 'var(--neutral-900)' }}>{brokerStatus?.stats?.consumers || 0}</span>
                                     </div>
                                 </div>
@@ -285,11 +287,11 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                             <table className="mgmt-table">
                                 <thead style={{ backgroundColor: '#f8fafc' }}>
                                     <tr>
-                                        <th style={{ padding: '20px 32px', color: '#475569', fontWeight: 700 }}>클라이언트 엔드포인트</th>
-                                        <th style={{ padding: '20px 32px', color: '#475569', fontWeight: 700 }}>계정 정보</th>
-                                        <th style={{ padding: '20px 32px', color: '#475569', fontWeight: 700 }}>세션 상태</th>
-                                        <th style={{ padding: '20px 32px', color: '#475569', fontWeight: 700 }}>프로토콜</th>
-                                        <th style={{ padding: '20px 32px', color: '#475569', fontWeight: 700 }}>연결 시점</th>
+                                        <th style={{ padding: '20px 32px', color: '#475569', fontWeight: 700 }}>{t('labels.clientEndpoint', {ns: 'protocols'})}</th>
+                                        <th style={{ padding: '20px 32px', color: '#475569', fontWeight: 700 }}>{t('labels.accountInfo', {ns: 'protocols'})}</th>
+                                        <th style={{ padding: '20px 32px', color: '#475569', fontWeight: 700 }}>{t('labels.sessionStatus', {ns: 'protocols'})}</th>
+                                        <th style={{ padding: '20px 32px', color: '#475569', fontWeight: 700 }}>{t('labels.protocol', {ns: 'protocols'})}</th>
+                                        <th style={{ padding: '20px 32px', color: '#475569', fontWeight: 700 }}>{t('labels.connectedAt', {ns: 'protocols'})}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -311,7 +313,7 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                                         <tr>
                                             <td colSpan={5} style={{ textAlign: 'center', padding: '120px', color: '#94a3b8' }}>
                                                 <i className="fas fa-plug-circle-xmark" style={{ fontSize: '64px', marginBottom: '24px', display: 'block', opacity: 0.15 }}></i>
-                                                <span style={{ fontSize: '18px', fontWeight: 600 }}>접속된 클라이언트 센서가 없습니다.</span>
+                                                <span style={{ fontSize: '18px', fontWeight: 600 }}>{t('labels.noConnectedClientSensors', {ns: 'protocols'})}</span>
                                             </td>
                                         </tr>
                                     )}
@@ -331,7 +333,7 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                                         setLocalProtocol(protocol);
                                         setIsEditingInfo(false);
                                     }}>
-                                        취소
+                                        Cancel
                                     </button>
                                     <button className="mgmt-btn mgmt-btn-primary mgmt-btn-sm" onClick={async () => {
                                         await handleUpdateProtocol({
@@ -343,12 +345,12 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                                         });
                                         setIsEditingInfo(false);
                                     }}>
-                                        저장 완료
+                                        Save Complete
                                     </button>
                                 </>
                             ) : (
                                 <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => setIsEditingInfo(true)}>
-                                    <i className="fas fa-edit" style={{ marginRight: '6px' }}></i> 사양 편집 모드
+                                    <i className="fas fa-edit" style={{ marginRight: '6px' }}></i> Edit Spec Mode
                                 </button>
                             )}
                         </div>
@@ -356,11 +358,11 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                             <div className="mgmt-card">
                                 <h3 className="mgmt-card-title" style={{ fontSize: '15px' }}>
-                                    <i className="fas fa-info-circle" style={{ color: 'var(--primary-600)', marginRight: '8px' }}></i> 기본 정보
+                                    <i className="fas fa-info-circle" style={{ color: 'var(--primary-600)', marginRight: '8px' }}></i> Basic Info
                                 </h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
                                     <div className="mgmt-modal-form-group">
-                                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>표시 명칭 (Display Name)</label>
+                                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>{t('labels.displayName', {ns: 'protocols'})}</label>
                                         {isEditingInfo ? (
                                             <input
                                                 type="text"
@@ -373,7 +375,7 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                                         )}
                                     </div>
                                     <div className="mgmt-modal-form-group">
-                                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>프로토콜 상세 설명</label>
+                                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>{t('labels.protocolDescription', {ns: 'protocols'})}</label>
                                         {isEditingInfo ? (
                                             <textarea
                                                 className="mgmt-input"
@@ -382,26 +384,26 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                                                 onChange={(e) => setLocalProtocol({ ...localProtocol, description: e.target.value })}
                                             />
                                         ) : (
-                                            <div style={{ fontSize: '14px', color: 'var(--neutral-600)', lineHeight: '1.5', padding: '8px 0' }}>{protocol.description || '설명 없음'}</div>
+                                            <div style={{ fontSize: '14px', color: 'var(--neutral-600)', lineHeight: '1.5', padding: '8px 0' }}>{protocol.description || 'No description'}</div>
                                         )}
                                     </div>
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                         <div className="mgmt-modal-form-group">
-                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>공식 벤더</label>
+                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>{t('labels.officialVendor', {ns: 'protocols'})}</label>
                                             <div style={{ fontSize: '14px', color: 'var(--neutral-900)', padding: '8px 0' }}>{protocol.vendor || 'Standard'}</div>
                                         </div>
                                         <div className="mgmt-modal-form-group">
-                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>표준 포트</label>
+                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>{t('labels.standardPort', {ns: 'protocols'})}</label>
                                             <div style={{ fontSize: '14px', color: 'var(--neutral-900)', padding: '8px 0' }}>{protocol.default_port || 1883}</div>
                                         </div>
                                     </div>
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                         <div className="mgmt-modal-form-group">
-                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>기술 카테고리</label>
+                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>{t('labels.techCategory', {ns: 'protocols'})}</label>
                                             <div style={{ fontSize: '14px', color: 'var(--neutral-900)', padding: '8px 0' }}>{protocol.category || 'IoT'}</div>
                                         </div>
                                         <div className="mgmt-modal-form-group">
-                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>최소 지원 버전</label>
+                                            <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>{t('labels.minSupportedVersion', {ns: 'protocols'})}</label>
                                             <div style={{ fontSize: '14px', color: 'var(--neutral-900)', padding: '8px 0' }}>{protocol.min_firmware_version || '1.0.0'}</div>
                                         </div>
                                     </div>
@@ -410,11 +412,11 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
 
                             <div className="mgmt-card">
                                 <h3 className="mgmt-card-title" style={{ fontSize: '15px' }}>
-                                    <i className="fas fa-sliders" style={{ color: 'var(--primary-600)', marginRight: '8px' }}></i> 통신 파라미터
+                                    <i className="fas fa-sliders" style={{ color: 'var(--primary-600)', marginRight: '8px' }}></i> Communication Parameters
                                 </h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
                                     <div className="mgmt-modal-form-group">
-                                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>기본 폴링 간격 (ms)</label>
+                                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>{t('labels.defaultPollingIntervalMs', {ns: 'protocols'})}</label>
                                         {isEditingInfo ? (
                                             <input
                                                 type="number"
@@ -427,7 +429,7 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                                         )}
                                     </div>
                                     <div className="mgmt-modal-form-group">
-                                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>응답 대기 제한 시간 (ms)</label>
+                                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>{t('labels.responseTimeoutMs', {ns: 'protocols'})}</label>
                                         {isEditingInfo ? (
                                             <input
                                                 type="number"
@@ -440,7 +442,7 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                                         )}
                                     </div>
                                     <div className="mgmt-modal-form-group">
-                                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>최대 동시 세션 수</label>
+                                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--neutral-700)', marginBottom: '4px', display: 'block' }}>{t('labels.maxConcurrentSessions', {ns: 'protocols'})}</label>
                                         {isEditingInfo ? (
                                             <input
                                                 type="number"
@@ -449,12 +451,12 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                                                 onChange={(e) => setLocalProtocol({ ...localProtocol, max_concurrent_connections: parseInt(e.target.value) })}
                                             />
                                         ) : (
-                                            <div style={{ fontSize: '14px', color: 'var(--neutral-900)', padding: '8px 0' }}>{protocol.max_concurrent_connections} 세션</div>
+                                            <div style={{ fontSize: '14px', color: 'var(--neutral-900)', padding: '8px 0' }}>{protocol.max_concurrent_connections} Sessions</div>
                                         )}
                                     </div>
 
                                     <div style={{ border: '1px dashed var(--neutral-300)', padding: '16px', borderRadius: '12px', background: 'var(--neutral-50)', marginTop: '8px' }}>
-                                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--neutral-700)', marginBottom: '12px' }}>지원 기능 (Capabilities)</h4>
+                                        <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--neutral-700)', marginBottom: '12px' }}>{t('labels.supportedFeaturesCapabilities', {ns: 'protocols'})}</h4>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                             {protocol.supported_operations?.map(cap => (
                                                 <div key={cap} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--success-700)', background: 'white', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--success-100)' }}>
@@ -484,15 +486,15 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                             textAlign: 'left'
                         }}>
                             <div style={{ flex: 1, textAlign: 'left' }}>
-                                <h3 style={{ fontSize: '15px', fontWeight: 900, margin: 0, color: 'var(--neutral-900)' }}>MQTT 브로커 서버 활성화</h3>
-                                <p style={{ fontSize: '12px', color: 'var(--neutral-500)', margin: '2px 0 0 0' }}>외부 장치 및 센서의 실시간 데이터 접속을 허용합니다.</p>
+                                <h3 style={{ fontSize: '15px', fontWeight: 900, margin: 0, color: 'var(--neutral-900)' }}>{t('labels.mqttBrokerServerActivation', {ns: 'protocols'})}</h3>
+                                <p style={{ fontSize: '12px', color: 'var(--neutral-500)', margin: '2px 0 0 0' }}>Allows real-time data connections from external devices and sensors.</p>
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '20px' }}>
                                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                                    <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--neutral-400)', marginBottom: '0' }}>STATUS</div>
+                                    <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--neutral-400)', marginBottom: '0' }}>{t('labels.status', {ns: 'protocols'})}</div>
                                     <span style={{ fontSize: '14px', fontWeight: 900, color: isBrokerEnabled ? 'var(--success-600)' : 'var(--neutral-500)' }}>
-                                        {isBrokerEnabled ? '동작 중 (RUNNING)' : '비활성 (STOPPED)'}
+                                        {isBrokerEnabled ? 'Running (RUNNING)' : 'Inactive (STOPPED)'}
                                     </span>
                                 </div>
                                 <label className="mgmt-switch" style={{ margin: 0 }}>
@@ -508,37 +510,37 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                             <div className="mgmt-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                                 <div>
                                     <h3 style={{ fontSize: '15px', fontWeight: 900, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <i className="fas fa-shield-halved" style={{ color: 'var(--primary-600)' }}></i> 브로커 접속 및 인증 관리
+                                        <i className="fas fa-shield-halved" style={{ color: 'var(--primary-600)' }}></i> Broker Access & Auth Management
                                     </h3>
                                 </div>
 
                                 {/* Connection Details Group */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                     <div className="mgmt-modal-form-group">
-                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>접속 URL (Endpoint)</label>
+                                        <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>{t('labels.connectionUrlEndpoint', {ns: 'protocols'})}</label>
                                         <div style={{ position: 'relative' }}>
                                             <input type="text" className="mgmt-input" readOnly value={`mqtt://${window.location.hostname}:1883`} style={{ background: 'var(--neutral-50)', fontWeight: 800, paddingRight: '100px', fontSize: '13px', height: '38px', borderRadius: '8px' }} />
-                                            <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" style={{ position: 'absolute', right: '4px', top: '4px', height: '30px', border: 'none', background: '#fff', fontSize: '11px', fontWeight: 800 }} onClick={() => navigator.clipboard.writeText(`mqtt://${window.location.hostname}:1883`)}>주소 복사</button>
+                                            <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" style={{ position: 'absolute', right: '4px', top: '4px', height: '30px', border: 'none', background: '#fff', fontSize: '11px', fontWeight: 800 }} onClick={() => navigator.clipboard.writeText(`mqtt://${window.location.hostname}:1883`)}>{t('labels.copyUrl', {ns: 'protocols'})}</button>
                                         </div>
                                     </div>
 
                                     <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 0.9fr 1fr', gap: '12px' }}>
                                         <div className="mgmt-modal-form-group">
-                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary-700)', marginBottom: '5px', display: 'block' }}>Broker ID</label>
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary-700)', marginBottom: '5px', display: 'block' }}>{t('labels.brokerId', {ns: 'protocols'})}</label>
                                             <div style={{ position: 'relative' }}>
-                                                <input type="text" className="mgmt-input" placeholder="ID 입력" value={localProtocol.connection_params?.broker_username || ''} onChange={(e) => setLocalProtocol({ ...localProtocol, connection_params: { ...localProtocol.connection_params, broker_username: e.target.value } })} style={{ paddingRight: '36px', height: '36px', fontSize: '13px' }} />
+                                                <input type="text" className="mgmt-input" placeholder="Enter ID" value={localProtocol.connection_params?.broker_username || ''} onChange={(e) => setLocalProtocol({ ...localProtocol, connection_params: { ...localProtocol.connection_params, broker_username: e.target.value } })} style={{ paddingRight: '36px', height: '36px', fontSize: '13px' }} />
                                                 <button style={{ position: 'absolute', right: '8px', top: '9px', background: 'none', border: 'none', color: 'var(--primary-400)' }} onClick={() => localProtocol.connection_params?.broker_username && navigator.clipboard.writeText(localProtocol.connection_params.broker_username)}><i className="far fa-copy"></i></button>
                                             </div>
                                         </div>
                                         <div className="mgmt-modal-form-group">
-                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary-700)', marginBottom: '5px', display: 'block' }}>Broker Password</label>
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary-700)', marginBottom: '5px', display: 'block' }}>{t('labels.brokerPassword', {ns: 'protocols'})}</label>
                                             <div style={{ position: 'relative' }}>
-                                                <input type="password" className="mgmt-input" placeholder="PW 입력" value={localProtocol.connection_params?.broker_password || ''} onChange={(e) => setLocalProtocol({ ...localProtocol, connection_params: { ...localProtocol.connection_params, broker_password: e.target.value } })} style={{ paddingRight: '36px', height: '36px', fontSize: '13px' }} />
+                                                <input type="password" className="mgmt-input" placeholder="Enter Password" value={localProtocol.connection_params?.broker_password || ''} onChange={(e) => setLocalProtocol({ ...localProtocol, connection_params: { ...localProtocol.connection_params, broker_password: e.target.value } })} style={{ paddingRight: '36px', height: '36px', fontSize: '13px' }} />
                                                 <button style={{ position: 'absolute', right: '8px', top: '9px', background: 'none', border: 'none', color: 'var(--primary-400)' }} onClick={() => localProtocol.connection_params?.broker_password && navigator.clipboard.writeText(localProtocol.connection_params.broker_password)}><i className="far fa-copy"></i></button>
                                             </div>
                                         </div>
                                         <div className="mgmt-modal-form-group">
-                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '5px', display: 'block' }}>vhost (기본: /)</label>
+                                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '5px', display: 'block' }}>vhost (default: /)</label>
                                             <input type="text" className="mgmt-input" placeholder="/" value={localProtocol.connection_params?.broker_vhost || ''} onChange={(e) => setLocalProtocol({ ...localProtocol, connection_params: { ...localProtocol.connection_params, broker_vhost: e.target.value } })} style={{ height: '36px', fontSize: '13px' }} />
                                         </div>
                                     </div>
@@ -548,17 +550,17 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                                 <div style={{ padding: '16px', background: 'linear-gradient(135deg, var(--primary-50) 0%, #fff 100%)', borderRadius: '12px', border: '1px solid var(--primary-200)', boxShadow: '0 2px 8px rgba(37, 99, 235, 0.05)' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <h4 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--primary-800)', margin: 0 }}>센서 전용 인증 토큰 (API Key)</h4>
-                                            <span style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 500 }}>* 보안을 위해 Password 대신 위 토큰 사용을 강력 권장합니다.</span>
+                                            <h4 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--primary-800)', margin: 0 }}>{t('labels.sensorAuthTokenApiKey', {ns: 'protocols'})}</h4>
+                                            <span style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 500 }}>* For security, it is strongly recommended to use the above token instead of a password.</span>
                                         </div>
-                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={handleReissueApiKey} disabled={loading} style={{ background: '#fff', height: '24px', fontSize: '10px', padding: '0 10px', fontWeight: 800 }}>토큰 재발급</button>
+                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={handleReissueApiKey} disabled={loading} style={{ background: '#fff', height: '24px', fontSize: '10px', padding: '0 10px', fontWeight: 800 }}>{t('labels.reissueToken', {ns: 'protocols'})}</button>
                                     </div>
                                     <div style={{ position: 'relative' }}>
                                         <input
                                             type="text"
                                             className="mgmt-input"
                                             readOnly
-                                            value={protocol.connection_params?.broker_api_key || '브로커 가동 시 자동 발급'}
+                                            value={protocol.connection_params?.broker_api_key || 'Auto-issued when broker starts'}
                                             style={{
                                                 backgroundColor: '#ffffff',
                                                 fontFamily: 'monospace',
@@ -588,7 +590,7 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                                         onClick={() => handleUpdateProtocol({ connection_params: localProtocol.connection_params })}
                                         disabled={loading}
                                     >
-                                        보안 설정 저장 및 즉시 적용
+                                        Save & Apply Security Settings
                                     </button>
                                 </div>
                             </div>
@@ -596,32 +598,32 @@ const MqttBrokerDashboard: React.FC<MqttBrokerDashboardProps> = ({ protocol, onR
                             {/* Right: Engineering Help Guide */}
                             <div className="mgmt-card" style={{ padding: '24px', background: 'var(--neutral-50)', border: '1px solid var(--neutral-200)', height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
                                 <h3 style={{ fontSize: '15px', fontWeight: 900, color: 'var(--neutral-800)', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <i className="fas fa-microchip" style={{ color: 'var(--neutral-500)' }}></i> 엔지니어 연동 가이드
+                                    <i className="fas fa-microchip" style={{ color: 'var(--neutral-500)' }}></i> Engineer Integration Guide
                                 </h3>
 
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                                     <div style={{ padding: '14px', background: 'white', borderRadius: '10px', border: '1px solid var(--neutral-200)' }}>
-                                        <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary-600)', marginBottom: '6px' }}>접속 사양 (SPEC)</div>
+                                        <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary-600)', marginBottom: '6px' }}>{t('labels.connectionSpecSpec', {ns: 'protocols'})}</div>
                                         <div style={{ fontSize: '13px', color: 'var(--neutral-600)', lineHeight: '1.5' }}>
                                             • Protocol: **MQTT v3.1.1 / v5.0**<br />
                                             • Port: **1883** (Default TCP)<br />
-                                            • Keep-Alive: 60s 권장
+                                            • Keep-Alive: 60s (recommended)
                                         </div>
                                     </div>
 
                                     <div style={{ padding: '14px', background: 'white', borderRadius: '10px', border: '1px solid var(--neutral-200)' }}>
-                                        <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary-600)', marginBottom: '6px' }}>인증 방식 (AUTH)</div>
+                                        <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary-600)', marginBottom: '6px' }}>{t('labels.authMethodAuth', {ns: 'protocols'})}</div>
                                         <div style={{ fontSize: '12px', color: 'var(--neutral-600)', lineHeight: '1.5' }}>
-                                            외부 장치 설정 시 Password 자리에 좌측의 **Sensor Token(API Key)**을 입력하십시오. ID는 설정된 Broker ID를 그대로 사용합니다.
+                                            When connecting external devices, enter the <strong>{t('labels.sensorTokenApiKey', {ns: 'protocols'})}</strong> on the left in the Password field. Use the configured Broker ID as-is for the ID.
                                         </div>
                                     </div>
 
                                     <div style={{ padding: '14px', background: 'white', borderRadius: '10px', border: '1px solid var(--neutral-200)' }}>
-                                        <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary-600)', marginBottom: '6px' }}>토픽 구조 (TOPIC)</div>
+                                        <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary-600)', marginBottom: '6px' }}>{t('labels.topicStructureTopic', {ns: 'protocols'})}</div>
                                         <div style={{ fontSize: '12px', color: 'var(--neutral-600)', lineHeight: '1.5' }}>
-                                            • 수집: `pulseone/devices/{"{id}"}/data`<br />
-                                            • 제어: `pulseone/devices/{"{id}"}/cmd`<br />
-                                            <span style={{ fontSize: '11px', color: 'var(--neutral-400)', marginTop: '4px', display: 'block' }}>* {"{id}"}는 장치 고유 식별자입니다.</span>
+                                            • Collect: `pulseone/devices/{"{id}"}/data`<br />
+                                            • Control: `pulseone/devices/{"{id}"}/cmd`<br />
+                                            <span style={{ fontSize: '11px', color: 'var(--neutral-400)', marginTop: '4px', display: 'block' }}>* {"{id}"} is the unique device identifier.</span>
                                         </div>
                                     </div>
 

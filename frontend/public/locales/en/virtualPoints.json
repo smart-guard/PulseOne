@@ -1,0 +1,62 @@
+{
+    "title": "Virtual Point Management",
+    "description": "Manage virtual points calculated based on real-time data. Click on a name to view details.",
+    "new": "New Virtual Point",
+    "showDeleted": "Show Deleted Items",
+    "stats": {
+        "totalPoints": "Total Points",
+        "active": "Active",
+        "calcError": "Calculation Error"
+    },
+    "tabs": {
+        "list": "Virtual Point List",
+        "history": "Execution History"
+    },
+    "filter": {
+        "category": "Category",
+        "all": "All",
+        "status": "Status",
+        "active": "Active",
+        "error": "Error",
+        "disabled": "Inactive"
+    },
+    "bulk": {
+        "selected": "{{count}} item(s) selected",
+        "activate": "Activate",
+        "deactivate": "Deactivate",
+        "delete": "Delete",
+        "cancel": "Cancel"
+    },
+    "loading": "Loading...",
+    "history": {
+        "empty": "No execution history",
+        "emptyDesc": "Calculation results and performance information for recently executed virtual points will be displayed here."
+    },
+    "confirm": {
+        "bulkDeleteTitle": "Confirm Bulk Deletion",
+        "bulkDeleteMsg": "Are you sure you want to delete {{count}} virtual point(s)?",
+        "bulkDeleteText": "Delete",
+        "deleteSuccessTitle": "Deletion Complete",
+        "deleteSuccessMsg": "Virtual point has been successfully deleted.",
+        "bulkDoneTitle": "Complete",
+        "bulkDeleteDoneMsg": "Selected items have been deleted.",
+        "toggleDoneTitle": "Complete",
+        "toggleActivated": "Selected items have been activated.",
+        "toggleDeactivated": "Selected items have been deactivated.",
+        "singleToggleTitle": "Status Changed",
+        "singleToggleMsg": "Virtual point has been {{status}}.",
+        "executeTitle": "Execution Complete",
+        "executeMsg": "Virtual point calculation has been successfully executed."
+    },
+    "error": {
+        "loadFail": "Data loading failed",
+        "createFail": "Creation failed",
+        "updateFail": "Update failed",
+        "deleteFail": "Deletion failed",
+        "restoreFail": "Restoration failed",
+        "toggleFail": "Status change failed",
+        "executeFail": "Execution failed",
+        "bulkDeleteFail": "An error occurred during bulk deletion.",
+        "bulkToggleFail": "An error occurred during bulk status change."
+    }
+}

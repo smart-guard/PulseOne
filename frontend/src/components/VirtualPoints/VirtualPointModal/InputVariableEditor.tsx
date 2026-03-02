@@ -3,6 +3,7 @@
 // ============================================================================
 
 import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { VirtualPointInput } from '../../../types/virtualPoints';
 import InputVariableSourceSelector from './InputVariableSourceSelector';
 import { useConfirmContext } from '../../common/ConfirmProvider';
@@ -22,6 +23,7 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
   onPendingChange
 }) => {
   const { confirm } = useConfirmContext();
+    const { t } = useTranslation(['virtualPoints', 'common']);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [formData, setFormData] = useState<Partial<VirtualPointInput>>({
@@ -66,10 +68,10 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
     const variable = variables[index];
 
     const isConfirmed = await confirm({
-      title: '입력 변수 삭제',
-      message: `입력 변수 "${variable.input_name}"을(를) 정말 삭제하시겠습니까?`,
-      confirmText: '삭제하기',
-      cancelText: '취소',
+      title: 'Delete Input Variable',
+      message: `Delete input variable "${variable.input_name}"?`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
       confirmButtonType: 'danger'
     });
 
@@ -81,12 +83,12 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
 
   const handleSaveVariable = useCallback(async () => {
     if (!formData.input_name?.trim()) {
-      await confirm({ title: '입력 오류', message: '변수명을 입력해주세요.', showCancelButton: false });
+      await confirm({ title: 'Input Error', message: 'Please enter a variable name.', showCancelButton: false });
       return;
     }
 
     if (formData.source_type !== 'constant' && !formData.source_id) {
-      await confirm({ title: '입력 오류', message: '데이터 소스를 선택해주세요.', showCancelButton: false });
+      await confirm({ title: 'Input Error', message: 'Please select a data source.', showCancelButton: false });
       return;
     }
 
@@ -131,10 +133,10 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
 
     if (onMoveToFormulaTab && editingIndex === null) {
       const moveToFormula = await confirm({
-        title: '탭 이동 안내',
-        message: '변수가 추가되었습니다. 수식 작성 단계로 이동할까요?',
-        confirmText: '이동하기',
-        cancelText: '더 추가하기'
+        title: 'Tab Navigation',
+        message: 'Variable added. Move to the formula step?',
+        confirmText: 'Go',
+        cancelText: 'Add More'
       });
       if (moveToFormula) onMoveToFormulaTab();
     }
@@ -172,12 +174,12 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
   }, []);
 
   const validateVariableName = (name: string): string | null => {
-    if (!name.trim()) return '변수명은 필수입니다';
+    if (!name.trim()) return 'Variable name is required';
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
-      return '문자와 숫자, 언더스코어(_)만 가능하며 문자로 시작해야 합니다';
+      return 'Only letters, numbers, and underscores allowed; must start with a letter';
     }
     if (variables.some((v, i) => v.input_name === name && i !== editingIndex)) {
-      return '이미 사용 중인 변수명입니다';
+      return 'Variable name is already in use';
     }
     return null;
   };
@@ -199,21 +201,21 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
           {/* Header */}
           <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: 'white', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '13px', fontWeight: 800, color: '#334155' }}>
-              {editingIndex !== null ? '변수 속성 수정' : '1. 변수 정보 설정 (왼쪽)'}
+              {editingIndex !== null ? 'Edit Variable' : '1. Set Variable Info (left panel)'}
             </span>
           </div>
 
           {/* Form Body - Scrollable */}
           <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: '24px', flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
             <div className="vp-vertical-group">
-              <div className="label">수식에서 부를 짧은 이름 (변수 ID)</div>
+              <div className="label">Short name used in formula (Variable ID)</div>
               <input
                 type="text"
                 className="form-input"
                 style={{ height: '40px' }}
                 value={formData.input_name || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, input_name: e.target.value }))}
-                placeholder="가운데 목록을 누르면 자동 입력됩니다."
+                placeholder="Click an item in the center list to auto-fill."
               />
               {formData.input_name && validateVariableName(formData.input_name) && (
                 <div style={{ color: '#e11d48', fontSize: '11px', marginTop: '4px', fontWeight: 600 }}>
@@ -223,25 +225,25 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
             </div>
 
             <div className="vp-vertical-group">
-              <div className="label">어떤 값을 바탕으로 계산할까요?</div>
+              <div className="label">What value should this be based on?</div>
               <div className="choice-group-v3">
                 <button className={`choice-btn-v3 ${formData.source_type === 'data_point' ? 'active' : ''}`} onClick={() => setFormData(p => ({ ...p, source_type: 'data_point', source_id: undefined }))}>
                   <i className="fas fa-broadcast-tower"></i>
                   <span style={{ display: 'inline-block', textAlign: 'center', lineHeight: '1.3' }}>
-                    실시간<br />센서값
+                    Realtime<br />Sensor Value
                   </span>
                 </button>
                 <button className={`choice-btn-v3 ${formData.source_type === 'constant' ? 'active' : ''}`} onClick={() => setFormData(p => ({ ...p, source_type: 'constant', source_id: undefined }))}>
                   <i className="fas fa-equals"></i>
                   <span style={{ display: 'inline-block', textAlign: 'center', lineHeight: '1.3' }}>
-                    고정된 숫자<br />(상수)
+                    Fixed Number<br />(Constant)
                   </span>
                 </button>
               </div>
             </div>
 
             <div className="vp-vertical-group">
-              <div className="label">데이터 타입 (필터)</div>
+              <div className="label">Data Type (Filter)</div>
               <div className="choice-group-v3">
                 <button className={`choice-btn-v3 ${!formData.data_type ? 'active' : ''}`} onClick={() => setFormData(p => ({ ...p, data_type: undefined }))}>ALL</button>
                 <button className={`choice-btn-v3 ${formData.data_type === 'number' ? 'active' : ''}`} onClick={() => setFormData(p => ({ ...p, data_type: 'number' }))}>Number</button>
@@ -250,13 +252,13 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
             </div>
 
             <div className="vp-vertical-group">
-              <div className="label">추가 설명</div>
+              <div className="label">Additional Notes</div>
               <textarea
                 value={formData.description || ''}
                 onChange={(e) => setFormData(p => ({ ...p, description: e.target.value }))}
                 className="form-textarea"
                 style={{ height: '80px' }}
-                placeholder="변수 역할 대략 기재..."
+                placeholder="Briefly describe the variable role..."
               />
             </div>
           </div>
@@ -270,11 +272,11 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
               disabled={!!(formData.input_name && validateVariableName(formData.input_name)) || !formData.input_name?.trim() || (formData.source_type === 'data_point' && !formData.source_id) || (formData.source_type === 'constant' && !formData.constant_value?.trim())}
             >
               <i className="fas fa-check" style={{ marginRight: '8px' }}></i>
-              {editingIndex !== null ? '수정 내용 저장' : '이 변수를 리스트에 등록 완료'}
+              {editingIndex !== null ? 'Save Changes' : 'Register this variable'}
             </button>
             {editingIndex !== null && (
               <button className="btn btn-ghost" style={{ width: '100%', marginTop: '8px', height: '36px', fontSize: '13px' }} onClick={() => { setEditingIndex(null); handleAddVariable(); }}>
-                취소하고 신규 등록
+                Cancel & Create New
               </button>
             )}
           </div>
@@ -282,12 +284,12 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
 
         {/* Column 2: Source Explorer */}
         <div className="vp-popup-column" style={{ minWidth: 0 }}>
-          <div className="vp-popup-column-title">2. 센서 목록에서 찾기 (가운데)</div>
+          <div className="vp-popup-column-title">2. Search Sensor List (Center)</div>
           <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', minHeight: '500px' }}>
             {formData.source_type === 'constant' ? (
               <div className="concept-group-card" style={{ padding: '40px', textAlign: 'center' }}>
                 <i className="fas fa-equals" style={{ fontSize: '40px', color: '#e2e8f0', marginBottom: '16px' }}></i>
-                <div className="label">상수값 직접 입력</div>
+                <div className="label">Enter Constant Value</div>
                 <input type="text" className="form-input" style={{ fontSize: '20px', padding: '16px', textAlign: 'center' }} placeholder="수식에 사용될 고정값" value={formData.constant_value || ''} onChange={(e) => setFormData(p => ({ ...p, constant_value: e.target.value }))} />
               </div>
             ) : (

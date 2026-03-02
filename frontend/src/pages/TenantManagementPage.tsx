@@ -62,7 +62,7 @@ const TenantManagementPage: React.FC = () => {
                 setTotalCount(response.data.pagination?.total_count || 0);
             }
         } catch (err) {
-            setError('고객사 정보를 불러오는 중 오류가 발생했습니다.');
+            setError('Error loading tenant information.');
         } finally {
             setLoading(false);
         }
@@ -87,9 +87,9 @@ const TenantManagementPage: React.FC = () => {
 
     const handleRestore = async (t: Tenant) => {
         const confirmed = await confirm({
-            title: '고객사 복구 확인',
-            message: `'${t.company_name}' 고객사를 복구하시겠습니까?`,
-            confirmText: '복구',
+            title: 'Confirm Tenant Restore',
+            message: `Are you sure you want to restore tenant '${t.company_name}'?`,
+            confirmText: 'Restore',
             confirmButtonType: 'primary'
         });
 
@@ -98,9 +98,9 @@ const TenantManagementPage: React.FC = () => {
                 const res = await TenantApiService.restoreTenant(t.id);
                 if (res.success) {
                     await confirm({
-                        title: '복구 완료',
-                        message: '고객사가 성공적으로 복구되었습니다.',
-                        confirmText: '확인',
+                        title: 'Restore Complete',
+                        message: 'Tenant restored successfully.',
+                        confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'primary'
                     });
@@ -117,20 +117,20 @@ const TenantManagementPage: React.FC = () => {
     return (
         <ManagementLayout>
             <PageHeader
-                title="고객사(Tenant) 관리"
-                description="멀티테넌트 환경의 고객사 정보를 관리합니다. 구독 플랜 및 사용량 제한을 설정할 수 있습니다."
+                title="Tenant Management"
+                description="Manage tenant information in a multi-tenant environment. Configure subscription plans and usage limits."
                 icon="fas fa-building"
                 actions={
                     <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreate}>
-                        <i className="fas fa-plus"></i> 새 고객사 등록
+                        <i className="fas fa-plus"></i> New Tenant Registration
                     </button>
                 }
             />
 
             <div className="mgmt-stats-panel">
-                <StatCard label="전체 고객사" value={stats.total_tenants} type="primary" />
-                <StatCard label="활성 고객사" value={stats.active_tenants} type="success" />
-                <StatCard label="트라이얼" value={stats.trial_tenants} type="warning" />
+                <StatCard label="Total Tenants" value={stats.total_tenants} type="primary" />
+                <StatCard label="Active Tenants" value={stats.active_tenants} type="success" />
+                <StatCard label="Trial" value={stats.trial_tenants} type="warning" />
             </div>
 
             <FilterBar
@@ -138,12 +138,12 @@ const TenantManagementPage: React.FC = () => {
                 onSearchChange={setSearchTerm}
                 filters={[
                     {
-                        label: '상태',
+                        label: 'Status',
                         value: selectedStatus,
                         options: [
-                            { label: '전체', value: 'all' },
-                            { label: '활성', value: 'active' },
-                            { label: '비활성', value: 'inactive' }
+                            { label: 'All', value: 'all' },
+                            { label: 'Active', value: 'active' },
+                            { label: 'Inactive', value: 'inactive' }
                         ],
                         onChange: setSelectedStatus
                     }
@@ -162,7 +162,7 @@ const TenantManagementPage: React.FC = () => {
                                 checked={includeDeleted}
                                 onChange={(e) => setIncludeDeleted(e.target.checked)}
                             />
-                            삭제된 고객사 보기
+                            View Deleted Tenants
                         </label>
                     </div>
                 }
@@ -173,12 +173,12 @@ const TenantManagementPage: React.FC = () => {
                     <table className="mgmt-table">
                         <thead>
                             <tr>
-                                <th>회사명</th>
-                                <th>회사 코드</th>
-                                <th>도메인</th>
-                                <th>구독 플랜</th>
-                                <th>상태</th>
-                                <th>등록일</th>
+                                <th>Company Name</th>
+                                <th>Company Code</th>
+                                <th>Domain</th>
+                                <th>Subscription Plan</th>
+                                <th>Status</th>
+                                <th>Registered</th>
                             </tr>
                         </thead>
                         <tbody>

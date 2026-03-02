@@ -1,0 +1,49 @@
+{
+    "title": "Control Schedule",
+    "description": "List of point scheduled control. Register here or from the real-time monitor.",
+    "refresh": "Refresh",
+    "newSchedule": "New Schedule",
+    "addScheduleTitle": "Add New Scheduled Control",
+    "summary": {
+        "total": "Total {{count}}",
+        "active": "Active {{count}}",
+        "inactive": "Inactive {{count}}"
+    },
+    "table": {
+        "id": "ID",
+        "point": "Point",
+        "device": "Device",
+        "value": "Value",
+        "type": "Type",
+        "schedule": "Scheduled Time/Period",
+        "lastRun": "Last Run",
+        "status": "Status",
+        "action": "Action"
+    },
+    "type": {
+        "once": "Once",
+        "repeat": "Repeat"
+    },
+    "badge": {
+        "active": "Active",
+        "inactive": "Inactive"
+    },
+    "action": {
+        "pause": "Pause",
+        "activate": "Activate"
+    },
+    "empty": {
+        "title": "No Scheduled Controls",
+        "desc": "Click the 'New Schedule' button above or register from the real-time monitor (Control → Schedule tab).",
+        "firstCta": "Add First Schedule"
+    },
+    "loading": "Loading...",
+    "confirm": {
+        "deleteMsg": "Are you sure you want to delete this scheduled control?"
+    },
+    "message": {
+        "registered": "Registered!",
+        "registerFail": "Registration failed",
+        "loadFail": "Load failed"
+    }
+}

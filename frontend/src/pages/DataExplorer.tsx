@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   RealtimeApiService,
   RealtimeValue
@@ -24,6 +25,7 @@ interface FilterState {
 }
 
 const DataExplorer: React.FC = () => {
+  const { t } = useTranslation(['dataExplorer', 'common']);
   // 상태 관리
   const [treeData, setTreeData] = useState<TreeNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
@@ -140,7 +142,7 @@ const DataExplorer: React.FC = () => {
         setTreeData(processedTree);
         setConnectionStatus('connected');
       } else {
-        throw new Error(response.message || '네트워크 구조를 불러오지 못했습니다.');
+        throw new Error(response.message || t('error.loadFailed', { ns: 'dataExplorer' }));
       }
     } catch (err: any) {
       setError(err.message);
@@ -354,10 +356,10 @@ const DataExplorer: React.FC = () => {
       <div className="explorer-layout">
         <div className="tree-panel">
           <div className="tree-header">
-            <h3>📋 장치 계층 구조</h3>
+            <h3>📋 {t('tree.title', { ns: 'dataExplorer' })}</h3>
             <div className="search-container">
               <input
-                type="text" placeholder="트리 검색..."
+                type="text" placeholder={t('tree.search', { ns: 'dataExplorer' })}
                 value={filters.search}
                 onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
                 className="search-input"
@@ -376,13 +378,13 @@ const DataExplorer: React.FC = () => {
 
         <div className="details-panel">
           <div className="details-header">
-            <h3>📊 실시간 데이터 {selectedNode && ` - ${selectedNode.label}`}</h3>
+            <h3>📊 {t('data.title', { ns: 'dataExplorer' })} {selectedNode && ` - ${selectedNode.label}`}</h3>
             <div className="view-controls">
               <button
                 onClick={() => setShowChart(!showChart)}
                 className={`btn btn-sm ${showChart ? 'btn-primary' : 'btn-outline'}`}
               >
-                📈 차트 {showChart ? '숨기기' : '보기'}
+                📈 {showChart ? t('chart.hide', { ns: 'dataExplorer' }) : t('chart.view', { ns: 'dataExplorer' })}
               </button>
             </div>
           </div>
@@ -415,7 +417,7 @@ const DataExplorer: React.FC = () => {
               selectedNode={selectedNode}
               renderEmptyDeviceMessage={(node) => (
                 <div className="empty-state">
-                  <p>{node.label}에 연결된 포인트가 없거나 데이터를 불러올 수 없습니다.</p>
+                  <p>{node.label}{t('data.noPoints', { ns: 'dataExplorer' })}</p>
                 </div>
               )}
             />

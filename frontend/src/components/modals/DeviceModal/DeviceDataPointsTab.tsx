@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { DataApiService, DataPoint } from '../../../api/services/dataApi';
 import { DeviceDataPointsTabProps } from './types';
@@ -22,6 +23,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
   onDelete,
   showModal
 }) => {
+  const { t } = useTranslation(['devices', 'common']);
   // ========================================================================
   // 상태 관리
   // ========================================================================
@@ -148,12 +150,12 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
       if (showModal) {
         showModal({
           type: 'error',
-          title: '입력 오류',
-          message: '필수 입력값(이름, 주소)을 확인해주세요.',
+          title: 'Input Error',
+          message: 'Please fill in required fields (Name, Address).',
           onConfirm: () => { }
         });
       } else {
-        alert('필수 입력값(이름, 주소)을 확인해주세요.');
+        alert('Please fill in required fields.');
       }
       return;
     }
@@ -171,8 +173,8 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         if (showModal) {
           showModal({
             type: 'success',
-            title: '변경 내용 없음',
-            message: '수정된 내용이 없습니다.',
+            title: t('devices:modal.noChanges'),
+            message: t('devices:modal.noChangesMsg'),
             onConfirm: () => {
               setShowEditForm(false);
               setEditingPoint(null);
@@ -211,8 +213,8 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
       if (showModal) {
         showModal({
           type: 'success',
-          title: '저장 완료',
-          message: '데이터포인트 정보가 임시 반영되었습니다.\n장치 모달 우측 하단의 [저장] 버튼을 클릭해야 서버에 최종 저장됩니다.',
+          title: 'Saved',
+          message: 'Data point has been temporarily applied.\nClick [Save] at the bottom of the device modal to finalize.',
           onConfirm: () => {
             setShowCreateForm(false);
             setShowEditForm(false);
@@ -220,7 +222,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           }
         });
       } else {
-        alert('저장되었습니다.');
+        alert('Saved.');
         setShowCreateForm(false);
         setShowEditForm(false);
         setEditingPoint(null);
@@ -230,12 +232,12 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
       if (showModal) {
         showModal({
           type: 'error',
-          title: '저장 실패',
-          message: '저장 중 오류가 발생했습니다.',
+          title: t('devices:msg.saveFailed'),
+          message: 'Save failed.',
           onConfirm: () => { }
         });
       } else {
-        alert('저장 중 오류가 발생했습니다.');
+        alert('Save failed.');
       }
     } finally {
       setIsProcessing(false);
@@ -248,11 +250,11 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
       const res = await DataApiService.getCurrentValues({ point_ids: [dp.id], include_metadata: true });
       if (res.success && res.data?.current_values) {
         const val = res.data.current_values.find(v => v.point_id === dp.id);
-        const msg = val ? `값: ${val.value} (${val.quality})\n시간: ${val.timestamp}` : '값을 읽지 못했습니다.';
+        const msg = val ? `Value: ${val.value} (${val.quality})\nTime: ${val.timestamp}` : 'Could not read value.';
         if (showModal) {
           showModal({
             type: 'success',
-            title: '읽기 테스트 결과',
+            title: 'Read Test Result',
             message: msg,
             onConfirm: () => { }
           });
@@ -261,16 +263,16 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         }
       } else {
         if (showModal) {
-          showModal({ type: 'error', title: '읽기 실패', message: '데이터를 읽어오지 못했습니다.', onConfirm: () => { } });
+          showModal({ type: 'error', title: 'Read Failed', message: 'Could not read data.', onConfirm: () => { } });
         } else {
-          alert('읽기 실패');
+          alert('Read failed');
         }
       }
     } catch (e) {
       if (showModal) {
-        showModal({ type: 'error', title: '통신 오류', message: '백엔드 서버와 통신할 수 없습니다.', onConfirm: () => { } });
+        showModal({ type: 'error', title: 'Communication Error', message: 'Cannot communicate with backend server.', onConfirm: () => { } });
       } else {
-        alert('통신 오류');
+        alert('Communication error');
       }
     } finally {
       setIsProcessing(false);
@@ -309,11 +311,11 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         }));
       }
 
-      const msg = `완료: 성공 ${successCount}건${failCount > 0 ? `, 실패 ${failCount}건` : ''}\n(디바이스 전체 저장 시 서버에 최종 반영됩니다)`;
+      const msg = `Complete: ${successCount} succeeded${failCount > 0 ? `, ${failCount} failed` : ''}\n(Will be saved to server when device is saved)`;
       if (showModal) {
         showModal({
           type: 'success',
-          title: '일괄 등록 완료',
+          title: 'Bulk Register Complete',
           message: msg,
           onConfirm: () => handleBulkModalChange(false)
         });
@@ -322,9 +324,9 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         handleBulkModalChange(false);
       }
     } catch (e) {
-      const errMsg = `일괄 저장 중 오류가 발생했습니다: ${e instanceof Error ? e.message : 'Unknown'}`;
+      const errMsg = `Bulk save error: ${e instanceof Error ? e.message : 'Unknown'}`;
       if (showModal) {
-        showModal({ type: 'error', title: '일괄 등록 실패', message: errMsg, onConfirm: () => { } });
+        showModal({ type: 'error', title: 'Bulk Register Failed', message: errMsg, onConfirm: () => { } });
       } else {
         alert(errMsg);
       }
@@ -342,7 +344,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         {activeFormTab === 'basic' && (
           <div className="form-grid-2">
             <div className="form-field">
-              <label>이름 *</label>
+              <label>{t('devices:dataPoint.name')} *</label>
               <input
                 type="text"
                 value={formData.name || ''}
@@ -351,7 +353,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               />
             </div>
             <div className="form-field">
-              <label>{protocolType === 'MQTT' ? 'Sub-Topic' : '주소 (Address)'} *</label>
+              <label>{protocolType === 'MQTT' ? 'Sub-Topic' : 'Address'} *</label>
               <input
                 type="text"
                 value={protocolType === 'MQTT' ? (formData.address_string || '') : (formData.address || '')}
@@ -404,14 +406,14 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   <option value="3">FC03 — Read Holding Registers (HR:xxx)</option>
                   <option value="4">FC04 — Read Input Registers (IR:xxx)</option>
                 </select>
-                <span className="hint">FC03이 일반적인 레지스터. BOOL 포인트는 FC01</span>
+                <span className="hint">FC03 is common for registers. Use FC01 for BOOL points.</span>
               </div>
             )}
 
             {/* Modbus 전용: Bit Index (비트맵 레지스터) */}
             {(protocolType === 'MODBUS_TCP' || protocolType === 'MODBUS_RTU' || protocolType === 'MODBUS') && (
               <div className="form-field">
-                <label>Bit Index (0-15, 선택)</label>
+                <label>Bit Index (0-15, optional)</label>
                 <input
                   type="number"
                   min="0"
@@ -432,14 +434,14 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                     }
                     setFormData({ ...formData, protocol_params: params });
                   }}
-                  placeholder="비워두면 레지스터 전체 값 사용"
+                  placeholder="Leave blank to use full register value"
                 />
-                <span className="hint">한 레지스터를 비트 단위로 쪼갤 때 사용 (0=LSB)</span>
+                <span className="hint">Split a register into individual bits (0=LSB)</span>
               </div>
             )}
 
             <div className="form-field">
-              <label>데이터 타입</label>
+              <label>{t('devices:dataPoint.dataType')}</label>
               <select
                 value={formData.data_type || 'FLOAT32'}
                 onChange={e => setFormData({ ...formData, data_type: e.target.value as any })}
@@ -467,7 +469,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               </select>
             </div>
             <div className="form-field">
-              <label>접근 모드</label>
+              <label>{t('devices:dataPoint.accessMode')}</label>
               <select
                 value={formData.access_mode || 'read'}
                 onChange={e => setFormData({ ...formData, access_mode: e.target.value as any })}
@@ -479,7 +481,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
             </div>
 
             <div className="form-field full">
-              <label>설명</label>
+              <label>{t('devices:dataPoint.description')}</label>
               <input
                 type="text"
                 value={formData.description || ''}
@@ -488,7 +490,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
             </div>
 
             <div className="form-field">
-              <label>그룹명 (Group)</label>
+              <label>Group</label>
               <input
                 type="text"
                 value={formData.group_name || ''}
@@ -497,7 +499,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               />
             </div>
             <div className="form-field">
-              <label>태그 (Tags, 콤마 구분)</label>
+              <label>Tags (comma separated)</label>
               <input
                 type="text"
                 value={Array.isArray(formData.tags) ? formData.tags.join(', ') : ''}
@@ -513,12 +515,12 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   checked={formData.is_enabled !== false}
                   onChange={e => setFormData({ ...formData, is_enabled: e.target.checked })}
                 />
-                포인트 활성화
+                Enable Point
               </label>
             </div>
 
             <div className="form-field full">
-              <label>메타데이터 (JSON)</label>
+              <label>Metadata (JSON)</label>
               <textarea
                 style={{ height: '60px', fontSize: '12px', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
                 value={typeof formData.metadata === 'object' ? JSON.stringify(formData.metadata) : formData.metadata || '{}'}
@@ -538,7 +540,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         {activeFormTab === 'engineering' && (
           <div className="form-grid-2">
             <div className="form-field">
-              <label>단위 (Unit)</label>
+              <label>{t('devices:dataPoint.unit')}</label>
               <input
                 type="text"
                 value={formData.unit || ''}
@@ -551,7 +553,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
             </div>
 
             <div className="form-field">
-              <label>스케일링 팩터 (Scale)</label>
+              <label>{t('devices:dataPoint.scalingFactor')}</label>
               <input
                 type="number"
                 value={formData.scaling_factor ?? 1}
@@ -560,7 +562,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               <span className="hint">Raw Value * Factor</span>
             </div>
             <div className="form-field">
-              <label>오프셋 (Offset)</label>
+              <label>{t('devices:dataPoint.scalingOffset')}</label>
               <input
                 type="number"
                 value={formData.scaling_offset ?? 0}
@@ -570,7 +572,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
             </div>
 
             <div className="form-field">
-              <label>최소값 (Min)</label>
+              <label>Min Value</label>
               <input
                 type="number"
                 value={formData.min_value ?? ''}
@@ -579,7 +581,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               />
             </div>
             <div className="form-field">
-              <label>최대값 (Max)</label>
+              <label>Max Value</label>
               <input
                 type="number"
                 value={formData.max_value ?? ''}
@@ -599,31 +601,31 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   checked={formData.is_log_enabled !== false}
                   onChange={e => setFormData({ ...formData, is_log_enabled: e.target.checked })}
                 />
-                데이터 로깅 활성화
+                Enable Data Logging
               </label>
             </div>
 
             {formData.is_log_enabled && (
               <div className="form-grid-2">
                 <div className="form-field">
-                  <label>로깅 간격 (ms)</label>
+                  <label>Logging Interval (ms)</label>
                   <input
                     type="number"
                     value={formData.log_interval_ms ?? 0}
                     onChange={e => setFormData({ ...formData, log_interval_ms: parseInt(e.target.value) })}
                     min="0"
                   />
-                  <span className="hint">0 = 변경 시마다 로깅 (COV)</span>
+                  <span className="hint">0 = Log on every change (COV)</span>
                 </div>
                 <div className="form-field">
-                  <label>로깅 데드밴드 (Deadband)</label>
+                  <label>Logging Deadband</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.log_deadband ?? 0}
                     onChange={e => setFormData({ ...formData, log_deadband: parseFloat(e.target.value) })}
                   />
-                  <span className="hint">값 변화량이 이보다 클 때만 저장</span>
+                  <span className="hint">Save only when value changes by more than this amount</span>
                 </div>
               </div>
             )}
@@ -639,14 +641,14 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   checked={formData.is_alarm_enabled === true}
                   onChange={e => setFormData({ ...formData, is_alarm_enabled: e.target.checked })}
                 />
-                알람 사용
+                Use Alarm
               </label>
             </div>
 
             {formData.is_alarm_enabled && (
               <div className="form-grid-2">
                 <div className="form-field">
-                  <label>알람 우선순위</label>
+                  <label>Alarm Priority</label>
                   <select
                     value={formData.alarm_priority || 'medium'}
                     onChange={e => setFormData({ ...formData, alarm_priority: e.target.value as any })}
@@ -658,7 +660,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   </select>
                 </div>
                 <div className="form-field">
-                  <label>알람 데드밴드</label>
+                  <label>Alarm Deadband</label>
                   <input
                     type="number"
                     step="0.01"
@@ -667,7 +669,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   />
                 </div>
                 <div className="form-field">
-                  <label>상한 임계치 (High Limit)</label>
+                  <label>High Limit</label>
                   <input
                     type="number"
                     step="0.01"
@@ -677,7 +679,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   />
                 </div>
                 <div className="form-field">
-                  <label>하한 임계치 (Low Limit)</label>
+                  <label>Low Limit</label>
                   <input
                     type="number"
                     step="0.01"
@@ -702,17 +704,17 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
       {/* 헤더 */}
       <div className="dp-header">
         <div className="left">
-          <h3>데이터포인트 <span className="count">({filteredDataPoints.length})</span></h3>
+          <h3>{t('devices:dataPoint.title')} <span className="count">({filteredDataPoints.length})</span></h3>
         </div>
         <div className="right">
           {canEdit && (
             <button className="btn-primary-sm" onClick={handleOpenCreateCtx}>
-              <i className="fas fa-plus"></i> 추가
+              <i className="fas fa-plus"></i> {t('devices:dataPoint.add')}
             </button>
           )}
           {canEdit && (
             <button className="btn-secondary-sm" onClick={() => handleBulkModalChange(true)}>
-              <i className="fas fa-paste"></i> 대량 등록
+              <i className="fas fa-paste"></i> {t('devices:dataPoint.bulkRegister')}
             </button>
           )}
           <button className="btn-icon" onClick={onRefresh} disabled={isLoading} title="새로고침">
@@ -727,13 +729,13 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           <i className="fas fa-search"></i>
           <input
             type="text"
-            placeholder="검색..."
+            placeholder="Search..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
         </div>
         <select value={filterDataType} onChange={e => setFilterDataType(e.target.value)}>
-          <option value="all">모든 타입</option>
+          <option value="all">All Types</option>
           <optgroup label="Categories">
             <option value="number">Number (Any)</option>
             <option value="boolean">Boolean</option>
@@ -749,9 +751,9 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           </optgroup>
         </select>
         <select value={filterEnabled} onChange={e => setFilterEnabled(e.target.value)}>
-          <option value="all">모든 상태</option>
-          <option value="enabled">활성화됨</option>
-          <option value="disabled">비활성화됨</option>
+          <option value="all">All Status</option>
+          <option value="enabled">Enabled</option>
+          <option value="disabled">Disabled</option>
         </select>
       </div>
 
@@ -759,13 +761,13 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
       <div className="dp-table-wrap">
         <div className="dp-table-head">
           <div className="th col-id">ID</div>
-          <div className="th col-name">이름 / 설명</div>
-          <div className="th col-addr">주소</div>
-          <div className="th col-type">타입 / 단위</div>
-          <div className="th col-access">권한</div>
-          <div className="th col-scale">스케일</div>
-          <div className="th col-range">범위 (Min~Max)</div>
-          <div className="th col-val">현재값</div>
+          <div className="th col-name">{t('devices:dataPoint.name')} / {t('devices:dataPoint.description')}</div>
+          <div className="th col-addr">{t('devices:dataPoint.address')}</div>
+          <div className="th col-type">{t('devices:dataPoint.dataType')} / {t('devices:dataPoint.unit')}</div>
+          <div className="th col-access">{t('devices:dataPoint.accessMode')}</div>
+          <div className="th col-scale">{t('devices:dataPoint.scalingFactor')}</div>
+          <div className="th col-range">Range (Min~Max)</div>
+          <div className="th col-val">Current Value</div>
           <div className="th col-action"></div>
         </div>
         <div className="dp-table-body">
@@ -855,7 +857,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
             </div>
           ))}
           {filteredDataPoints.length === 0 && (
-            <div className="empty-msg">데이터가 없습니다.</div>
+            <div className="empty-msg">No data.</div>
           )}
         </div>
       </div>
@@ -865,17 +867,17 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         <div className="modal-overlay">
           <div className="modal-dialog">
             <div className="modal-hdr">
-              <h3>{showCreateForm ? '새 데이터포인트' : '데이터포인트 편집'}</h3>
+              <h3>{showCreateForm ? 'New Data Point' : 'Edit Data Point'}</h3>
               <button onClick={() => { setShowCreateForm(false); setShowEditForm(false); }}>
                 <i className="fas fa-times"></i>
               </button>
             </div>
 
             <div className="modal-tabs">
-              <button className={activeFormTab === 'basic' ? 'active' : ''} onClick={() => setActiveFormTab('basic')}>기본 정보</button>
-              <button className={activeFormTab === 'engineering' ? 'active' : ''} onClick={() => setActiveFormTab('engineering')}>엔지니어링</button>
-              <button className={activeFormTab === 'logging' ? 'active' : ''} onClick={() => setActiveFormTab('logging')}>로깅</button>
-              <button className={activeFormTab === 'alarm' ? 'active' : ''} onClick={() => setActiveFormTab('alarm')}>알람</button>
+              <button className={activeFormTab === 'basic' ? 'active' : ''} onClick={() => setActiveFormTab('basic')}>Basic Info</button>
+              <button className={activeFormTab === 'engineering' ? 'active' : ''} onClick={() => setActiveFormTab('engineering')}>Engineering</button>
+              <button className={activeFormTab === 'logging' ? 'active' : ''} onClick={() => setActiveFormTab('logging')}>Logging</button>
+              <button className={activeFormTab === 'alarm' ? 'active' : ''} onClick={() => setActiveFormTab('alarm')}>Alarm</button>
             </div>
 
             <div className="modal-body icon-inputs">
@@ -883,8 +885,8 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
             </div>
 
             <div className="modal-ftr">
-              <button className="btn-sec" onClick={() => { setShowCreateForm(false); setShowEditForm(false); }}>취소</button>
-              <button className="btn-pri" onClick={() => handleSave(showCreateForm)}>저장</button>
+              <button className="btn-sec" onClick={() => { setShowCreateForm(false); setShowEditForm(false); }}>{t('devices:modal.cancel')}</button>
+              <button className="btn-pri" onClick={() => handleSave(showCreateForm)}>{t('devices:modal.save')}</button>
             </div>
           </div>
         </div>

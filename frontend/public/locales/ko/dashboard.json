@@ -1,0 +1,100 @@
+{
+    "title": "대시보드",
+    "header": {
+        "title": "운영 대시보드",
+        "subtitle": "PulseOne 실시간 가동 및 데이터 모니터링",
+        "serverConnected": "서버 연결됨",
+        "pause": "일시정지",
+        "refresh": "즉시 갱신",
+        "lastUpdated": "최근 업데이트"
+    },
+    "tiles": {
+        "upstreamConnectivity": "업스트림 연결성",
+        "downstreamExport": "다운스트림 내보내기",
+        "activeAlarms": "실시간 활성 알람",
+        "systemHealth": "시스템 건전성",
+        "normal": "정상",
+        "connRate": "연결률",
+        "totalExports": "총 전송수",
+        "todayAlarms": "오늘 발생",
+        "criticalAlarms": "심각 알람"
+    },
+    "flow": {
+        "title": "운영 데이터 흐름 모니터링",
+        "subtitle": "수집된 로우 데이터가 최종 목적지까지 전달되는 전 과정을 실시간 모니터링합니다.",
+        "systemHealth": "시스템 건전성",
+        "excellent": "최상",
+        "caution": "주의",
+        "dataCollection": "현장 데이터 수집",
+        "dataInflow": "데이터 유입량",
+        "connectorProcess": "커넥터 처리",
+        "deviceCommRate": "디바이스 통신율",
+        "exportGateway": "내보내기 게이트웨이",
+        "activeService": "활성 서비스",
+        "finalTransmission": "최종 목적지 전송",
+        "transmitRate": "전송 성공률"
+    },
+    "devices": {
+        "connectionStatus": "장치 연결 상태 분포",
+        "subtitle": "현장에 설치된 전체 장치 가동 현황",
+        "normal": "정상 연결",
+        "disconnected": "연결 끊김",
+        "commError": "통신 오류"
+    },
+    "alarms": {
+        "realtimeStatus": "실시간 운영 현황 및 알람",
+        "subtitle": "현장별 실시간 상태 및 최근 주요 이벤트",
+        "siteStatus": "현장별 가동 상태",
+        "recentEvents": "최근 주요 이벤트",
+        "viewHistory": "상세 이력 보기 →",
+        "noAlarms": "활성 알람이 없습니다",
+        "allNormal": "모든 시스템 정상 운영 중"
+    },
+    "services": {
+        "title": "서비스 상태",
+        "start": "시작",
+        "stop": "중지",
+        "restart": "재시작",
+        "running": "실행 중",
+        "stopped": "중지됨",
+        "error": "오류",
+        "confirmStart": "서비스 시작",
+        "confirmStop": "서비스 중지",
+        "confirmRestart": "서비스 재시작"
+    },
+    "deviceStatus": {
+        "title": "장치 연결 상태 분포",
+        "subtitle": "현장에 설치된 전체 장치 가동 현황",
+        "normal": "정상 연결",
+        "disconnected": "연결 끊김",
+        "commError": "통신 오류",
+        "protocolStatus": "프로토콜별 장치 현황",
+        "noDevices": "등록된 장치가 없습니다.",
+        "units": "대"
+    },
+    "alarmStatus": {
+        "title": "실시간 운영 현황 및 알람",
+        "subtitle": "현장별 실시간 상태 및 최근 주요 이벤트",
+        "viewHistory": "상세 이력 보기 →",
+        "siteStatus": "현장별 가동 상태",
+        "recentEvents": "최근 주요 이벤트",
+        "noRecentAlarms": "최근 알람이 없습니다.",
+        "system": "시스템"
+    },
+    "performance": {
+        "title": "시스템 성능 지수",
+        "apiResponse": "API 응답속도",
+        "dbQuery": "DB 쿼리 시간",
+        "throughput": "데이터 처리량"
+    },
+    "assets": {
+        "title": "통합 자산 요약",
+        "protocols": "등록 프로토콜",
+        "activeSites": "활성 현장 (Site)",
+        "dataPoints": "수집 포인트 수",
+        "protocolUnit": "종",
+        "siteUnit": "개소",
+        "pointUnit": "k EA"
+    },
+    "networkError": "네트워크 연결 오류"
+}

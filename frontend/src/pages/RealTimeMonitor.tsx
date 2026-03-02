@@ -1,9 +1,10 @@
 // ============================================================================
 // frontend/src/pages/RealTimeMonitor.tsx
-// ⚡ 실시간 데이터 모니터링 - 진짜 API 연결 + 부드러운 새로고침
+// ⚡ Real-time Data Monitoring - 진짜 API 연결 + 부드러운 새로고침
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RealtimeApiService, RealtimeValue } from '../api/services/realtimeApi';
 import { DataApiService } from '../api/services/dataApi';
 import { DeviceApiService } from '../api/services/deviceApi';
@@ -46,6 +47,7 @@ const RealTimeMonitor: React.FC = () => {
   // =============================================================================
 
   const [allData, setAllData] = useState<RealTimeData[]>([]);
+  const { t } = useTranslation(['monitor', 'common']);
   const [filteredData, setFilteredData] = useState<RealTimeData[]>([]);
 
   // 🔍 Advanced Filter Sate for Drill-down
@@ -86,6 +88,7 @@ const RealTimeMonitor: React.FC = () => {
   const [writeValues, setWriteValues] = useState<Record<number, string>>({}); // point_id → 입력중인 값
   const [writeStatus, setWriteStatus] = useState<Record<number, 'idle' | 'sending' | 'success' | 'error'>>({});
   const [writeMessages, setWriteMessages] = useState<Record<number, string>>({});
+  const [writeModal, setWriteModal] = useState<{ item: any; dpMeta: any; confirmValue?: string } | null>(null); // 팝업 제어
 
   // =============================================================================
   // 🛠️ 헬퍼 함수들
@@ -111,11 +114,11 @@ const RealTimeMonitor: React.FC = () => {
     }
 
     if (threshold.min !== undefined && value < threshold.min) {
-      return { level: 'medium' as const, message: `${category} 값이 최소 임계값(${threshold.min}) 미만입니다.` };
+      return { level: 'medium' as const, message: `${category} value is below minimum threshold (${threshold.min}).` };
     }
 
     if (threshold.max !== undefined && value > threshold.max) {
-      return { level: 'high' as const, message: `${category} 값이 최대 임계값(${threshold.max})을 초과했습니다.` };
+      return { level: 'high' as const, message: `${category} value exceeds maximum threshold (${threshold.max}).` };
     }
 
     return undefined;
@@ -265,11 +268,11 @@ const RealTimeMonitor: React.FC = () => {
         setIsConnected(true);
         setLastUpdate(new Date());
       } else {
-        throw new Error(response.error || '백엔드 API 응답 오류');
+        throw new Error(response.error || 'Backend API response error');
       }
     } catch (err) {
       console.error('❌ 실시간 데이터 로드 실패:', err);
-      setError(err instanceof Error ? err.message : '백엔드 API 연결 실패');
+      setError(err instanceof Error ? err.message : 'Backend API connection failed');
       setIsConnected(false);
       setAllData([]);
     } finally {
@@ -381,7 +384,7 @@ const RealTimeMonitor: React.FC = () => {
   }, [availableFactories, selectedFactories]);
 
   // Apply Filters
-  const applyFiltersAndSort = () => {
+  const applyFiltersAndSort = (resetPage = true) => {
     let filtered = allData;
 
     // Favorites
@@ -438,7 +441,7 @@ const RealTimeMonitor: React.FC = () => {
     });
 
     setFilteredData(filtered);
-    setCurrentPage(1);
+    if (resetPage) setCurrentPage(1);
   };
 
   // =============================================================================
@@ -460,8 +463,12 @@ const RealTimeMonitor: React.FC = () => {
   }, [autoRefresh, refreshInterval, updateRealTimeData, isConnected]);
 
   useEffect(() => {
-    applyFiltersAndSort();
-  }, [allData, selectedCustomers, selectedFactories, selectedDeviceIds, selectedPointIds, selectedQualities, searchTerm, sortBy, sortOrder, showFavoritesOnly]);
+    applyFiltersAndSort(false); // data refresh: keep current page
+  }, [allData]);
+
+  useEffect(() => {
+    applyFiltersAndSort(true); // filter/sort change: reset to page 1
+  }, [selectedCustomers, selectedFactories, selectedDeviceIds, selectedPointIds, selectedQualities, searchTerm, sortBy, sortOrder, showFavoritesOnly]);
 
   const calculatedStats = useMemo(() => {
     const totalCount = allData.length;
@@ -488,11 +495,24 @@ const RealTimeMonitor: React.FC = () => {
   const toggleDataSelection = (data: RealTimeData) => { /* ... */
     setSelectedData(prev => prev.find(item => item.id === data.id) ? prev.filter(item => item.id !== data.id) : [...prev, data]);
   };
-  const formatValue = (data: RealTimeData): string => { /* ... */
+  const formatValue = (data: RealTimeData): string => {
     if (isBlobValue(data.value)) return 'FILE DATA';
     if (data.dataType === 'boolean') return data.value ? 'ON' : 'OFF';
     if (data.dataType === 'number') return `${data.value}${data.unit || ''}`;
-    return String(data.value);
+    // ISO timestamp 감지
+    const str = String(data.value);
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(str)) {
+      try {
+        const d = new Date(str);
+        const today = new Date();
+        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const dStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const dayDiff = Math.round((dStart.getTime() - todayStart.getTime()) / 86400000);
+        const time = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        return dayDiff === 0 ? time : `${time} (${dayDiff > 0 ? '+' : ''}${dayDiff}d)`;
+      } catch { /* fall through */ }
+    }
+    return str;
   };
   const formatTimestamp = (timestamp: Date): string => timestamp.toLocaleTimeString('ko-KR');
   const getTrendIcon = (trend: string): string => { /* ... */
@@ -512,17 +532,17 @@ const RealTimeMonitor: React.FC = () => {
       const result = await DataApiService.writePoint(deviceId, pointId, value.trim());
       if (result.success) {
         setWriteStatus(prev => ({ ...prev, [pointId]: 'success' }));
-        setWriteMessages(prev => ({ ...prev, [pointId]: '전송 완료' }));
+        setWriteMessages(prev => ({ ...prev, [pointId]: 'Sent successfully' }));
       } else {
         setWriteStatus(prev => ({ ...prev, [pointId]: 'error' }));
-        setWriteMessages(prev => ({ ...prev, [pointId]: result.message || '오류' }));
+        setWriteMessages(prev => ({ ...prev, [pointId]: result.message || 'Error' }));
       }
     } catch (err) {
       setWriteStatus(prev => ({ ...prev, [pointId]: 'error' }));
-      setWriteMessages(prev => ({ ...prev, [pointId]: err instanceof Error ? err.message : '오류 발생' }));
+      setWriteMessages(prev => ({ ...prev, [pointId]: err instanceof Error ? err.message : 'Error occurred' }));
     }
 
-    // 3초 후 상태 초기화
+    // 3초 후 상태 Reset
     setTimeout(() => {
       setWriteStatus(prev => ({ ...prev, [pointId]: 'idle' }));
       setWriteMessages(prev => ({ ...prev, [pointId]: '' }));
@@ -546,10 +566,10 @@ const RealTimeMonitor: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div className="page-title">
             <i className="fas fa-microchip"></i>
-            실시간 데이터 모니터링
+            Real-time Data Monitoring
           </div>
           <div className="page-subtitle" style={{ marginLeft: '34px', color: '#666', fontSize: '14px' }}>
-            산업 현장의 모든 센서 데이터를 1초 미만의 지연 시간으로 정밀 모니터링합니다.
+            Precisely monitor all sensor data from industrial sites with sub-second latency.
           </div>
         </div>
       </div>
@@ -558,7 +578,7 @@ const RealTimeMonitor: React.FC = () => {
       <div className="query-panel">
         <div className="query-section">
           <div className="query-header-row" style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: showAdvancedFilter ? '16px' : '0' }}>
-            <h3 style={{ margin: 0, whiteSpace: 'nowrap', fontSize: '15px', fontWeight: 600, color: '#334155' }}>모니터링 조건</h3>
+            <h3 style={{ margin: 0, whiteSpace: 'nowrap', fontSize: '15px', fontWeight: 600, color: '#334155' }}>{t('header.monitoringConditions', { ns: 'monitor' })}</h3>
 
             <div className="query-filter-bar control-strip" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: 0, background: 'transparent', border: 'none', boxShadow: 'none', marginBottom: 0 }}>
               {/* 1. Left: Search (Primary Discovery) */}
@@ -568,7 +588,7 @@ const RealTimeMonitor: React.FC = () => {
                   <input
                     type="text"
                     className="rt-input"
-                    placeholder="포인트, 디바이스, 공장 검색..."
+                    placeholder="Search point, device, site..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
@@ -578,24 +598,24 @@ const RealTimeMonitor: React.FC = () => {
               {/* 2. Right: Operational Controls */}
               <div className="control-actions-group">
                 <div className="control-item">
-                  <span className="control-label">주기</span>
+                  <span className="control-label">{t('interval', { ns: 'monitor' })}</span>
                   <select
                     className="rt-select compact"
                     value={refreshInterval}
                     onChange={(e) => setRefreshInterval(Number(e.target.value))}
                     disabled={!autoRefresh}
                   >
-                    <option value={1000}>1초</option>
-                    <option value={2000}>2초</option>
-                    <option value={3000}>3초</option>
-                    <option value={5000}>5초</option>
+                    <option value={1000}>1s</option>
+                    <option value={2000}>2s</option>
+                    <option value={3000}>3s</option>
+                    <option value={5000}>5s</option>
                   </select>
                 </div>
 
                 <div className="control-divider"></div>
 
                 <div className="control-item">
-                  <span className="control-label">라이브</span>
+                  <span className="control-label">{t('live', { ns: 'monitor' })}</span>
                   <label className="toggle-switch compact">
                     <input
                       type="checkbox"
@@ -612,9 +632,22 @@ const RealTimeMonitor: React.FC = () => {
                   className="btn-icon-only"
                   onClick={loadRealtimeData}
                   disabled={isLoading}
-                  title="수동 새로고침"
+                  title="Manual Refresh"
                 >
                   <i className={`fas fa-sync-alt ${isLoading ? 'fa-spin' : ''}`}></i>
+                </button>
+
+                <div className="control-divider"></div>
+
+                {/* ⭐ Favorites Toggle */}
+                <button
+                  className={`btn-filter-toggle ${showFavoritesOnly ? 'active' : ''}`}
+                  onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+                  title={showFavoritesOnly ? 'Show All' : 'Favorites Only'}
+                  style={{ gap: '4px' }}
+                >
+                  <i className={`fas fa-star`} style={{ color: showFavoritesOnly ? '#f59e0b' : undefined }}></i>
+                  <span style={{ fontSize: '12px' }}>{calculatedStats.favoriteCount}</span>
                 </button>
 
                 <div className="control-divider"></div>
@@ -622,10 +655,10 @@ const RealTimeMonitor: React.FC = () => {
                 <button
                   className={`btn-filter-toggle ${showAdvancedFilter ? 'active' : ''}`}
                   onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
-                  title="구조적 필터 열기"
+                  title="Open Structural Filter"
                 >
                   <i className="fas fa-filter"></i>
-                  <span>필터</span>
+                  <span>{t('filter', { ns: 'monitor' })}</span>
                   <i className={`fas fa-chevron-${showAdvancedFilter ? 'up' : 'down'} arrow`}></i>
                 </button>
               </div>
@@ -635,14 +668,14 @@ const RealTimeMonitor: React.FC = () => {
           {showAdvancedFilter && (
             <div className="advanced-conditions">
               <div className="hierarchical-filter-header">
-                <h3>사이트 계층 선택</h3>
+                <h3>{t('siteHierarchy', { ns: 'monitor' })}</h3>
                 <button className="btn-reset" onClick={() => {
                   setSelectedFactories([]);
                   setSelectedDeviceIds([]);
                   setSelectedPointIds([]);
                   setSelectedQualities([]);
                 }}>
-                  <i className="fas fa-undo"></i> 초기화
+                  <i className="fas fa-undo"></i> Reset
                 </button>
               </div>
 
@@ -652,10 +685,10 @@ const RealTimeMonitor: React.FC = () => {
                 {availableCustomers.length > 1 && (
                   <div className="drilldown-column">
                     <div className="column-header">
-                      <label>고객사</label>
+                      <label>{t('customer', { ns: 'monitor' })}</label>
                       <div className="column-actions">
-                        <button onClick={() => setSelectedCustomers(availableCustomers)}>전체</button>
-                        <button onClick={() => setSelectedCustomers([])}>해제</button>
+                        <button onClick={() => setSelectedCustomers(availableCustomers)}>All</button>
+                        <button onClick={() => setSelectedCustomers([])}>{t('deselectAll', { ns: 'monitor' })}</button>
                       </div>
                     </div>
                     <div className="drilldown-list">
@@ -684,10 +717,10 @@ const RealTimeMonitor: React.FC = () => {
                 {/* 1. Site/Factory */}
                 <div className="drilldown-column">
                   <div className="column-header">
-                    <label>사이트</label>
+                    <label>{t('site', { ns: 'monitor' })}</label>
                     <div className="column-actions">
-                      <button onClick={() => setSelectedFactories(availableFactories)}>전체</button>
-                      <button onClick={() => setSelectedFactories([])}>해제</button>
+                      <button onClick={() => setSelectedFactories(availableFactories)}>All</button>
+                      <button onClick={() => setSelectedFactories([])}>{t('deselectAll', { ns: 'monitor' })}</button>
                     </div>
                   </div>
                   <div className="drilldown-list">
@@ -713,10 +746,10 @@ const RealTimeMonitor: React.FC = () => {
                 {/* 2. Device */}
                 <div className="drilldown-column">
                   <div className="column-header">
-                    <label>디바이스 ({availableDevices.length})</label>
+                    <label>Device ({availableDevices.length})</label>
                     <div className="column-actions">
-                      <button onClick={() => setSelectedDeviceIds(availableDevices.map(d => d.id))}>전체</button>
-                      <button onClick={() => setSelectedDeviceIds([])}>해제</button>
+                      <button onClick={() => setSelectedDeviceIds(availableDevices.map(d => d.id))}>All</button>
+                      <button onClick={() => setSelectedDeviceIds([])}>{t('deselectAll', { ns: 'monitor' })}</button>
                     </div>
                   </div>
                   <div className="drilldown-list">
@@ -744,7 +777,7 @@ const RealTimeMonitor: React.FC = () => {
                         <span className="item-text">{device.name}</span>
                       </div>
                     ))}
-                    {availableDevices.length === 0 && <div className="list-empty">공장을 선택하세요</div>}
+                    {availableDevices.length === 0 && <div className="list-empty">{t('labels.selectASite', { ns: 'monitor' })}</div>}
                   </div>
                 </div>
 
@@ -753,12 +786,12 @@ const RealTimeMonitor: React.FC = () => {
 
               {/* Quality Filter (Moved here) */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '16px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#6b7280' }}>데이터 품질</label>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#6b7280' }}>{t('dataQuality', { ns: 'monitor' })}</label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {[
-                    { val: 'good', label: '양호' },
-                    { val: 'uncertain', label: '불확실' },
-                    { val: 'bad', label: '불량' }
+                    { val: 'good', label: 'Good' },
+                    { val: 'uncertain', label: 'Uncertain' },
+                    { val: 'bad', label: 'Bad' }
                   ].map(q => (
                     <button
                       key={q.val}
@@ -794,18 +827,18 @@ const RealTimeMonitor: React.FC = () => {
       <div className="result-stats">
         <div className="stats-info">
           <div className="stats-item">
-            <span className="stats-label">TOTAL</span>
+            <span className="stats-label">{t('labels.total', { ns: 'monitor' })}</span>
             <span className="stats-value">{calculatedStats.totalCount}</span>
-            <span className="stats-unit">PTS</span>
+            <span className="stats-unit">{t('labels.pts', { ns: 'monitor' })}</span>
           </div>
           <div className="stats-divider"></div>
           <div className="stats-item">
-            <span className="stats-label">SELECTED</span>
+            <span className="stats-label">{t('labels.selected', { ns: 'monitor' })}</span>
             <span className="stats-value">{selectedData.length}</span>
           </div>
           <div className="stats-divider"></div>
           <div className="stats-item">
-            <span className="stats-label">ALARMS</span>
+            <span className="stats-label">{t('labels.alarms', { ns: 'monitor' })}</span>
             <span className="stats-value" style={{ color: calculatedStats.alarmCount > 0 ? 'var(--error-600)' : 'inherit' }}>
               {calculatedStats.alarmCount}
             </span>
@@ -813,18 +846,18 @@ const RealTimeMonitor: React.FC = () => {
           <div className="stats-divider"></div>
           <div className={`status-badge ${isConnected ? 'connected' : 'disconnected'}`}>
             <span className={`pulse-dot-mini ${isConnected ? 'active' : ''}`}></span>
-            {isConnected ? '서버 연결됨' : '연결 끊김'}
+            {isConnected ? 'Server Connected' : 'Disconnected'}
           </div>
         </div>
 
         <div className="view-mode-toggle-group">
-          <button className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')} title="리스트 뷰">
+          <button className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')} title="List View">
             <i className="fas fa-list"></i>
           </button>
-          <button className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`} onClick={() => setViewMode('grid')} title="그리드 뷰">
+          <button className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`} onClick={() => setViewMode('grid')} title="Grid View">
             <i className="fas fa-th-large"></i>
           </button>
-          <button className={`view-toggle-btn ${viewMode === 'compact' ? 'active' : ''}`} onClick={() => setViewMode('compact')} title="컴팩트 뷰">
+          <button className={`view-toggle-btn ${viewMode === 'compact' ? 'active' : ''}`} onClick={() => setViewMode('compact')} title="Compact View">
             <i className="fas fa-align-justify"></i>
           </button>
         </div>
@@ -835,7 +868,7 @@ const RealTimeMonitor: React.FC = () => {
         {isLoading && allData.length === 0 ? (
           <div className="rt-empty-state">
             <i className="fas fa-spinner fa-spin"></i>
-            <p>데이터를 불러오는 중입니다...</p>
+            <p>{t('loadingData', { ns: 'monitor' })}</p>
           </div>
         ) : (
           <>
@@ -844,15 +877,16 @@ const RealTimeMonitor: React.FC = () => {
                 <thead>
                   <tr>
                     <th style={{ width: '40px' }}><input type="checkbox" onChange={(e) => { if (e.target.checked) setSelectedData(filteredData); else setSelectedData([]); }} checked={selectedData.length > 0 && selectedData.length === filteredData.length} /></th>
-                    <th>상태/품질</th>
-                    <th>포인트명</th>
-                    <th>현재값</th>
-                    <th>트렌드</th>
-                    <th>공장/위치</th>
-                    <th>디바이스</th>
-                    <th>갱신 시간</th>
-                    <th style={{ width: '200px' }}>제어</th>
-                    <th style={{ width: '50px' }}></th>
+                    <th style={{ width: '80px', whiteSpace: 'normal', lineHeight: '1.3', textAlign: 'center' }}>
+                      {(t('statusQuality', { ns: 'monitor' }) as string).split('/').map((s, i) => <span key={i}>{i > 0 && <br />}{s}</span>)}
+                    </th>
+                    <th style={{ width: '160px' }}>{t('pointName', { ns: 'monitor' })}</th>
+                    <th style={{ width: '120px' }}>{t('currentValue', { ns: 'monitor' })}</th>
+                    <th style={{ width: '60px' }}>{t('trend', { ns: 'monitor' })}</th>
+                    <th>{t('labels.sitelocation', { ns: 'monitor' })}</th>
+                    <th>{t('device', { ns: 'monitor' })}</th>
+                    <th>{t('labels.lastUpdated', { ns: 'monitor' })}</th>
+                    <th style={{ width: '140px' }}>{t('control', { ns: 'monitor' })}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -866,8 +900,12 @@ const RealTimeMonitor: React.FC = () => {
                         <td><input type="checkbox" checked={selectedData.some(d => d.id === item.id)} onChange={() => toggleDataSelection(item)} /></td>
                         <td><span className={`quality-badge ${item.quality}`}>{item.quality}</span></td>
                         <td><div style={{ fontWeight: 600 }}>{item.displayName}</div><div style={{ fontSize: '11px', color: '#9ca3af' }}>{item.category}</div></td>
-                        <td>
-                          <span className={`cell-value ${item.trend === 'up' ? 'value-up' : item.trend === 'down' ? 'value-down' : 'value-stable'}`}>
+                        <td style={{ maxWidth: '160px', overflow: 'hidden' }}>
+                          <span
+                            className={`cell-value ${item.trend === 'up' ? 'value-up' : item.trend === 'down' ? 'value-down' : 'value-stable'}`}
+                            style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            title={isBlobValue(item.value) ? 'FILE' : String(formatValue(item))}
+                          >
                             {isBlobValue(item.value) ? 'FILE' : formatValue(item)}
                           </span>
                           {item.unit && <span style={{ fontSize: '11px', color: '#6b7280', marginLeft: '4px' }}>{item.unit}</span>}
@@ -881,85 +919,31 @@ const RealTimeMonitor: React.FC = () => {
                         <td>{item.device}</td>
                         <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>{formatTimestamp(item.timestamp)}</td>
 
-                        {/* ✍️ 인라인 제어 셀 */}
-                        <td style={{ minWidth: '200px' }}>
-                          {isWritable ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              {isBoolType ? (
-                                /* BOOL: 토글 스위치 */
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                                  <div
-                                    onClick={() => handleWrite(item, item.value ? '0' : '1')}
-                                    style={{
-                                      width: '40px', height: '22px', borderRadius: '11px',
-                                      background: item.value ? '#22c55e' : '#d1d5db',
-                                      position: 'relative', cursor: 'pointer',
-                                      transition: 'background 0.2s',
-                                      opacity: wStatus === 'sending' ? 0.5 : 1
-                                    }}
-                                  >
-                                    <div style={{
-                                      width: '18px', height: '18px', borderRadius: '50%',
-                                      background: 'white', position: 'absolute',
-                                      top: '2px', left: item.value ? '20px' : '2px',
-                                      transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
-                                    }} />
-                                  </div>
-                                  <span style={{ fontSize: '11px', color: item.value ? '#16a34a' : '#6b7280' }}>
-                                    {wStatus === 'sending' ? '...' : item.value ? 'ON' : 'OFF'}
-                                  </span>
-                                </label>
-                              ) : (
-                                /* 숫자/문자: 입력창 + 전송 버튼 */
-                                <>
-                                  <input
-                                    type="number"
-                                    value={writeValues[item.point_id] ?? ''}
-                                    onChange={e => setWriteValues(prev => ({ ...prev, [item.point_id]: e.target.value }))}
-                                    onKeyDown={e => e.key === 'Enter' && handleWrite(item, writeValues[item.point_id] ?? '')}
-                                    placeholder={String(item.value)}
-                                    disabled={wStatus === 'sending'}
-                                    style={{
-                                      width: '80px', padding: '4px 6px', fontSize: '12px',
-                                      border: wStatus === 'error' ? '1px solid #ef4444' :
-                                        wStatus === 'success' ? '1px solid #22c55e' : '1px solid #d1d5db',
-                                      borderRadius: '4px'
-                                    }}
-                                  />
-                                  <button
-                                    onClick={() => handleWrite(item, writeValues[item.point_id] ?? '')}
-                                    disabled={wStatus === 'sending' || !(writeValues[item.point_id] ?? '').trim()}
-                                    style={{
-                                      padding: '4px 8px', fontSize: '11px', fontWeight: 600,
-                                      background: wStatus === 'success' ? '#22c55e' :
-                                        wStatus === 'error' ? '#ef4444' : '#3b82f6',
-                                      color: 'white', border: 'none', borderRadius: '4px',
-                                      cursor: 'pointer', opacity: wStatus === 'sending' ? 0.5 : 1
-                                    }}
-                                  >
-                                    {wStatus === 'sending' ? <i className="fas fa-spinner fa-spin" /> :
-                                      wStatus === 'success' ? <i className="fas fa-check" /> :
-                                        wStatus === 'error' ? <i className="fas fa-times" /> :
-                                          <i className="fas fa-paper-plane" />}
-                                  </button>
-                                </>
-                              )}
-                              {writeMessages[item.point_id] && (
-                                <span style={{ fontSize: '10px', color: wStatus === 'error' ? '#ef4444' : '#22c55e' }}>
-                                  {writeMessages[item.point_id]}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span style={{ fontSize: '11px', color: '#9ca3af' }}>읽기 전용</span>
-                          )}
+                        {/* ✍️ 제어 + ★ 한 칸 */}
+                        <td style={{ width: '140px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between' }}>
+                            {isWritable ? (
+                              <button
+                                onClick={() => setWriteModal({ item, dpMeta })}
+                                style={{
+                                  padding: '4px 10px', fontSize: '11px', fontWeight: 600,
+                                  background: '#3b82f6', color: 'white',
+                                  border: 'none', borderRadius: '4px', cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', gap: '4px'
+                                }}
+                              >
+                                <i className="fas fa-edit"></i> Write
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: '11px', color: '#9ca3af' }}>{t('labels.readOnly', { ns: 'monitor' })}</span>
+                            )}
+                            <button style={{ border: 'none', background: 'none', cursor: 'pointer', color: item.isFavorite ? '#f59e0b' : '#d1d5db', fontSize: '14px', flexShrink: 0 }} onClick={() => toggleFavorite(item.id)}><i className="fas fa-star"></i></button>
+                          </div>
                         </td>
-
-                        <td><button style={{ border: 'none', background: 'none', cursor: 'pointer', color: item.isFavorite ? '#f59e0b' : '#d1d5db' }} onClick={() => toggleFavorite(item.id)}><i className="fas fa-star"></i></button></td>
                       </tr>
                     );
                   })}
-                  {currentData.length === 0 && (<tr><td colSpan={10} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>검색 결과가 없습니다.</td></tr>)}
+                  {currentData.length === 0 && (<tr><td colSpan={10} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>{t('labels.noSearchResults', { ns: 'monitor' })}</td></tr>)}
                 </tbody>
               </table>
             )}
@@ -1005,11 +989,199 @@ const RealTimeMonitor: React.FC = () => {
       {/* Pagination */}
       {totalPages > 1 && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', gap: '8px' }}>
-          <button className="rt-action-btn" disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(1, p - 1))}>Prev</button>
+          <button className="rt-action-btn" disabled={currentPage === 1} onClick={() => setCurrentPage(p => Math.max(1, p - 1))}>{t('labels.prev', { ns: 'monitor' })}</button>
           <span style={{ display: 'flex', alignItems: 'center', fontWeight: 600, color: '#4b5563' }}>{currentPage} / {totalPages}</span>
           <button className="rt-action-btn" disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}>Next</button>
         </div>
       )}
+      {/* ✍️ Write 팝업 모달 (2-Step Confirm) */}
+      {writeModal && (() => {
+        const { item, dpMeta, confirmValue } = writeModal;
+        const rawType = (dpMeta?.data_type || '').toUpperCase();
+        const isBool = item.dataType === 'boolean' || rawType === 'BOOL';
+        const isInt = ['UINT16', 'UINT32', 'INT16', 'INT32', 'UINT8', 'INT8'].includes(rawType);
+        const isFloat = ['FLOAT32', 'FLOAT64', 'DOUBLE', 'REAL'].includes(rawType) || (!isBool && !isInt && item.dataType === 'number');
+        const isStr = rawType === 'STRING' || item.dataType === 'string';
+        const wStatus = writeStatus[item.point_id] || 'idle';
+        const pendingVal = writeValues[item.point_id] ?? '';
+
+        // 제약값
+        const intRange: Record<string, [number, number]> = {
+          UINT8: [0, 255], INT8: [-128, 127], UINT16: [0, 65535], INT16: [-32768, 32767],
+          UINT32: [0, 4294967295], INT32: [-2147483648, 2147483647]
+        };
+        const [minV, maxV] = intRange[rawType] ?? [undefined, undefined];
+
+        // 현재 사용자 (JWT 디코딩)
+        const operator = (() => {
+          try {
+            const tok = localStorage.getItem('auth_token') || '';
+            const payload = JSON.parse(atob(tok.split('.')[1]));
+            return payload.username || payload.name || payload.sub || 'Unknown';
+          } catch { return 'Unknown'; }
+        })();
+
+        const confirmAndSend = (val: string) =>
+          setWriteModal(prev => prev ? { ...prev, confirmValue: val } : prev);
+
+        const doSend = () =>
+          handleWrite(item, confirmValue!).then(() => setTimeout(() => setWriteModal(null), 1200));
+
+        return (
+          <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
+          }} onClick={() => setWriteModal(null)}>
+            <div style={{
+              background: 'white', borderRadius: '14px', padding: '28px 32px',
+              width: '420px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              display: 'flex', flexDirection: 'column', gap: '18px',
+              transition: 'all 0.2s'
+            }} onClick={e => e.stopPropagation()}>
+
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '17px', color: '#1e293b' }}>{item.displayName}</div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                    {item.device} · {item.factory}
+                    {' '}·{' '}
+                    <span style={{ background: '#f1f5f9', borderRadius: '4px', padding: '1px 6px', fontSize: '11px', fontWeight: 600 }}>
+                      {rawType || item.dataType}
+                    </span>
+                  </div>
+                </div>
+                <button onClick={() => setWriteModal(null)} style={{ border: 'none', background: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' }}>✕</button>
+              </div>
+
+              {/* Current Value */}
+              <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '12px 16px' }}>
+                <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px', letterSpacing: '0.08em' }}>CURRENT VALUE</div>
+                <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+                  {formatValue(item)}
+                  {item.unit && <span style={{ fontSize: '14px', color: '#64748b', marginLeft: '6px' }}>{item.unit}</span>}
+                </div>
+              </div>
+
+              {/* Operator */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b' }}>
+                <i className="fas fa-user-circle" style={{ fontSize: '14px' }} />
+                <span>Operator: <strong style={{ color: '#1e293b' }}>{operator}</strong></span>
+                <span style={{ marginLeft: 'auto', fontFamily: 'monospace' }}>
+                  {new Date().toLocaleTimeString('ko-KR')}
+                </span>
+              </div>
+
+              {/* ─── Step 1: Input ─── */}
+              {!confirmValue && (
+                <div>
+                  <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 700, marginBottom: '10px', letterSpacing: '0.08em' }}>WRITE VALUE</div>
+
+                  {isBool ? (
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      {[{ v: '1', label: 'ON', color: '#22c55e' }, { v: '0', label: 'OFF', color: '#e5e7eb', tc: '#374151' }].map(({ v, label, color, tc }) => (
+                        <button key={v} onClick={() => confirmAndSend(v)}
+                          style={{
+                            flex: 1, padding: '14px', fontWeight: 700, fontSize: '15px',
+                            background: color, color: tc || 'white', border: 'none', borderRadius: '8px', cursor: 'pointer'
+                          }}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        type={isStr ? 'text' : 'number'}
+                        step={isFloat ? 'any' : '1'}
+                        min={minV}
+                        max={maxV}
+                        value={pendingVal}
+                        onChange={e => setWriteValues(prev => ({ ...prev, [item.point_id]: e.target.value }))}
+                        onKeyDown={e => e.key === 'Enter' && pendingVal.trim() && confirmAndSend(pendingVal)}
+                        placeholder={isStr ? '값 입력…' : (minV !== undefined ? `${minV} ~ ${maxV}` : '숫자 입력…')}
+                        autoFocus
+                        style={{
+                          flex: 1, padding: '10px 14px', fontSize: '14px',
+                          border: '1.5px solid #d1d5db', borderRadius: '8px', outline: 'none'
+                        }}
+                      />
+                      <button
+                        onClick={() => confirmAndSend(pendingVal)}
+                        disabled={!pendingVal.trim()}
+                        style={{
+                          padding: '10px 18px', fontWeight: 700, fontSize: '13px',
+                          background: !pendingVal.trim() ? '#e5e7eb' : '#3b82f6',
+                          color: !pendingVal.trim() ? '#9ca3af' : 'white',
+                          border: 'none', borderRadius: '8px', cursor: !pendingVal.trim() ? 'default' : 'pointer'
+                        }}>
+                        Confirm →
+                      </button>
+                    </div>
+                  )}
+                  {isInt && minV !== undefined && (
+                    <div style={{ marginTop: '6px', fontSize: '11px', color: '#9ca3af' }}>
+                      범위: {minV.toLocaleString()} ~ {maxV!.toLocaleString()}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ─── Step 2: Confirmation ─── */}
+              {confirmValue !== undefined && (
+                <div style={{
+                  background: '#fffbeb', border: '1.5px solid #fbbf24',
+                  borderRadius: '10px', padding: '16px 20px',
+                  display: 'flex', flexDirection: 'column', gap: '12px',
+                  animation: 'slideDown 0.2s ease-out'
+                }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#92400e', letterSpacing: '0.06em' }}>⚠️ 전송 전 확인</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', fontSize: '13px' }}>
+                    <span style={{ color: '#78716c' }}>포인트</span>
+                    <span style={{ fontWeight: 600, color: '#1c1917' }}>{item.displayName}</span>
+                    <span style={{ color: '#78716c' }}>장치</span>
+                    <span style={{ fontWeight: 600, color: '#1c1917' }}>{item.device}</span>
+                    <span style={{ color: '#78716c' }}>현재값</span>
+                    <span style={{ fontFamily: 'monospace', color: '#57534e' }}>{formatValue(item)}</span>
+                    <span style={{ color: '#78716c' }}>전송값</span>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '16px', color: '#d97706' }}>
+                      {isBool ? (confirmValue === '1' ? 'ON (1)' : 'OFF (0)') : confirmValue}
+                      {item.unit && <span style={{ fontSize: '12px', marginLeft: '4px', color: '#a78bfa' }}>{item.unit}</span>}
+                    </span>
+                    <span style={{ color: '#78716c' }}>조작자</span>
+                    <span style={{ fontWeight: 600, color: '#1c1917' }}>{operator}</span>
+                    <span style={{ color: '#78716c' }}>시각</span>
+                    <span style={{ fontFamily: 'monospace', color: '#57534e' }}>{new Date().toLocaleString('ko-KR')}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                    <button onClick={() => setWriteModal(prev => prev ? { ...prev, confirmValue: undefined } : prev)}
+                      disabled={wStatus === 'sending'}
+                      style={{
+                        flex: 1, padding: '10px', fontSize: '13px', fontWeight: 600,
+                        background: 'white', color: '#374151',
+                        border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer'
+                      }}>← 수정</button>
+                    <button onClick={doSend}
+                      disabled={wStatus === 'sending'}
+                      style={{
+                        flex: 2, padding: '10px', fontSize: '13px', fontWeight: 700,
+                        background: wStatus === 'success' ? '#22c55e' : wStatus === 'error' ? '#ef4444' : '#f59e0b',
+                        color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer'
+                      }}>
+                      {wStatus === 'sending' ? <><i className="fas fa-spinner fa-spin" /> 전송 중…</> : wStatus === 'success' ? '✓ 전송 완료' : wStatus === 'error' ? '✕ 오류' : '🚀 전송'}
+                    </button>
+                  </div>
+                  {writeMessages[item.point_id] && (
+                    <div style={{ fontSize: '12px', color: wStatus === 'error' ? '#ef4444' : '#059669', marginTop: '-4px' }}>
+                      {writeMessages[item.point_id]}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

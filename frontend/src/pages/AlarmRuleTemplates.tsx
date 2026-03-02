@@ -135,9 +135,9 @@ const AlarmRuleTemplates: React.FC = () => {
 
   const handleDeleteTemplate = async (id: number, name: string) => {
     const isConfirmed = await confirm({
-      title: '템플릿 삭제',
-      message: `"${name}" 템플릿을 삭제하시겠습니까?`,
-      confirmText: '삭제',
+      title: 'Delete Template',
+      message: `Delete template "${name}"?`,
+      confirmText: 'Delete',
       confirmButtonType: 'danger'
     });
 
@@ -147,7 +147,7 @@ const AlarmRuleTemplates: React.FC = () => {
         loadTemplates();
         setShowModal(false);
       } catch (error) {
-        alert('삭제에 실패했습니다.');
+        alert('Delete failed.');
       }
     }
   };
@@ -172,7 +172,7 @@ const AlarmRuleTemplates: React.FC = () => {
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Export failed:', error);
-      alert('내보내기에 실패했습니다.');
+      alert('Export failed.');
     }
   };
 
@@ -189,26 +189,26 @@ const AlarmRuleTemplates: React.FC = () => {
         const importData = JSON.parse(text);
 
         if (!importData.templates || !Array.isArray(importData.templates)) {
-          alert('올바른 템플릿 파일 형식이 아닙니다.');
+          alert('Invalid template file format.');
           return;
         }
 
         const isConfirmed = await confirm({
-          title: '템플릿 가져오기',
-          message: `${importData.templates.length}개의 템플릿을 가져오시겠습니까?`,
-          confirmText: '가져오기',
+          title: 'Import Template',
+          message: `Import ${importData.templates.length} template(s)?`,
+          confirmText: 'Import',
           confirmButtonType: 'primary'
         });
 
         if (isConfirmed) {
           // 여기서는 각 템플릿을 생성하는 API를 호출해야 합니다
           // 현재는 알림만 표시
-          alert(`${importData.templates.length}개의 템플릿을 가져왔습니다.\n(실제 구현은 백엔드 API 연동이 필요합니다)`);
+          alert(`Imported ${importData.templates.length} template(s).\n(Full implementation requires backend API integration.)`);
           loadTemplates();
         }
       } catch (error) {
         console.error('Import failed:', error);
-        alert('가져오기에 실패했습니다. 파일 형식을 확인해주세요.');
+        alert('Import failed. Please check the file format.');
       }
     };
     input.click();
@@ -246,29 +246,29 @@ const AlarmRuleTemplates: React.FC = () => {
   return (
     <ManagementLayout>
       <PageHeader
-        title="알람 템플릿 관리"
-        description="전문가용 알람 템플릿을 생성하고 관리하며, 한 번의 클릭으로 장비에 적용합니다."
+        title="Alarm Template Management"
+        description="Create and manage professional alarm templates, apply to devices with one click."
         icon="fas fa-magic"
         actions={
           <div className="mgmt-page-actions" style={{ display: 'flex', flexDirection: 'row', gap: '8px' }}>
-            <button className="mgmt-btn mgmt-btn-outline" onClick={handleExportTemplates} title="템플릿 목록을 JSON 파일로 내보냅니다.">
-              <i className="fas fa-file-export"></i> 내보내기
+            <button className="mgmt-btn mgmt-btn-outline" onClick={handleExportTemplates} title="Export template list as JSON file.">
+              <i className="fas fa-file-export"></i> Export
             </button>
-            <button className="mgmt-btn mgmt-btn-outline" onClick={handleImportTemplates} title="JSON 파일을 통해 템플릿 목록을 가져옵니다.">
-              <i className="fas fa-file-import"></i> 가져오기
+            <button className="mgmt-btn mgmt-btn-outline" onClick={handleImportTemplates} title="Import template list from JSON file.">
+              <i className="fas fa-file-import"></i> Import
             </button>
             <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreateTemplate}>
-              <i className="fas fa-plus"></i> 새 템플릿 생성
+              <i className="fas fa-plus"></i> Create New Template
             </button>
           </div>
         }
       />
 
       <div className="mgmt-stats-panel">
-        <StatCard label="총 템플릿" value={activeTab === 'browse' ? totalCount : templates.length} icon="fas fa-layer-group" type="blueprint" />
-        <StatCard label="적용된 규칙" value={createdRules.length} icon="fas fa-check-double" type="success" />
-        <StatCard label="가장 많이 사용됨" value="고온 경보" icon="fas fa-star" type="warning" />
-        <StatCard label="활성 상태" value="Excellent" icon="fas fa-heartbeat" type="neutral" />
+        <StatCard label="Total Templates" value={activeTab === 'browse' ? totalCount : templates.length} icon="fas fa-layer-group" type="blueprint" />
+        <StatCard label="Applied Rules" value={createdRules.length} icon="fas fa-check-double" type="success" />
+        <StatCard label="Most Used" value="High Temp Alert" icon="fas fa-star" type="warning" />
+        <StatCard label="Active Status" value="Excellent" icon="fas fa-heartbeat" type="neutral" />
       </div>
 
       <div className="tab-navigation">
@@ -276,14 +276,14 @@ const AlarmRuleTemplates: React.FC = () => {
           className={`tab-button ${activeTab === 'browse' ? 'active' : ''}`}
           onClick={() => setActiveTab('browse')}
         >
-          <i className="fas fa-search"></i> 템플릿 라이브러리
+          <i className="fas fa-search"></i> Template Library
           <span className="tab-badge">{totalCount}</span>
         </button>
         <button
           className={`tab-button ${activeTab === 'created' ? 'active' : ''}`}
           onClick={() => setActiveTab('created')}
         >
-          <i className="fas fa-clipboard-list"></i> 적용된 규칙 목록
+          <i className="fas fa-clipboard-list"></i> Applied Rules List
           <span className="tab-badge">{createdRules.length}</span>
         </button>
       </div>
@@ -298,26 +298,26 @@ const AlarmRuleTemplates: React.FC = () => {
         activeFilterCount={(filters.search ? 1 : 0) + (filters.type !== 'all' ? 1 : 0) + (filters.category !== 'all' ? 1 : 0)}
         filters={activeTab === 'browse' ? [
           {
-            label: '템플릿 유형',
+            label: 'Template Type',
             value: filters.type,
             onChange: (val) => { setFilters(prev => ({ ...prev, type: val })); setCurrentPage(1); },
             options: [
-              { value: 'all', label: '전체 유형' },
-              { value: 'simple', label: '단순형 (Simple)' },
-              { value: 'advanced', label: '고급형 (Advanced)' },
-              { value: 'script', label: '스크립트 (Script)' }
+              { value: 'all', label: 'All Types' },
+              { value: 'simple', label: 'Simple' },
+              { value: 'advanced', label: 'Advanced' },
+              { value: 'script', label: 'Script' }
             ]
           },
           {
-            label: '카테고리',
+            label: 'Category',
             value: filters.category,
             onChange: (val) => { setFilters(prev => ({ ...prev, category: val })); setCurrentPage(1); },
             options: [
-              { value: 'all', label: '전체' },
-              { value: 'temperature', label: '온도' },
-              { value: 'pressure', label: '압력' },
-              { value: 'flow', label: '유량' },
-              { value: 'electrical', label: '전기' }
+              { value: 'all', label: 'All' },
+              { value: 'temperature', label: 'Temperature' },
+              { value: 'pressure', label: 'Pressure' },
+              { value: 'flow', label: 'Flow Rate' },
+              { value: 'electrical', label: 'Electrical' }
             ]
           }
         ] : []}
@@ -356,24 +356,24 @@ const AlarmRuleTemplates: React.FC = () => {
                         )}
                       </div>
                     </div>
-                    <p className="mgmt-card-desc">{template.description || '템플릿 설명이 없습니다.'}</p>
+                    <p className="mgmt-card-desc">{template.description || 'No description available.'}</p>
                     <div className="mgmt-card-logic-preview">
                       <code>{renderTemplateConfig(template)}</code>
                     </div>
                     <div className="mgmt-card-meta">
                       <span><i className="fas fa-code-branch"></i> {template.template_type}</span>
-                      <span><i className="fas fa-history"></i> {template.usage_count || 0}회 적용됨</span>
+                      <span><i className="fas fa-history"></i> Applied {template.usage_count || 0} time(s)</span>
                     </div>
                   </div>
                   <div className="mgmt-card-footer">
                     <div className="mgmt-card-actions">
-                      <button className="mgmt-btn mgmt-btn-primary mgmt-btn-sm" onClick={() => handleApplyTemplate(template)}>적용하기</button>
+                      <button className="mgmt-btn mgmt-btn-primary mgmt-btn-sm" onClick={() => handleApplyTemplate(template)}>Apply</button>
                       {template.is_system_template ? (
-                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} title="시스템 템플릿은 수정할 수 없습니다.">
+                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} title="System templates cannot be modified.">
                           <i className="fas fa-lock" style={{ marginRight: '4px' }}></i>시스템
                         </button>
                       ) : (
-                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => handleEditTemplate(template)}>수정</button>
+                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => handleEditTemplate(template)}>Edit</button>
                       )}
                     </div>
                   </div>
@@ -385,11 +385,11 @@ const AlarmRuleTemplates: React.FC = () => {
               <table className="mgmt-table">
                 <thead>
                   <tr>
-                    <th>템플릿명</th>
-                    <th>유형</th>
-                    <th>카테고리</th>
-                    <th>로직 설정</th>
-                    <th>심각도</th>
+                    <th>Template Name</th>
+                    <th>Type</th>
+                    <th>Category</th>
+                    <th>Logic Settings</th>
+                    <th>Severity</th>
                     <th>사용 횟수</th>
                   </tr>
                 </thead>
@@ -420,7 +420,7 @@ const AlarmRuleTemplates: React.FC = () => {
                   <th>규칙명</th>
                   <th>사용 템플릿</th>
                   <th>대상 장비/태그</th>
-                  <th>심각도</th>
+                  <th>Severity</th>
                   <th>상태</th>
                 </tr>
               </thead>

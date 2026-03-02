@@ -502,6 +502,9 @@ class DeviceQueries {
         dp.data_type,
         dp.unit,
         dp.address,
+        dp.access_mode,
+        dp.is_enabled,
+        dp.is_writable,
         cv.current_value,
         cv.quality
       FROM data_points dp

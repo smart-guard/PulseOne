@@ -3,6 +3,7 @@
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import './VirtualPointModal.css';
 
 interface ValidationPanelProps {
@@ -26,6 +27,7 @@ const ValidationPanel: React.FC<ValidationPanelProps> = ({
   onRunSimulation
 }) => {
   const [testInputs, setTestInputs] = useState<Record<string, any>>({});
+    const { t } = useTranslation(['virtualPoints', 'common']);
 
   useEffect(() => {
     const inputs: Record<string, any> = {};
@@ -54,27 +56,27 @@ const ValidationPanel: React.FC<ValidationPanelProps> = ({
           {/* Identity & Launch Status */}
           <div className="concept-group-card">
             <div className="concept-title">
-              <i className="fas fa-check-double"></i> 최종 설정 검토 리스트
+              <i className="fas fa-check-double"></i> Final Configuration Review
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>포인트 이름</span>
-                <span style={{ fontWeight: 800 }}>{formData.name || '(미입력)'}</span>
+                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Point Name</span>
+                <span style={{ fontWeight: 800 }}>{formData.name || '(not entered)'}</span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>스케줄링 방식</span>
-                <span>{formData.execution_type === 'periodic' ? `주기적 (${formData.execution_interval}ms)` : '이벤트 기반 (On Change)'}</span>
+                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Scheduling Mode</span>
+                <span>{formData.execution_type === 'periodic' ? `Periodic (${formData.execution_interval}ms)` : 'Event-based (On Change)'}</span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>데이터 타입</span>
+                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Data Type</span>
                 <span className="summary-badge active" style={{ textTransform: 'uppercase' }}>{formData.data_type} {formData.unit && `(${formData.unit})`}</span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>배포 상태</span>
+                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Deploy Status</span>
                 <span style={{ color: formData.is_enabled ? '#10b981' : '#f59e0b', fontWeight: 800 }}>
                   <i className="fas fa-circle" style={{ fontSize: '8px', marginRight: '6px' }}></i>
                   {formData.is_enabled ? 'Ready to Live' : 'Draft Mode'}
@@ -86,17 +88,17 @@ const ValidationPanel: React.FC<ValidationPanelProps> = ({
           {/* Logic Preview */}
           <div className="concept-group-card" style={{ borderLeft: '4px solid var(--blueprint-500)' }}>
             <div className="concept-title">
-              <i className="fas fa-microchip"></i> 계산 로직 요약
+              <i className="fas fa-microchip"></i> Calculation Logic Summary
             </div>
             <div style={{ background: '#1e293b', color: '#38bdf8', padding: '20px', borderRadius: '12px', fontFamily: "'JetBrains Mono', monospace", fontSize: '14px', marginBottom: '16px' }}>
               {formData.expression || '// No expression defined'}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', width: '100%', marginBottom: '4px' }}>사용된 변수</span>
+              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', width: '100%', marginBottom: '4px' }}>Variables Used</span>
               {formData.input_variables?.map((v: any) => (
                 <span key={v.id} className="preset-chip" style={{ fontSize: '11px', background: '#f8fafc' }}>{v.input_name}</span>
               ))}
-              {(!formData.input_variables || formData.input_variables.length === 0) && <span style={{ fontSize: '12px', color: '#94a3b8' }}>없음</span>}
+              {(!formData.input_variables || formData.input_variables.length === 0) && <span style={{ fontSize: '12px', color: '#94a3b8' }}>None</span>}
             </div>
           </div>
 
@@ -107,13 +109,13 @@ const ValidationPanel: React.FC<ValidationPanelProps> = ({
           <div className="guidance-panel">
             <div className="guidance-header">
               <i className="fas fa-rocket" style={{ color: 'var(--blueprint-500)' }}></i>
-              발행 준비 완료
+              Ready to Publish
             </div>
 
             <div className="guidance-step">
               <div className="guidance-text">
-                <h4>최종 확인 단계입니다.</h4>
-                <p>왼쪽의 요약 정보를 다시 한번 확인해 주세요. 특히 <strong>데이터 타입</strong>과 <strong>수식</strong>이 올바른지 점검이 필요합니다.</p>
+                <h4>This is the final review step.</h4>
+                <p>Please review the summary on the left. Pay special attention to <strong>Data Type</strong> and <strong>Formula</strong>이 올바른지 점검이 필요합니다.</p>
               </div>
             </div>
 

@@ -150,6 +150,7 @@ class RealtimeService extends BaseService {
             const redis = await getRedisClient();
             const RepositoryFactory = require('../database/repositories/RepositoryFactory').getInstance();
             const deviceRepo = RepositoryFactory.getDeviceRepository();
+            const knex = require('../database/KnexManager').getInstance().getKnex();
 
             // 1. 모든 활성화된 디바이스 조회
             const devices = await deviceRepo.query()
@@ -168,7 +169,6 @@ class RealtimeService extends BaseService {
                 for (const point of points) {
                     const redisKey = `device:${device.id}:${point.name}`;
 
-                    // DB의 current_value 필드가 JSON 형태({"value": 123})인 경우 파싱하여 실제 값만 추출
                     let displayValue = point.current_value;
                     if (displayValue && typeof displayValue === 'string' && displayValue.startsWith('{')) {
                         try {
@@ -198,7 +198,9 @@ class RealtimeService extends BaseService {
                         source: 'backend_init',
                         timestamp: Date.now(),
                         unit: point.unit || '',
-                        value: displayValue
+                        value: displayValue,
+                        access_mode: point.access_mode || 'read',
+                        is_writable: point.is_writable || 0
                     };
 
                     await redis.set(redisKey, JSON.stringify(redisValue));
@@ -217,13 +219,77 @@ class RealtimeService extends BaseService {
                 deviceCount++;
             }
 
+            // 4. 가상 포인트 초기화 (current_value가 있는 것만)
+            let vpCount = 0;
+            try {
+                const virtualPoints = await knex('virtual_points')
+                    .leftJoin('current_values', 'virtual_points.id', 'current_values.point_id')
+                    .where('virtual_points.is_enabled', 1)
+                    .andWhere(builder => {
+                        builder.where('virtual_points.is_deleted', 0).orWhereNull('virtual_points.is_deleted');
+                    })
+                    .whereNotNull('current_values.current_value')
+                    .select(
+                        'virtual_points.id',
+                        'virtual_points.name',
+                        'virtual_points.device_id',
+                        'virtual_points.unit',
+                        'virtual_points.data_type',
+                        'current_values.current_value',
+                        'current_values.quality'
+                    );
+
+                for (const vp of virtualPoints) {
+                    const deviceId = vp.device_id || 'virtual';
+                    const redisKey = `device:${deviceId}:${vp.name}`;
+
+                    let displayValue = vp.current_value;
+                    if (displayValue && typeof displayValue === 'string' && displayValue.startsWith('{')) {
+                        try {
+                            const parsed = JSON.parse(displayValue);
+                            if (parsed && parsed.value !== undefined) {
+                                displayValue = String(parsed.value);
+                            }
+                        } catch (e) { }
+                    } else {
+                        displayValue = String(displayValue);
+                    }
+
+                    const redisValue = {
+                        id: `vp-${vp.id}`,
+                        key: redisKey,
+                        changed: false,
+                        data_type: vp.data_type || 'float',
+                        device_id: String(deviceId),
+                        device_name: 'Virtual',
+                        point_id: vp.id,
+                        point_name: vp.name,
+                        quality: vp.quality || 'good',
+                        source: 'backend_init_virtual',
+                        timestamp: Date.now(),
+                        unit: vp.unit || '',
+                        value: displayValue,
+                        access_mode: 'read',
+                        is_writable: 0,
+                        is_virtual: true
+                    };
+
+                    await redis.set(redisKey, JSON.stringify(redisValue));
+                    vpCount++;
+                }
+            } catch (vpErr) {
+                console.warn('[RealtimeService] 가상 포인트 초기화 실패:', vpErr.message);
+            }
+
             return {
                 initialized_devices: deviceCount,
                 initialized_points: pointCount,
+                initialized_virtual_points: vpCount,
                 timestamp: new Date().toISOString()
             };
         }, 'RealtimeService.initializeRedisData');
     }
+
 }
 
 module.exports = new RealtimeService();

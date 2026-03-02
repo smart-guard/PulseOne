@@ -1,0 +1,82 @@
+{
+    "title": "사이트(Site) 관리",
+    "description": "물리적 위치 및 설치 장소 정보를 관리합니다. 계층 구조(본사-지사-동/호 등)를 지원합니다.",
+    "register": "새 사이트 등록",
+    "showDeleted": "삭제된 사이트 보기",
+    "topLevel": "최상위",
+    "stats": {
+        "totalSites": "전체 사이트",
+        "activeSites": "활성 사이트",
+        "mainSites": "본사/메인",
+        "edgeServerUsage": "Edge Server 사용 (/{{max}})",
+        "onlineEdge": "온라인 Edge Server",
+        "offlineEdge": "오프라인 Edge Server"
+    },
+    "filter": {
+        "status": "상태",
+        "all": "전체",
+        "active": "활성",
+        "inactive": "비활성"
+    },
+    "table": {
+        "name": "사이트명",
+        "code": "코드",
+        "type": "유형",
+        "location": "위치/주소",
+        "edgeServer": "Edge Server",
+        "status": "상태",
+        "parentSite": "상위 사이트"
+    },
+    "badge": {
+        "active": "활성",
+        "inactive": "비활성"
+    },
+    "confirm": {
+        "restoreTitle": "사이트 복구 확인",
+        "restoreMsg": "'{{name}}' 사이트를 복구하시겠습니까?",
+        "restoreText": "복구",
+        "restoreSuccessTitle": "복구 완료",
+        "restoreSuccessMsg": "사이트가 성공적으로 복구되었습니다."
+    },
+    "loading": "사이트 정보를 불러오는 중 오류가 발생했습니다.",
+    "modal": {
+        "createTitle": "사이트 등록"
+    },
+    "field": {
+        "name": "사이트명",
+        "code": "사이트 코드"
+    },
+    "section": {
+        "basic": "기본 정보"
+    },
+    "labels": {
+        "moveGroup": "그룹 이동",
+        "selectTargetGroup": "Select Target Group",
+        "ungroupNoGroup": "Ungroup (No Group)",
+        "failedToLoadSiteInformation": "Failed to load site information.",
+        "siteType": "Site Type",
+        "officebranch": "Office/Branch",
+        "factoryplant": "Factory/Plant",
+        "building": "Building",
+        "floor": "Floor",
+        "room": "Room",
+        "noneTopLevel": "None (Top Level)",
+        "address": "주소",
+        "managerName": "Manager Name",
+        "email": "이메일",
+        "contact": "Contact",
+        "notAssigned": "Not Assigned",
+        "codeId": "Code / ID",
+        "timezone": "시간대",
+        "contactPerson": "Contact Person",
+        "serverName": "Server Name",
+        "devices": "Devices",
+        "headquartersBusinessUnit": "Headquarters (Business Unit)",
+        "noneToplevelSite": "None (Top-level Site)",
+        "asiaseoulKst": "Asia/Seoul (KST)",
+        "utc": "UTC",
+        "europelondonGmtbst": "Europe/London (GMT/BST)",
+        "collectorName": "Collector Name",
+        "collectorDescription": "Collector Description"
+    }
+}

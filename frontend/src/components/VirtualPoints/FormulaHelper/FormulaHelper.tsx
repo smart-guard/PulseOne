@@ -29,66 +29,66 @@ export const FormulaHelper: React.FC<FormulaHelperProps> = ({
     {
       id: '1',
       name: 'Math.max',
-      displayName: '최댓값',
+      displayName: 'Maximum',
       category: 'math',
-      description: '여러 값 중 최댓값을 반환합니다',
+      description: 'Returns the maximum value among multiple values',
       syntax: 'Math.max(a, b, ...)',
       parameters: [
-        { name: 'a', type: 'number', required: true, description: '첫 번째 값' },
-        { name: 'b', type: 'number', required: true, description: '두 번째 값' }
+        { name: 'a', type: 'number', required: true, description: 'First value' },
+        { name: 'b', type: 'number', required: true, description: 'Second value' }
       ],
       returnType: 'number',
       examples: [
-        { code: 'Math.max(10, 20, 5)', description: '20을 반환', expectedResult: 20, title: 'Math.max 예제' }
+        { code: 'Math.max(10, 20, 5)', description: 'Returns 20', expectedResult: 20, title: 'Math.max Example' }
       ],
       isBuiltIn: true
     },
     {
       id: '2',
       name: 'Math.min',
-      displayName: '최솟값',
+      displayName: 'Minimum',
       category: 'math',
-      description: '여러 값 중 최솟값을 반환합니다',
+      description: 'Returns the minimum value among multiple values',
       syntax: 'Math.min(a, b, ...)',
       parameters: [
-        { name: 'a', type: 'number', required: true, description: '첫 번째 값' },
-        { name: 'b', type: 'number', required: true, description: '두 번째 값' }
+        { name: 'a', type: 'number', required: true, description: 'First value' },
+        { name: 'b', type: 'number', required: true, description: 'Second value' }
       ],
       returnType: 'number',
       examples: [
-        { code: 'Math.min(10, 20, 5)', description: '5를 반환', expectedResult: 5, title: 'Math.min 예제' }
+        { code: 'Math.min(10, 20, 5)', description: 'Returns 5', expectedResult: 5, title: 'Math.min Example' }
       ],
       isBuiltIn: true
     },
     {
       id: '3',
       name: 'Math.round',
-      displayName: '반올림',
+      displayName: 'Round',
       category: 'math',
-      description: '가장 가까운 정수로 반올림합니다',
+      description: 'Rounds to the nearest integer',
       syntax: 'Math.round(value)',
       parameters: [
-        { name: 'value', type: 'number', required: true, description: '반올림할 값' }
+        { name: 'value', type: 'number', required: true, description: 'Value to round' }
       ],
       returnType: 'number',
       examples: [
-        { code: 'Math.round(4.7)', description: '5를 반환', expectedResult: 5, title: 'Math.round 예제' }
+        { code: 'Math.round(4.7)', description: 'Returns 5', expectedResult: 5, title: 'Math.round Example' }
       ],
       isBuiltIn: true
     },
     {
       id: '4',
       name: 'Math.abs',
-      displayName: '절댓값',
+      displayName: 'Absolute Value',
       category: 'math',
-      description: '절댓값을 반환합니다',
+      description: 'Returns the absolute value',
       syntax: 'Math.abs(value)',
       parameters: [
-        { name: 'value', type: 'number', required: true, description: '절댓값을 구할 값' }
+        { name: 'value', type: 'number', required: true, description: 'Value to get absolute of' }
       ],
       returnType: 'number',
       examples: [
-        { code: 'Math.abs(-5)', description: '5를 반환', expectedResult: 5, title: 'Math.abs 예제' }
+        { code: 'Math.abs(-5)', description: 'Returns 5', expectedResult: 5, title: 'Math.abs Example' }
       ],
       isBuiltIn: true
     }
@@ -106,11 +106,11 @@ export const FormulaHelper: React.FC<FormulaHelperProps> = ({
   });
 
   const categories = [
-    { value: 'all', label: '모든 함수' },
-    { value: 'math', label: '수학' },
-    { value: 'logic', label: '논리' },
-    { value: 'time', label: '시간' },
-    { value: 'string', label: '문자열' }
+    { value: 'all', label: 'All Functions' },
+    { value: 'math', label: 'Math' },
+    { value: 'logic', label: 'Logic' },
+    { value: 'time', label: 'Time' },
+    { value: 'string', label: 'String' }
   ];
 
   return (

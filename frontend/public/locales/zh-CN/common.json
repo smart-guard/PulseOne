@@ -1,0 +1,71 @@
+{
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "close": "Close",
+    "confirm": "Confirm",
+    "reset": "Reset",
+    "search": "Search",
+    "refresh": "Refresh",
+    "loading": "Loading...",
+    "noData": "No data",
+    "error": "Error",
+    "success": "Success",
+    "warning": "Warning",
+    "info": "Info",
+    "submit": "Submit",
+    "apply": "Apply",
+    "create": "Create",
+    "register": "Register",
+    "update": "Update",
+    "remove": "Remove",
+    "view": "View",
+    "detail": "Detail",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "yes": "Yes",
+    "no": "No",
+    "all": "All",
+    "none": "None",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "status": {
+        "connected": "Connected",
+        "disconnected": "Disconnected",
+        "connecting": "Connecting",
+        "error": "Error",
+        "unknown": "Unknown",
+        "online": "Online",
+        "offline": "Offline"
+    },
+    "pagination": {
+        "total": "Total {{count}} items",
+        "page": "Page {{page}} of {{total}}"
+    },
+    "table": {
+        "id": "ID",
+        "name": "Name",
+        "description": "Description",
+        "createdAt": "Created At",
+        "updatedAt": "Updated At",
+        "actions": "Actions"
+    },
+    "form": {
+        "required": "Required",
+        "invalid": "Invalid value",
+        "placeholder": {
+            "search": "Search...",
+            "select": "Select..."
+        }
+    },
+    "confirm": {
+        "delete": "Are you sure you want to delete?",
+        "reset": "Are you sure you want to reset?",
+        "unsavedChanges": "You have unsaved changes. Continue?"
+    },
+    "language": "Language",
+    "theme": "Theme"
+}

@@ -1,0 +1,55 @@
+{
+    "title": "Tenant Management",
+    "description": "Manage tenant information in a multi-tenant environment. Configure subscription plans and usage limits.",
+    "register": "Register New Tenant",
+    "showDeleted": "Show Deleted Tenants",
+    "stats": {
+        "totalTenants": "Total Tenants",
+        "activeTenants": "Active Tenants",
+        "trial": "Trial"
+    },
+    "filter": {
+        "status": "Status",
+        "all": "All",
+        "active": "Active",
+        "inactive": "Inactive"
+    },
+    "table": {
+        "companyName": "Company Name",
+        "companyCode": "Company Code",
+        "domain": "Domain",
+        "subscriptionPlan": "Subscription Plan",
+        "status": "Status",
+        "createdAt": "Created At"
+    },
+    "confirm": {
+        "restoreTitle": "Confirm Tenant Restoration",
+        "restoreMsg": "Are you sure you want to restore '{{name}}'?",
+        "restoreText": "Restore",
+        "restoreSuccessTitle": "Restoration Complete",
+        "restoreSuccessMsg": "Tenant has been successfully restored."
+    },
+    "loading": "An error occurred while loading tenant information.",
+    "section": {
+        "basic": "Basic Info"
+    },
+    "labels": {
+        "failedToLoadTenantInformation": "Failed to load tenant information.",
+        "name": "Name",
+        "email": "Email",
+        "contact": "Contact",
+        "starter": "Starter",
+        "professional": "Professional",
+        "enterprise": "Enterprise",
+        "subscriptionStatus": "Subscription Status",
+        "suspended": "Suspended",
+        "cancelled": "Cancelled",
+        "accountStatus": "Account Status",
+        "edgeServerQuota": "Edge Server Quota",
+        "maxDataPoints": "Max Data Points",
+        "plan": "Plan",
+        "edgeServerStatus": "Edge Server Status",
+        "companyCodeCannotBeChanged": "Company code cannot be changed.",
+        "edgeServerLimit": "Edge Server Limit"
+    }
+}

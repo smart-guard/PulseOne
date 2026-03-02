@@ -92,7 +92,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
         const pag = (response.data as any).pagination;
         setTotalCount(pag?.total || pag?.totalCount || 0);
       }
-    } catch (error) { setError('데이터 로딩 실패'); }
+    } catch (error) { setError('Data load failed'); }
     finally { setLoading(false); }
   }, [currentPage, pageSize, filters]);
 
@@ -127,9 +127,9 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
 
   const handleDeleteRule = async (ruleId: number, ruleName: string) => {
     const confirmed = await confirm({
-      title: '알람 규칙 삭제',
-      message: `${ruleName} 알람 규칙을 정말로 삭제하시겠습니까?`,
-      confirmText: '삭제',
+      title: 'Delete Alarm Rule',
+      message: `Really delete alarm rule: ${ruleName}?`,
+      confirmText: 'Delete',
       confirmButtonType: 'danger'
     });
     if (confirmed) {
@@ -139,9 +139,9 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
         setShowModal(false);
         setShowDetailModal(false);
         await confirm({
-          title: '삭제 완료',
-          message: '알람 규칙이 성공적으로 삭제되었습니다.',
-          confirmText: '확인',
+          title: 'Delete Complete',
+          message: 'Alarm rule deleted successfully.',
+          confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'primary'
         });
@@ -151,9 +151,9 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
 
   const handleRestoreRule = async (ruleId: number, ruleName: string) => {
     const confirmed = await confirm({
-      title: '알람 규칙 복원',
-      message: `${ruleName} 알람 규칙을 복원하시겠습니까?`,
-      confirmText: '복원',
+      title: 'Restore Alarm Rule',
+      message: `Restore alarm rule: ${ruleName}?`,
+      confirmText: 'Restore',
       confirmButtonType: 'primary'
     });
     if (confirmed) {
@@ -163,9 +163,9 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
         setShowModal(false);
         setShowDetailModal(false);
         await confirm({
-          title: '복원 완료',
-          message: '알람 규칙이 성공적으로 복원되었습니다.',
-          confirmText: '확인',
+          title: 'Restore Complete',
+          message: 'Alarm rule restored successfully.',
+          confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'primary'
         });
@@ -201,21 +201,21 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
   return (
     <ManagementLayout className="page-alarm-settings">
       <PageHeader
-        title="알람 설정 관리"
-        description="시스템 전반의 알람 발생 규칙을 설정하고 관리합니다. 한 눈에 파악하기 쉬운 콤팩트한 설정을 제공합니다."
+        title="Alarm Settings"
+        description="Configure and manage alarm trigger rules for the entire system."
         icon="fas fa-bell"
         actions={
           <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreateRule}>
-            <i className="fas fa-plus"></i> 새 알람 규칙 추가
+            <i className="fas fa-plus"></i> Add New Alarm Rule
           </button>
         }
       />
 
       <div className="mgmt-stats-panel">
-        <StatCard label="전체 규칙" value={totalCount} icon="fas fa-list-ul" type="primary" />
-        <StatCard label="활성 규칙" value={alarmRules.filter(r => r.is_enabled).length} icon="fas fa-check-circle" type="success" />
-        <StatCard label="비활성 규칙" value={alarmRules.filter(r => !r.is_enabled).length} icon="fas fa-pause-circle" type="warning" />
-        <StatCard label="검색 결과" value={alarmRules.length} icon="fas fa-search-dollar" type="neutral" />
+        <StatCard label="Total Rules" value={totalCount} icon="fas fa-list-ul" type="primary" />
+        <StatCard label="Active Rules" value={alarmRules.filter(r => r.is_enabled).length} icon="fas fa-check-circle" type="success" />
+        <StatCard label="Inactive Rules" value={alarmRules.filter(r => !r.is_enabled).length} icon="fas fa-pause-circle" type="warning" />
+        <StatCard label="Search Results" value={alarmRules.length} icon="fas fa-search-dollar" type="neutral" />
       </div>
 
       <FilterBar
@@ -228,11 +228,11 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
         activeFilterCount={(filters.search ? 1 : 0) + (filters.severity !== 'all' ? 1 : 0) + (filters.status !== 'all' ? 1 : 0) + (filters.category !== 'all' ? 1 : 0) + (filters.deleted ? 1 : 0)}
         filters={[
           {
-            label: '심각도',
+            label: 'Severity',
             value: filters.severity,
             onChange: (val) => { setFilters(prev => ({ ...prev, severity: val })); setCurrentPage(1); },
             options: [
-              { value: 'all', label: '전체' },
+              { value: 'all', label: 'All' },
               { value: 'critical', label: 'CRITICAL' },
               { value: 'high', label: 'HIGH' },
               { value: 'medium', label: 'MEDIUM' },
@@ -240,13 +240,13 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
             ]
           },
           {
-            label: '상태',
+            label: 'Status',
             value: filters.status,
             onChange: (val) => { setFilters(prev => ({ ...prev, status: val })); setCurrentPage(1); },
             options: [
-              { value: 'all', label: '전체' },
-              { value: 'enabled', label: '활성' },
-              { value: 'disabled', label: '비활성' }
+              { value: 'all', label: 'All' },
+              { value: 'enabled', label: 'Active' },
+              { value: 'disabled', label: 'Inactive' }
             ]
           }
         ]}
@@ -261,21 +261,21 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                     setCurrentPage(1);
                   }}
                 />
-                삭제된 규칙 보기
+                View Deleted Rules
               </label>
             </div>
             <div className="mgmt-view-toggle">
               <button
                 className={`mgmt-btn-icon ${viewType === 'card' ? 'active' : ''}`}
                 onClick={() => setViewType('card')}
-                title="카드 보기"
+                title="Card View"
               >
                 <i className="fas fa-th-large"></i>
               </button>
               <button
                 className={`mgmt-btn-icon ${viewType === 'table' ? 'active' : ''}`}
                 onClick={() => setViewType('table')}
-                title="테이블 보기"
+                title="Table View"
               >
                 <i className="fas fa-list"></i>
               </button>
@@ -311,7 +311,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                   </div>
                 </div>
                 <div className="mgmt-card-body">
-                  <p className="mgmt-card-desc">{rule.description || '알람 설명이 없습니다.'}</p>
+                  <p className="mgmt-card-desc">{rule.description || 'No alarm description.'}</p>
                   <div className="mgmt-card-meta">
                     <span><i className="fas fa-crosshairs"></i> {getTargetDisplay(rule)}</span>
                     <span><i className="fas fa-tag"></i> {rule.category || 'general'}</span>
@@ -324,7 +324,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                     Let's update cards to be consistent. */}
                 <div className="mgmt-card-footer">
                   <div className="mgmt-card-actions">
-                    <button onClick={() => handleEditRule(rule)} className="mgmt-btn mgmt-btn-outline mgmt-btn-sm">수정</button>
+                    <button onClick={() => handleEditRule(rule)} className="mgmt-btn mgmt-btn-outline mgmt-btn-sm">Edit</button>
                   </div>
                 </div>
               </div>
@@ -335,11 +335,11 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
             <table className="mgmt-table">
               <thead>
                 <tr>
-                  <th>규칙명</th>
-                  <th>대상 기기/포인트</th>
-                  <th>카테고리</th>
-                  <th>심각도</th>
-                  <th>상태</th>
+                  <th>Rule Name</th>
+                  <th>Device/Point</th>
+                  <th>Category</th>
+                  <th>Severity</th>
+                  <th>Status</th>
                   {/* Removed Management Column */}
                 </tr>
               </thead>

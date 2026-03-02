@@ -1,0 +1,91 @@
+{
+    "title": "Backup & System Recovery",
+    "description": "Manage safe protection of critical data and rapid recovery in emergencies.",
+    "createBackup": "Create Instant Backup",
+    "stats": {
+        "totalBackups": "Total Backup Records",
+        "successBackups": "Successful Backups",
+        "totalSize": "Total Storage Used",
+        "scheduleStatus": "Scheduled Backup Status",
+        "active": "Active",
+        "inactive": "Inactive"
+    },
+    "tabs": {
+        "list": "Backup List",
+        "settings": "Backup Settings",
+        "restore": "Restore"
+    },
+    "table": {
+        "nameFile": "Backup Name / Filename",
+        "status": "Status",
+        "size": "Size",
+        "createdBy": "Created By",
+        "fileValidity": "File Validity",
+        "action": "Action",
+        "loading": "Loading data...",
+        "noData": "No saved backup records.",
+        "fileOk": "File OK",
+        "fileMissing": "File Missing",
+        "elapsed": "Took {{duration}}",
+        "by": "by",
+        "createdInfo": "Created Info",
+        "actions": "Actions"
+    },
+    "status": {
+        "completed": "Completed",
+        "failed": "Failed",
+        "running": "Running"
+    },
+    "settings": {
+        "autoBackupTitle": "Auto Backup Schedule Settings",
+        "autoBackupLabel": "Enable Auto Backup",
+        "autoBackupDesc": "Automatically backs up the system at scheduled intervals.",
+        "scheduleTimeLabel": "Backup Time (KST)",
+        "scheduleTimeDesc": "Performs a full backup at the scheduled time every day.",
+        "retentionTitle": "Backup Storage & Options",
+        "retentionLabel": "Backup Retention Period",
+        "retentionUnit": "days",
+        "retentionDesc": "Backups older than the retention period will be automatically deleted.",
+        "includeLogsLabel": "Include System Event Logs",
+        "includeLogsDesc": "When enabled, system event logs are also backed up along with the DB.",
+        "saveBtn": "Save Backup Settings",
+        "saving": "Saving..."
+    },
+    "restore": {
+        "title": "Feature Coming Soon",
+        "desc": "External backup file upload and point-in-time recovery (PITR) features will be available in the next update."
+    },
+    "modal": {
+        "title": "Create New Backup",
+        "nameLabel": "Backup Name",
+        "namePlaceholder": "e.g., Pre-maintenance backup",
+        "descLabel": "Description",
+        "descPlaceholder": "Enter reason or notes for this backup.",
+        "infoMsg": "Creates a complete snapshot of the current system database.",
+        "cancel": "Cancel",
+        "run": "Run Backup"
+    },
+    "confirm": {
+        "noChangesTitle": "No Changes",
+        "noChangesMsg": "No settings have been modified.",
+        "saveTitle": "Confirm Settings Save",
+        "saveMsg": "Are you sure you want to save the modified backup settings?",
+        "saveText": "Save",
+        "saveDoneTitle": "Settings Saved",
+        "saveDoneMsg": "Backup settings have been successfully saved.",
+        "backupTitle": "Run Instant Backup",
+        "backupMsg": "Are you sure you want to instantly backup the current database state? This may take some time depending on data size.",
+        "backupText": "Start Backup",
+        "deleteTitle": "Confirm Backup Deletion",
+        "deleteMsg": "Are you sure you want to delete this backup file? Both the file and DB record will be permanently removed.",
+        "deleteText": "Delete",
+        "restoreTitle": "System Restore Warning",
+        "restoreMsg": "Are you sure you want to restore the system to the [{{name}}] backup point? The current database will be replaced with the backup file, and system access may be temporarily interrupted.",
+        "restoreText": "Run Restore",
+        "restoreDoneTitle": "Restoration Complete"
+    },
+    "autoBackup": {
+        "enable": "Enable Auto Backup",
+        "scheduleTime": "Backup Schedule Time (KST)"
+    }
+}

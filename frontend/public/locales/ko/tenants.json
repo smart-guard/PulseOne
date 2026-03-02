@@ -1,0 +1,55 @@
+{
+    "title": "고객사(Tenant) 관리",
+    "description": "멀티테넌트 환경의 고객사 정보를 관리합니다. 구독 플랜 및 사용량 제한을 설정할 수 있습니다.",
+    "register": "새 고객사 등록",
+    "showDeleted": "삭제된 고객사 보기",
+    "stats": {
+        "totalTenants": "전체 고객사",
+        "activeTenants": "활성 고객사",
+        "trial": "트라이얼"
+    },
+    "filter": {
+        "status": "상태",
+        "all": "전체",
+        "active": "활성",
+        "inactive": "비활성"
+    },
+    "table": {
+        "companyName": "회사명",
+        "companyCode": "회사 코드",
+        "domain": "도메인",
+        "subscriptionPlan": "구독 플랜",
+        "status": "상태",
+        "createdAt": "등록일"
+    },
+    "confirm": {
+        "restoreTitle": "고객사 복구 확인",
+        "restoreMsg": "'{{name}}' 고객사를 복구하시겠습니까?",
+        "restoreText": "복구",
+        "restoreSuccessTitle": "복구 완료",
+        "restoreSuccessMsg": "고객사가 성공적으로 복구되었습니다."
+    },
+    "loading": "고객사 정보를 불러오는 중 오류가 발생했습니다.",
+    "section": {
+        "basic": "기본 정보"
+    },
+    "labels": {
+        "failedToLoadTenantInformation": "Failed to load tenant information.",
+        "name": "이름",
+        "email": "이메일",
+        "contact": "Contact",
+        "starter": "Starter",
+        "professional": "Professional",
+        "enterprise": "Enterprise",
+        "subscriptionStatus": "Subscription Status",
+        "suspended": "Suspended",
+        "cancelled": "Cancelled",
+        "accountStatus": "Account Status",
+        "edgeServerQuota": "Edge Server Quota",
+        "maxDataPoints": "Max Data Points",
+        "plan": "Plan",
+        "edgeServerStatus": "Edge Server Status",
+        "companyCodeCannotBeChanged": "Company code cannot be changed.",
+        "edgeServerLimit": "Edge Server Limit"
+    }
+}

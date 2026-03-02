@@ -230,7 +230,7 @@ const AlarmPopup: React.FC<AlarmPopupProps> = ({
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px'
                 }}>
-                  {notification.severity} 알람
+                  {notification.severity} Alarm
                 </div>
                 <div style={{
                   fontSize: '11px',
@@ -302,7 +302,7 @@ const AlarmPopup: React.FC<AlarmPopupProps> = ({
                 textAlign: 'center',
                 fontStyle: 'italic'
               }}>
-                클릭하면 닫힙니다
+                Click to dismiss
               </div>
             </div>
           </div>
@@ -438,7 +438,7 @@ export const showAlarmNotification = (alarm: {
     console.log('AlarmNotificationManager 존재, 팝업 생성');
     // @ts-ignore
     window.alarmNotificationManager.addNotification({
-      title: alarm.rule_name || '시스템 알람',
+      title: alarm.rule_name || 'System Alarm',
       message: alarm.message,
       severity: alarm.severity.toLowerCase() as 'low' | 'medium' | 'high' | 'critical',
       timestamp: new Date().toISOString(),

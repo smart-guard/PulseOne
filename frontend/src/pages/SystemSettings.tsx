@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { SUPPORTED_LANGUAGES } from '../i18n';
 import { Settings, Save, RefreshCw, AlertTriangle, Database, Clock, Shield, Mail, Smartphone, HardDrive, Cpu, Activity } from 'lucide-react';
 import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
@@ -17,7 +19,7 @@ const SETTING_CATEGORIES = {
 
 // 샘플 시스템 설정 데이터 (실제로는 API에서 가져옴)
 const initialSettings = {
-  // 일반 설정
+  // General Settings
   [SETTING_CATEGORIES.GENERAL]: {
     system_name: 'PulseOne IoT Platform',
     timezone: 'Asia/Seoul',
@@ -29,7 +31,7 @@ const initialSettings = {
     account_lockout_duration: 30 // 분
   },
 
-  // 데이터베이스 설정
+  // Database Settings
   [SETTING_CATEGORIES.DATABASE]: {
     data_retention_days: 365,
     backup_enabled: true,
@@ -41,7 +43,7 @@ const initialSettings = {
     query_timeout: 30000 // ms
   },
 
-  // 데이터 수집 설정
+  // Data Collection Settings
   [SETTING_CATEGORIES.COLLECTION]: {
     default_polling_interval: 1000, // ms
     max_concurrent_devices: 1000,
@@ -54,7 +56,7 @@ const initialSettings = {
     alarm_check_interval: 1000 // ms
   },
 
-  // 알림 설정
+  // Notification Settings
   [SETTING_CATEGORIES.NOTIFICATIONS]: {
     email_enabled: true,
     email_server: 'smtp.company.com',
@@ -68,7 +70,7 @@ const initialSettings = {
     notification_cooldown: 300 // 초
   },
 
-  // 보안 설정
+  // Security Settings
   [SETTING_CATEGORIES.SECURITY]: {
     password_min_length: 8,
     password_require_uppercase: true,
@@ -83,7 +85,7 @@ const initialSettings = {
     enable_audit_logging: true
   },
 
-  // 성능 설정
+  // Performance Settings
   [SETTING_CATEGORIES.PERFORMANCE]: {
     cpu_usage_threshold: 80, // %
     memory_usage_threshold: 85, // %
@@ -95,7 +97,7 @@ const initialSettings = {
     cache_ttl: 300 // 초
   },
 
-  // 로깅 설정
+  // Logging Settings
   [SETTING_CATEGORIES.LOGGING]: {
     log_level: 'info',
     log_retention_days: 30,
@@ -256,23 +258,26 @@ const InputField = ({ label, value, onChange, type = 'text', suffix = '', min = 
 );
 
 // 체크박스 컴포넌트
-const CheckboxField = ({ label, checked, onChange, description = '' }: {
+function CheckboxField({ label, checked, onChange, description = '' }: {
   label: string,
   checked: boolean,
   onChange: (val: boolean) => void,
   description?: string
-}) => (
-  <SettingRow label={label} description={description}>
-    <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', height: '40px' }}>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span style={{ fontSize: '16px', fontWeight: '700', color: 'var(--neutral-700)' }}>활성화</span>
-    </label>
-  </SettingRow>
-);
+}) {
+  const { t } = useTranslation(['systemSettings']);
+  return (
+    <SettingRow label={label} description={description}>
+      <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', height: '40px' }}>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        <span style={{ fontSize: '16px', fontWeight: '700', color: 'var(--neutral-700)' }}>{t('systemSettings:activate')}</span>
+      </label>
+    </SettingRow>
+  );
+}
 
 // 셀렉트 컴포넌트
 const SelectField = ({ label, value, onChange, options, required = false, description = '' }: {
@@ -303,6 +308,7 @@ const SystemSettings = () => {
   const [saving, setSaving] = useState(false);
   const { tab } = useParams<{ tab: string }>();
   const navigate = useNavigate();
+  const { i18n, t } = useTranslation(['systemSettings', 'common']);
 
   const activeCategory = (tab && Object.values(SETTING_CATEGORIES).includes(tab))
     ? tab
@@ -423,11 +429,11 @@ const SystemSettings = () => {
         }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || '저장 실패');
+      if (!response.ok) throw new Error(data.error || 'Save failed');
       setHasChanges(false);
-      alert('설정이 성공적으로 저장되었습니다.');
+      alert('Settings saved successfully.');
     } catch (error: any) {
-      alert('설정 저장 중 오류가 발생했습니다: ' + error.message);
+      alert('Error saving settings: ' + error.message);
     } finally {
       setSaving(false);
     }
@@ -436,7 +442,7 @@ const SystemSettings = () => {
 
   // 기본값으로 복원
   const handleResetToDefaults = () => {
-    if (confirm('모든 설정을 기본값으로 복원하시겠습니까?')) {
+    if (confirm('Restore all settings to defaults?')) {
       setSettings(initialSettings);
       setHasChanges(true);
     }
@@ -481,15 +487,15 @@ const SystemSettings = () => {
   // 카테고리별 제목 반환
   const getCategoryTitle = (category) => {
     const titles = {
-      [SETTING_CATEGORIES.GENERAL]: '일반 설정',
-      [SETTING_CATEGORIES.DATABASE]: '데이터베이스',
-      [SETTING_CATEGORIES.COLLECTION]: '데이터 수집',
-      [SETTING_CATEGORIES.NOTIFICATIONS]: '알림 설정',
-      [SETTING_CATEGORIES.SECURITY]: '보안 설정',
-      [SETTING_CATEGORIES.PERFORMANCE]: '성능 설정',
-      [SETTING_CATEGORIES.LOGGING]: '로깅 설정'
+      [SETTING_CATEGORIES.GENERAL]: t('systemSettings:category.general'),
+      [SETTING_CATEGORIES.DATABASE]: t('systemSettings:category.database'),
+      [SETTING_CATEGORIES.COLLECTION]: t('systemSettings:category.collection'),
+      [SETTING_CATEGORIES.NOTIFICATIONS]: t('systemSettings:category.notifications'),
+      [SETTING_CATEGORIES.SECURITY]: t('systemSettings:category.security'),
+      [SETTING_CATEGORIES.PERFORMANCE]: t('systemSettings:category.performance'),
+      [SETTING_CATEGORIES.LOGGING]: t('systemSettings:category.logging')
     };
-    return titles[category] || '설정';
+    return titles[category] || t('systemSettings:category.default');
   };
 
   // 테스트 결과 아이콘
@@ -505,14 +511,14 @@ const SystemSettings = () => {
   return (
     <ManagementLayout>
       <PageHeader
-        title="시스템 설정"
-        description="시스템 전반에 걸친 정책 및 환경 설정을 관리합니다."
+        title={t('systemSettings:pageTitle')}
+        description={t('systemSettings:pageDesc')}
         icon="fas fa-cog"
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             {hasChanges && (
               <span className="badge badge-warning" style={{ padding: '6px 12px' }}>
-                저장되지 않은 변경사항이 있습니다
+                {t('systemSettings:unsavedChanges')}
               </span>
             )}
 
@@ -521,7 +527,7 @@ const SystemSettings = () => {
               className="mgmt-btn mgmt-btn-outline"
             >
               <RefreshCw className="mr-2 h-4 w-4" />
-              기본값 복원
+              {t('systemSettings:restoreDefaults')}
             </button>
 
             <button
@@ -532,12 +538,12 @@ const SystemSettings = () => {
               {saving ? (
                 <>
                   <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  저장 중...
+                  {t('systemSettings:saving')}
                 </>
               ) : (
                 <>
                   <Save className="mr-2 h-4 w-4" />
-                  설정 저장
+                  {t('systemSettings:saveSettings')}
                 </>
               )}
             </button>
@@ -559,7 +565,7 @@ const SystemSettings = () => {
               borderBottom: '1px solid var(--neutral-100)',
               marginBottom: 'var(--space-2)'
             }}>
-              설정 카테고리
+              {t('systemSettings:settingsCategory')}
             </h2>
             <nav style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {Object.values(SETTING_CATEGORIES).map(category => {
@@ -624,112 +630,135 @@ const SystemSettings = () => {
           </div>
           <div className="mgmt-card-body" style={{ overflowY: 'auto', padding: 0 }}>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {/* 일반 설정 */}
+              {/* General Settings */}
               {activeCategory === SETTING_CATEGORIES.GENERAL && (
                 <div>
                   <InputField
-                    label="시스템 이름"
+                    label={t('systemSettings:general.systemName')}
                     value={settings.general.system_name}
                     onChange={(value) => handleSettingChange('general', 'system_name', value)}
-                    description="사용자 인터페이스 및 보고서에 표시될 플랫폼의 명칭입니다."
+                    description={t('systemSettings:general.systemNameDesc')}
                     required
                   />
+                  <SettingRow
+                    label={t('systemSettings:general.displayLang')}
+                    description={t('systemSettings:general.displayLangDesc')}
+                  >
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', maxWidth: '420px' }}>
+                      {SUPPORTED_LANGUAGES.map(lang => {
+                        const isSelected = settings.general.language === lang.code
+                          || (settings.general.language.startsWith(lang.code.split('-')[0])
+                            && !SUPPORTED_LANGUAGES.some(l => l !== lang && settings.general.language === l.code));
+                        return (
+                          <button
+                            key={lang.code}
+                            onClick={() => {
+                              handleSettingChange('general', 'language', lang.code);
+                              i18n.changeLanguage(lang.code);
+                            }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '6px',
+                              padding: '8px 14px', borderRadius: '8px', cursor: 'pointer',
+                              border: isSelected ? '2px solid #4f46e5' : '1px solid #e5e7eb',
+                              background: isSelected ? '#f0f5ff' : '#fff',
+                              color: isSelected ? '#4f46e5' : '#374151',
+                              fontWeight: isSelected ? 700 : 400,
+                              fontSize: '13px', transition: 'all 0.15s'
+                            }}
+                          >
+                            <span style={{ fontSize: '17px' }}>{lang.flag}</span>
+                            <span>{lang.name}</span>
+                            {isSelected && <i className="fas fa-check" style={{ fontSize: '11px' }} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </SettingRow>
                   <SelectField
-                    label="표시 언어"
-                    value={settings.general.language}
-                    onChange={(value) => handleSettingChange('general', 'language', value)}
-                    description="시스템 전체에서 사용할 기본 언어를 선택합니다."
-                    options={[
-                      { value: 'ko-KR', label: '한국어 (Korean)' },
-                      { value: 'en-US', label: 'English (US)' },
-                      { value: 'ja-JP', label: '日本語 (Japanese)' }
-                    ]}
-                  />
-                  <SelectField
-                    label="타임존"
+                    label={t('systemSettings:general.timezone')}
                     value={settings.general.timezone}
                     onChange={(value) => handleSettingChange('general', 'timezone', value)}
-                    description="데이터 수집 및 로그 기록의 기준이 되는 표준 시간대입니다."
+                    description={t('systemSettings:general.timezoneDesc')}
                     options={[
                       { value: 'Asia/Seoul', label: 'Asia/Seoul (UTC+09:00)' },
                       { value: 'UTC', label: 'UTC (Universal Coordinated Time)' }
                     ]}
                   />
                   <InputField
-                    label="세션 타임아웃"
+                    label={t('systemSettings:general.sessionTimeout')}
                     type="number"
                     value={settings.general.session_timeout}
                     onChange={(value) => handleSettingChange('general', 'session_timeout', value)}
-                    description="비활동 시 자동으로 로그아웃될 때까지의 시간입니다."
-                    suffix="분"
+                    description={t('systemSettings:general.sessionTimeoutDesc')}
+                    suffix={t('systemSettings:general.sessionTimeoutSuffix')}
                     min={10}
                     max={1440}
                   />
                   <InputField
-                    label="최대 로그인 시도"
+                    label={t('systemSettings:general.maxLoginAttempts')}
                     type="number"
                     value={settings.general.max_login_attempts}
                     onChange={(value) => handleSettingChange('general', 'max_login_attempts', value)}
-                    description="계정 잠금 전 허용되는 최대 로그인 실패 횟수입니다."
-                    suffix="회"
+                    description={t('systemSettings:general.maxLoginAttemptsDesc')}
+                    suffix={t('systemSettings:general.maxLoginAttemptsSuffix')}
                     min={3}
                     max={10}
                   />
                 </div>
               )}
 
-              {/* 데이터베이스 설정 */}
+              {/* Database Settings */}
               {activeCategory === SETTING_CATEGORIES.DATABASE && (
                 <div>
-                  <SettingSubHeader title="데이터 보관 정책" />
+                  <SettingSubHeader title={t('systemSettings:database.retentionPolicy')} />
                   <InputField
-                    label="데이터 보존 기간"
+                    label={t('systemSettings:database.retentionDays')}
                     type="number"
                     value={settings.database.data_retention_days}
                     onChange={(value) => handleSettingChange('database', 'data_retention_days', value)}
-                    description="수집된 텔레메트리 데이터를 DB에 보관할 최대 날짜입니다."
-                    suffix="일"
+                    description={t('systemSettings:database.retentionDaysDesc')}
+                    suffix={t('systemSettings:database.retentionDaysSuffix')}
                     min={30}
                     max={3650}
                   />
 
-                  <SettingSubHeader title="백업 구성">
+                  <SettingSubHeader title={t('systemSettings:database.backupConfig')}>
                     <button
                       onClick={testDatabaseConnection}
                       className="mgmt-btn mgmt-btn-outline"
                       style={{ fontSize: '15px', padding: '6px 14px' }}
                     >
                       {getTestIcon(testResults.database)}
-                      <span className="ml-2">연결 테스트</span>
+                      <span className="ml-2">{t('systemSettings:connectionTest')}</span>
                     </button>
                   </SettingSubHeader>
 
                   <CheckboxField
-                    label="자동 백업 활성화"
+                    label={t('systemSettings:database.autoBackup')}
                     checked={settings.database.backup_enabled}
                     onChange={(value) => handleSettingChange('database', 'backup_enabled', value)}
-                    description="시스템 스케줄에 따라 정기적으로 데이터베이스를 백업합니다."
+                    description={t('systemSettings:database.autoBackupDesc')}
                   />
                   {settings.database.backup_enabled && (
                     <>
                       <SelectField
-                        label="백업 스케줄"
+                        label={t('systemSettings:database.backupSchedule')}
                         value={settings.database.backup_schedule}
                         onChange={(value) => handleSettingChange('database', 'backup_schedule', value)}
-                        description="백업이 수행될 주기를 설정합니다."
+                        description={t('systemSettings:database.backupScheduleDesc')}
                         options={[
-                          { value: 'daily', label: '매일 (Daily)' },
-                          { value: 'weekly', label: '매주 (Weekly)' },
-                          { value: 'monthly', label: '매월 (Monthly)' }
+                          { value: 'daily', label: t('systemSettings:database.backupScheduleDaily') },
+                          { value: 'weekly', label: t('systemSettings:database.backupScheduleWeekly') },
+                          { value: 'monthly', label: t('systemSettings:database.backupScheduleMonthly') }
                         ]}
                       />
                       <InputField
-                        label="백업 보존 기간"
+                        label={t('systemSettings:database.backupRetention')}
                         type="number"
                         value={settings.database.backup_retention_days}
                         onChange={(value) => handleSettingChange('database', 'backup_retention_days', value)}
-                        description="생성된 백업 파일을 보관할 기간입니다."
-                        suffix="일"
+                        description={t('systemSettings:database.backupRetentionDesc')}
+                        suffix={t('systemSettings:database.backupRetentionSuffix')}
                         min={7}
                         max={90}
                       />
@@ -738,45 +767,45 @@ const SystemSettings = () => {
                 </div>
               )}
 
-              {/* 데이터 수집 설정 */}
+              {/* Data Collection Settings */}
               {activeCategory === SETTING_CATEGORIES.COLLECTION && (
                 <div>
                   <InputField
-                    label="기본 폴링 주기"
+                    label={t('systemSettings:collection.defaultPolling')}
                     type="number"
                     value={settings.collection.default_polling_interval}
                     onChange={(value) => handleSettingChange('collection', 'default_polling_interval', value)}
-                    description="장치별 설정이 없을 때 적용될 기본 데이터 수집 간격입니다."
+                    description={t('systemSettings:collection.defaultPollingDesc')}
                     suffix="ms"
                     min={100}
                     max={60000}
                   />
                   <InputField
-                    label="최대 동시 접속 수"
+                    label={t('systemSettings:collection.maxConcurrent')}
                     type="number"
                     value={settings.collection.max_concurrent_devices}
                     onChange={(value) => handleSettingChange('collection', 'max_concurrent_devices', value)}
-                    description="서버가 동시에 처리할 수 있는 최대 장치 세션 수입니다."
-                    suffix="대"
+                    description={t('systemSettings:collection.maxConcurrentDesc')}
+                    suffix={t('systemSettings:collection.maxConcurrentSuffix')}
                     min={100}
                     max={5000}
                   />
                   <InputField
-                    label="장치 응답 대기 시간"
+                    label={t('systemSettings:collection.deviceTimeout')}
                     type="number"
                     value={settings.collection.device_timeout}
                     onChange={(value) => handleSettingChange('collection', 'device_timeout', value)}
-                    description="장치로부터 응답이 없을 때 타임아웃으로 간주할 시간입니다."
+                    description={t('systemSettings:collection.deviceTimeoutDesc')}
                     suffix="ms"
                     min={1000}
                     max={30000}
                   />
                   <InputField
-                    label="시계열 데이터 저장 주기"
+                    label={t('systemSettings:collection.influxInterval')}
                     type="number"
                     value={settings.collection.influxdb_storage_interval}
                     onChange={(value) => handleSettingChange('collection', 'influxdb_storage_interval', value)}
-                    description={"과거 이력 조회를 위해 시계열 데이터를\n저장하는 주기입니다\n(0 지정시 스캔 즉시 저장)."}
+                    description={t('systemSettings:collection.influxIntervalDesc')}
                     suffix="ms"
                     min={0}
                     max={3600000}
@@ -784,222 +813,222 @@ const SystemSettings = () => {
                 </div>
               )}
 
-              {/* 알림 설정 */}
+              {/* Notification Settings */}
               {activeCategory === SETTING_CATEGORIES.NOTIFICATIONS && (
                 <div>
-                  <SettingSubHeader title="이메일 서버 상세 설정">
+                  <SettingSubHeader title={t('systemSettings:notifications.emailServer')}>
                     <button
                       onClick={testEmailConnection}
                       className="mgmt-btn mgmt-btn-outline"
                       style={{ fontSize: '15px', padding: '6px 14px' }}
                     >
                       {getTestIcon(testResults.email)}
-                      <span className="ml-2">발송 테스트</span>
+                      <span className="ml-2">{t('systemSettings:sendTest')}</span>
                     </button>
                   </SettingSubHeader>
 
                   <CheckboxField
-                    label="이메일 알림 활성화"
+                    label={t('systemSettings:notifications.emailEnabled')}
                     checked={settings.notifications.email_enabled}
                     onChange={(value) => handleSettingChange('notifications', 'email_enabled', value)}
-                    description="시스템 장애 및 주요 이벤트를 이메일로 전송합니다."
+                    description={t('systemSettings:notifications.emailEnabledDesc')}
                   />
 
                   {settings.notifications.email_enabled && (
                     <>
                       <InputField
-                        label="SMTP 서버 주소"
+                        label={t('systemSettings:notifications.smtpServer')}
                         value={settings.notifications.email_server}
                         onChange={(value) => handleSettingChange('notifications', 'email_server', value)}
-                        description="알림 발송에 사용할 SMTP 메일 서버 호스트 이름입니다."
+                        description={t('systemSettings:notifications.smtpServerDesc')}
                         required
                       />
                       <InputField
-                        label="SMTP 포트"
+                        label={t('systemSettings:notifications.smtpPort')}
                         type="number"
                         value={settings.notifications.email_port}
                         onChange={(value) => handleSettingChange('notifications', 'email_port', value)}
-                        description="메일 서버 연결 포트 (일반적으로 587 또는 465)입니다."
+                        description={t('systemSettings:notifications.smtpPortDesc')}
                         min={1}
                         max={65535}
                       />
                       <InputField
-                        label="발신자 이름"
+                        label={t('systemSettings:notifications.fromName')}
                         value={settings.notifications.email_from_name}
                         onChange={(value) => handleSettingChange('notifications', 'email_from_name', value)}
-                        description="수신자가 보는 메일 발신자 명칭입니다."
+                        description={t('systemSettings:notifications.fromNameDesc')}
                       />
                     </>
                   )}
 
-                  <SettingSubHeader title="기타 알림 수단" />
+                  <SettingSubHeader title={t('systemSettings:notifications.otherMethods')} />
 
                   <CheckboxField
-                    label="SMS 알림 활성화"
+                    label={t('systemSettings:notifications.smsEnabled')}
                     checked={settings.notifications.sms_enabled}
                     onChange={(value) => handleSettingChange('notifications', 'sms_enabled', value)}
-                    description="발송용 문자 서버를 사용하여 긴급 상황을 전송합니다."
+                    description={t('systemSettings:notifications.smsEnabledDesc')}
                   />
 
                   <CheckboxField
-                    label="푸시 알림 활성화"
+                    label={t('systemSettings:notifications.pushEnabled')}
                     checked={settings.notifications.push_notifications_enabled}
                     onChange={(value) => handleSettingChange('notifications', 'push_notifications_enabled', value)}
-                    description="모바일 기기로 실시간 앱 푸시를 전송합니다."
+                    description={t('systemSettings:notifications.pushEnabledDesc')}
                   />
 
                   <InputField
-                    label="알림 재전송 제한"
+                    label={t('systemSettings:notifications.cooldown')}
                     type="number"
                     value={settings.notifications.notification_cooldown}
                     onChange={(value) => handleSettingChange('notifications', 'notification_cooldown', value)}
-                    description="동일한 알림이 반복될 때 재발송을 차단할 최소 시간입니다."
-                    suffix="초"
+                    description={t('systemSettings:notifications.cooldownDesc')}
+                    suffix={t('systemSettings:notifications.cooldownSuffix')}
                     min={0}
                     max={3600}
                   />
                 </div>
               )}
 
-              {/* 보안 설정 */}
+              {/* Security Settings */}
               {activeCategory === SETTING_CATEGORIES.SECURITY && (
                 <div>
-                  <SettingSubHeader title="비밀번호 정책" />
+                  <SettingSubHeader title={t('systemSettings:security.passwordPolicy')} />
                   <InputField
-                    label="최소 암호 길이"
+                    label={t('systemSettings:security.minLength')}
                     type="number"
                     value={settings.security.password_min_length}
                     onChange={(value) => handleSettingChange('security', 'password_min_length', value)}
-                    description="사용자 비밀번호가 가져야 할 최소 문자 수입니다."
-                    suffix="자리"
+                    description={t('systemSettings:security.minLengthDesc')}
+                    suffix={t('systemSettings:security.minLengthSuffix')}
                     min={6}
                     max={20}
                   />
                   <CheckboxField
-                    label="영문 대문자 포함"
+                    label={t('systemSettings:security.requireUppercase')}
                     checked={settings.security.password_require_uppercase}
                     onChange={(value) => handleSettingChange('security', 'password_require_uppercase', value)}
                   />
                   <CheckboxField
-                    label="특수 문자 포함"
+                    label={t('systemSettings:security.requireSymbols')}
                     checked={settings.security.password_require_symbols}
                     onChange={(value) => handleSettingChange('security', 'password_require_symbols', value)}
                   />
                   <InputField
-                    label="비밀번호 만료 주기"
+                    label={t('systemSettings:security.expiryDays')}
                     type="number"
                     value={settings.security.password_expiry_days}
                     onChange={(value) => handleSettingChange('security', 'password_expiry_days', value)}
-                    description="보안을 위해 주기적으로 암호를 변경해야 하는 기간입니다."
-                    suffix="일"
+                    description={t('systemSettings:security.expiryDaysDesc')}
+                    suffix={t('systemSettings:security.expiryDaysSuffix')}
                     min={0}
                     max={180}
                   />
 
-                  <SettingSubHeader title="접근 통제" />
+                  <SettingSubHeader title={t('systemSettings:security.accessControl')} />
                   <CheckboxField
-                    label="2단계 인증 강제"
+                    label={t('systemSettings:security.twoFactor')}
                     checked={settings.security.two_factor_auth_required}
                     onChange={(value) => handleSettingChange('security', 'two_factor_auth_required', value)}
-                    description="모든 관리자 계정에 대해 2단계 인증(OTP)을 필수화합니다."
+                    description={t('systemSettings:security.twoFactorDesc')}
                   />
                   <CheckboxField
-                    label="감사 로그 활성화"
+                    label={t('systemSettings:security.auditLog')}
                     checked={settings.security.enable_audit_logging}
                     onChange={(value) => handleSettingChange('security', 'enable_audit_logging', value)}
-                    description="모든 설정 변경 및 주요 사용자 행위를 상세히 기록합니다."
+                    description={t('systemSettings:security.auditLogDesc')}
                   />
                 </div>
               )}
 
-              {/* 성능 설정 */}
+              {/* Performance Settings */}
               {activeCategory === SETTING_CATEGORIES.PERFORMANCE && (
                 <div>
-                  <SettingSubHeader title="리소스 사용량 경고 임계값" />
+                  <SettingSubHeader title={t('systemSettings:performance.resourceThreshold')} />
                   <InputField
-                    label="CPU 사용량 상한"
+                    label={t('systemSettings:performance.cpuThreshold')}
                     type="number"
                     value={settings.performance.cpu_usage_threshold}
                     onChange={(value) => handleSettingChange('performance', 'cpu_usage_threshold', value)}
-                    description="지정된 CPU 사용량을 초과할 경우 시스템 경고를 발생시킵니다."
+                    description={t('systemSettings:performance.cpuThresholdDesc')}
                     suffix="%"
                     min={50}
                     max={95}
                   />
                   <InputField
-                    label="메모리 사용량 상한"
+                    label={t('systemSettings:performance.memoryThreshold')}
                     type="number"
                     value={settings.performance.memory_usage_threshold}
                     onChange={(value) => handleSettingChange('performance', 'memory_usage_threshold', value)}
-                    description="물리 메모리 사용량이 임계치를 넘으면 관리자에게 통지합니다."
+                    description={t('systemSettings:performance.memoryThresholdDesc')}
                     suffix="%"
                     min={50}
                     max={95}
                   />
                   <InputField
-                    label="디스크 잔여 공간 경고"
+                    label={t('systemSettings:performance.diskThreshold')}
                     type="number"
                     value={settings.performance.disk_usage_threshold}
                     onChange={(value) => handleSettingChange('performance', 'disk_usage_threshold', value)}
-                    description="디스크 사용량이 설정값을 넘으면 데이터 수집이 중단될 수 있습니다."
+                    description={t('systemSettings:performance.diskThresholdDesc')}
                     suffix="%"
                     min={50}
                     max={95}
                   />
 
-                  <SettingSubHeader title="최적화 옵션" />
+                  <SettingSubHeader title={t('systemSettings:performance.optimizeOptions')} />
                   <CheckboxField
-                    label="캐시 시스템 활성화"
+                    label={t('systemSettings:performance.cacheEnabled')}
                     checked={settings.performance.cache_enabled}
                     onChange={(value) => handleSettingChange('performance', 'cache_enabled', value)}
-                    description="빈번하게 조회되는 데이터의 응답 속도를 위해 메모리 캐시를 사용합니다."
+                    description={t('systemSettings:performance.cacheEnabledDesc')}
                   />
                 </div>
               )}
 
-              {/* 로깅 설정 */}
+              {/* Logging Settings */}
               {activeCategory === SETTING_CATEGORIES.LOGGING && (
                 <div>
                   <SelectField
-                    label="로그 레벨"
+                    label={t('systemSettings:logging.logLevel')}
                     value={settings.logging.log_level}
                     onChange={(value) => handleSettingChange('logging', 'log_level', value)}
-                    description="기록할 시스템 로그의 상세 수준을 설정합니다."
+                    description={t('systemSettings:logging.logLevelDesc')}
                     options={[
-                      { value: 'debug', label: 'DEBUG (모든 로그)' },
-                      { value: 'info', label: 'INFO (일반 정보)' },
-                      { value: 'warn', label: 'WARN (경고 이상)' },
-                      { value: 'error', label: 'ERROR (오류만)' }
+                      { value: 'debug', label: t('systemSettings:logging.logLevelDebug') },
+                      { value: 'info', label: t('systemSettings:logging.logLevelInfo') },
+                      { value: 'warn', label: t('systemSettings:logging.logLevelWarn') },
+                      { value: 'error', label: t('systemSettings:logging.logLevelError') }
                     ]}
                   />
 
                   <InputField
-                    label="로그 보존 기간"
+                    label={t('systemSettings:logging.retentionDays')}
                     type="number"
                     value={settings.logging.log_retention_days}
                     onChange={(value) => handleSettingChange('logging', 'log_retention_days', value)}
-                    description="오래된 로그가 삭제되기 전까지의 보관 기간입니다."
-                    suffix="일"
+                    description={t('systemSettings:logging.retentionDaysDesc')}
+                    suffix={t('systemSettings:logging.retentionDaysSuffix')}
                     min={7}
                     max={365}
                   />
 
                   <InputField
-                    label="최대 로그 파일 크기"
+                    label={t('systemSettings:logging.maxFileSize')}
                     type="number"
                     value={settings.logging.max_log_file_size}
                     onChange={(value) => handleSettingChange('logging', 'max_log_file_size', value)}
-                    description="개별 로그 파일이 가질 수 있는 최대 용량입니다."
+                    description={t('systemSettings:logging.maxFileSizeDesc')}
                     suffix="MB"
                     min={10}
                     max={1000}
                   />
 
                   <CheckboxField
-                    label="패킷 로깅 활성화"
+                    label={t('systemSettings:logging.packetLogging')}
                     checked={settings.logging.enable_packet_logging}
                     onChange={(value) => handleSettingChange('logging', 'enable_packet_logging', value)}
-                    description="송수신되는 원시 패킷 데이터를 로그 파일로 기록합니다."
+                    description={t('systemSettings:logging.packetLoggingDesc')}
                   />
 
                 </div>

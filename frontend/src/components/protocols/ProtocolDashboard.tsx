@@ -24,7 +24,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
     const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(null);
     const [devices, setDevices] = useState<any[]>([]);
 
-    // 편집 모드 상태
+    // Edit 모드 상태
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState<Partial<Protocol>>({});
 
@@ -99,15 +99,15 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
     // 변경된 필드 추출
     const getChangedFields = () => {
         const changes: string[] = [];
-        if (editData.display_name !== protocol.display_name) changes.push(`프로토콜 명칭: ${protocol.display_name} -> ${editData.display_name}`);
-        if (editData.default_port !== protocol.default_port) changes.push(`기본 포트: ${protocol.default_port} -> ${editData.default_port}`);
-        if (editData.uses_serial !== protocol.uses_serial) changes.push(`시리얼 지원: ${protocol.uses_serial ? '지원' : '미지원'} -> ${editData.uses_serial ? '지원' : '미지원'}`);
-        if (editData.requires_broker !== protocol.requires_broker) changes.push(`브로커 필수: ${protocol.requires_broker ? '필수' : '불필요'} -> ${editData.requires_broker ? '필수' : '불필요'}`);
-        if (editData.default_polling_interval !== protocol.default_polling_interval) changes.push(`폴링 주기: ${protocol.default_polling_interval}ms -> ${editData.default_polling_interval}ms`);
-        if (editData.category !== protocol.category) changes.push(`카테고리: ${protocol.category} -> ${editData.category}`);
-        if (JSON.stringify(editData.supported_data_types) !== JSON.stringify(protocol.supported_data_types)) changes.push('지원 데이터 타입 변경');
-        if (JSON.stringify(editData.supported_operations) !== JSON.stringify(protocol.supported_operations)) changes.push('프로토콜 기능 변경');
-        if (editData.description !== protocol.description) changes.push('상세 설명 내용 변경');
+        if (editData.display_name !== protocol.display_name) changes.push(`Protocol Name: ${protocol.display_name} -> ${editData.display_name}`);
+        if (editData.default_port !== protocol.default_port) changes.push(`Default Port: ${protocol.default_port} -> ${editData.default_port}`);
+        if (editData.uses_serial !== protocol.uses_serial) changes.push(`Serial: ${protocol.uses_serial ? 'Supported' : 'Not Supported'} -> ${editData.uses_serial ? 'Supported' : 'Not Supported'}`);
+        if (editData.requires_broker !== protocol.requires_broker) changes.push(`Broker Required: ${protocol.requires_broker ? 'Yes' : 'No'} -> ${editData.requires_broker ? 'Yes' : 'No'}`);
+        if (editData.default_polling_interval !== protocol.default_polling_interval) changes.push(`Polling Interval: ${protocol.default_polling_interval}ms -> ${editData.default_polling_interval}ms`);
+        if (editData.category !== protocol.category) changes.push(`Category: ${protocol.category} -> ${editData.category}`);
+        if (JSON.stringify(editData.supported_data_types) !== JSON.stringify(protocol.supported_data_types)) changes.push('Supported data types changed');
+        if (JSON.stringify(editData.supported_operations) !== JSON.stringify(protocol.supported_operations)) changes.push('Protocol features changed');
+        if (editData.description !== protocol.description) changes.push('Detailed description changed');
         return changes;
     };
 
@@ -124,27 +124,27 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
             {/* 1. 상단 요약 영역 (공통) */}
             <div className="dashboard-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
                 <StatCard
-                    label="연결 상태"
-                    value={protocol.is_enabled ? '정상' : '비활성'}
+                    label="Connection Status"
+                    value={protocol.is_enabled ? 'Normal' : 'Inactive'}
                     type={protocol.is_enabled ? 'success' : 'neutral'}
                     icon={protocol.is_enabled ? 'fas fa-check-circle' : 'fas fa-pause-circle'}
                 />
                 {protocol.requires_broker && (
                     <StatCard
-                        label="연결된 인스턴스"
+                        label="Instances"
                         value={instances.length}
                         type="primary"
                         icon="fas fa-server"
                     />
                 )}
                 <StatCard
-                    label="연결된 장치"
+                    label="Devices"
                     value={protocol.device_count || 0}
                     type="primary"
                     icon="fas fa-microchip"
                 />
                 <StatCard
-                    label="오류로그(24h)"
+                    label="Error Logs (24h)"
                     value="0"
                     type="error"
                     icon="fas fa-exclamation-circle"
@@ -172,14 +172,14 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                     gap: '8px'
                 }}>
                     {[
-                        { id: 'info', label: '프로토콜 정보', icon: 'fas fa-info-circle' },
-                        { id: 'monitoring', label: '실시간 상태', icon: 'fas fa-desktop' },
+                        { id: 'info', label: 'Protocol Info', icon: 'fas fa-info-circle' },
+                        { id: 'monitoring', label: 'Real-time Status', icon: 'fas fa-desktop' },
                         // 브로커(vhost) 격리가 필요한 경우에만 인스턴스 및 보안 탭 노출
                         ...(protocol.requires_broker ? [
-                            { id: 'instances', label: '인스턴스', icon: 'fas fa-server' },
-                            { id: 'security', label: '보안/인증', icon: 'fas fa-shield-alt' }
+                            { id: 'instances', label: 'Instances', icon: 'fas fa-server' },
+                            { id: 'security', label: 'Security/Auth', icon: 'fas fa-shield-alt' }
                         ] : []),
-                        { id: 'devices', label: '장치 목록', icon: 'fas fa-list' }
+                        { id: 'devices', label: 'Device List', icon: 'fas fa-list' }
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -253,7 +253,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                 ) : (
                                     <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '100px', color: 'var(--neutral-400)' }}>
                                         <i className="fas fa-chart-area" style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.2 }}></i>
-                                        <p>실시간 모니터링할 장치가 없습니다. 프로토콜을 사용하는 장치를 먼저 등록해주세요.</p>
+                                        <p>No devices to monitor. Please register devices using this protocol first.</p>
                                     </div>
                                 )}
                             </div>
@@ -263,14 +263,14 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                     {activeTab === 'devices' && (
                         <div className="devices-content" style={{ animation: 'fadeIn 0.3s ease-in' }}>
                             <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0 }}>연결된 장치 목록 ({devices.length})</h3>
+                                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0 }}>Connected Devices ({devices.length})</h3>
                                 <button
                                     className="mgmt-btn mgmt-btn-outline primary"
                                     style={{ padding: '4px 12px', fontSize: '12px', height: '32px' }}
                                     onClick={() => navigate(`/devices?protocolId=${protocol.id}${selectedInstanceId ? `&instanceId=${selectedInstanceId}` : ''}`)}
                                 >
                                     <i className="fas fa-external-link-alt" style={{ marginRight: '6px' }}></i>
-                                    장치 관리에서 보기
+                                    View in Device Manager
                                 </button>
                             </div>
 
@@ -279,10 +279,10 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                     <thead>
                                         <tr style={{ background: 'var(--neutral-50)', borderBottom: '1px solid var(--neutral-100)' }}>
                                             <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)', width: '60px' }}>ID</th>
-                                            <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)' }}>장치명</th>
-                                            <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)' }}>엔드포인트</th>
-                                            <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)' }}>타입</th>
-                                            <th style={{ padding: '12px 20px', textAlign: 'center', fontWeight: 800, color: 'var(--neutral-600)', width: '100px' }}>상태</th>
+                                            <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)' }}>Device Name</th>
+                                            <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)' }}>Endpoint</th>
+                                            <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)' }}>Type</th>
+                                            <th style={{ padding: '12px 20px', textAlign: 'center', fontWeight: 800, color: 'var(--neutral-600)', width: '100px' }}>Status</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -315,7 +315,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                         ) : (
                                             <tr>
                                                 <td colSpan={5} style={{ padding: '60px', textAlign: 'center', color: 'var(--neutral-400)' }}>
-                                                    연결된 장치가 없습니다.
+                                                    No connected devices.
                                                 </td>
                                             </tr>
                                         )}
@@ -349,7 +349,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                             autoFocus
                                         />
                                     ) : (
-                                        <h3 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>{protocol.display_name} 상세 스펙</h3>
+                                        <h3 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>{protocol.display_name} Detailed Specs</h3>
                                     )}
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -361,7 +361,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                 onClick={() => setIsEditing(false)}
                                                 disabled={loading}
                                             >
-                                                취소
+                                                Cancel
                                             </button>
                                             <button
                                                 className="mgmt-btn mgmt-btn-sm mgmt-btn-primary"
@@ -370,9 +370,9 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
 
                                                     if (changes.length === 0) {
                                                         await confirm({
-                                                            title: '변경사항 없음',
-                                                            message: '수정된 내용이 없습니다.',
-                                                            confirmText: '확인',
+                                                            title: 'No Changes',
+                                                            message: 'No changes were made.',
+                                                            confirmText: 'OK',
                                                             confirmButtonType: 'primary'
                                                         });
                                                         setIsEditing(false);
@@ -380,10 +380,10 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                     }
 
                                                     const ok = await confirm({
-                                                        title: '설정 저장',
+                                                        title: 'Save Settings',
                                                         message: (
                                                             <div>
-                                                                <p style={{ marginBottom: '12px' }}>다음 내역을 저장하시겠습니까?</p>
+                                                                <p style={{ marginBottom: '12px' }}>Save the following changes?</p>
                                                                 <ul style={{
                                                                     fontSize: '13px',
                                                                     color: 'var(--neutral-600)',
@@ -396,7 +396,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                                 </ul>
                                                             </div>
                                                         ) as any,
-                                                        confirmText: '저장',
+                                                        confirmText: 'Save',
                                                         confirmButtonType: 'primary'
                                                     });
                                                     if (ok) {
@@ -407,7 +407,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                 disabled={loading}
                                             >
                                                 <i className="fas fa-save" style={{ marginRight: '6px' }}></i>
-                                                저장
+                                                Save
                                             </button>
                                         </div>
                                     ) : (
@@ -419,7 +419,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                             }}
                                         >
                                             <i className="fas fa-edit" style={{ marginRight: '6px' }}></i>
-                                            편집
+                                            Edit
                                         </button>
                                     )}
                                 </div>
@@ -430,32 +430,32 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                                     <section>
                                         <h4 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--neutral-800)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <i className="fas fa-info-circle" style={{ color: 'var(--primary-500)' }}></i> 기본 사양
+                                            <i className="fas fa-info-circle" style={{ color: 'var(--primary-500)' }}></i> Basic Specs
                                         </h4>
                                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                                             <tbody>
                                                 {[
-                                                    { label: '내부 식별자', value: protocol.protocol_type, isReadOnly: true },
+                                                    { label: 'Internal ID', value: protocol.protocol_type, isReadOnly: true },
                                                     {
-                                                        label: '기본 포트',
+                                                        label: 'Default Port',
                                                         value: protocol.default_port || 'N/A',
                                                         field: 'default_port',
                                                         type: 'number'
                                                     },
                                                     {
-                                                        label: '시리얼 지원',
-                                                        value: protocol.uses_serial ? '지원' : '미지원',
+                                                        label: 'Serial Support',
+                                                        value: protocol.uses_serial ? 'Supported' : 'Not Supported',
                                                         field: 'uses_serial',
                                                         type: 'checkbox'
                                                     },
                                                     {
-                                                        label: '브로커(vhost)',
-                                                        value: protocol.requires_broker ? '필수' : '불필요',
+                                                        label: 'Broker (vhost)',
+                                                        value: protocol.requires_broker ? 'Required' : 'Not Required',
                                                         field: 'requires_broker',
                                                         type: 'checkbox'
                                                     },
                                                     {
-                                                        label: '기본 Polling',
+                                                        label: 'Default Polling',
                                                         value: `${protocol.default_polling_interval || 1000} ms`,
                                                         field: 'default_polling_interval',
                                                         type: 'number',
@@ -495,7 +495,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                 ))}
                                                 {isEditing && (
                                                     <tr style={{ borderBottom: '1px solid var(--neutral-50)' }}>
-                                                        <td style={{ padding: '10px 0', color: 'var(--neutral-500)', width: '120px', fontWeight: 600 }}>카테고리</td>
+                                                        <td style={{ padding: '10px 0', color: 'var(--neutral-500)', width: '120px', fontWeight: 600 }}>Category</td>
                                                         <td style={{ padding: '10px 0', color: 'var(--neutral-900)', fontWeight: 700 }}>
                                                             <select
                                                                 value={editData.category || ''}
@@ -503,11 +503,11 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                                 className="inline-edit-select"
                                                                 style={{ width: '200px' }}
                                                             >
-                                                                <option value="industrial">산업용</option>
+                                                                <option value="industrial">Industrial</option>
                                                                 <option value="iot">IoT</option>
-                                                                <option value="building_automation">빌딩 자동화</option>
-                                                                <option value="network">네트워크</option>
-                                                                <option value="web">웹</option>
+                                                                <option value="building_automation">Building Automation</option>
+                                                                <option value="network">Network</option>
+                                                                <option value="web">Web</option>
                                                             </select>
                                                         </td>
                                                     </tr>
@@ -518,7 +518,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
 
                                     <section>
                                         <h4 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--neutral-800)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <i className="fas fa-database" style={{ color: 'var(--success-500)' }}></i> 지원 데이터 타입
+                                            <i className="fas fa-database" style={{ color: 'var(--success-500)' }}></i> Supported Data Types
                                         </h4>
                                         <div className="inline-edit-chip-container">
                                             {isEditing ? (
@@ -528,7 +528,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                         value={editData.supported_data_types?.join(', ') || ''}
                                                         onChange={(e) => setEditData({ ...editData, supported_data_types: e.target.value.split(',').map(s => s.trim()).filter(s => s) })}
                                                         className="inline-edit-chip-input"
-                                                        placeholder="쉼표로 구분 예: BOOL, INT16, FLOAT32"
+                                                        placeholder="comma-separated e.g. BOOL, INT16, FLOAT32"
                                                     />
                                                     <i className="fas fa-tags"></i>
                                                 </div>
@@ -549,7 +549,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                                     <section>
                                         <h4 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--neutral-800)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <i className="fas fa-cogs" style={{ color: 'var(--warning-500)' }}></i> 프로토콜 기능 (Operations)
+                                            <i className="fas fa-cogs" style={{ color: 'var(--warning-500)' }}></i> Protocol Features (Operations)
                                         </h4>
                                         <div className="inline-edit-chip-container">
                                             {isEditing ? (
@@ -559,7 +559,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                         value={editData.supported_operations?.join(', ') || ''}
                                                         onChange={(e) => setEditData({ ...editData, supported_operations: e.target.value.split(',').map(s => s.trim()).filter(s => s) })}
                                                         className="inline-edit-chip-input"
-                                                        placeholder="쉼표로 구분 예: read, write, scan"
+                                                        placeholder="comma-separated e.g. read, write, scan"
                                                     />
                                                     <i className="fas fa-microchip"></i>
                                                 </div>
@@ -578,18 +578,18 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
 
                                     <section style={{ flex: 1 }}>
                                         <h4 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--neutral-800)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <i className="fas fa-align-left" style={{ color: 'var(--neutral-400)' }}></i> 프로토콜 설명
+                                            <i className="fas fa-align-left" style={{ color: 'var(--neutral-400)' }}></i> Protocol Description
                                         </h4>
                                         {isEditing ? (
                                             <textarea
                                                 value={editData.description || ''}
                                                 onChange={(e) => setEditData({ ...editData, description: e.target.value })}
                                                 className="inline-edit-textarea"
-                                                placeholder="프로토콜에 대한 상세 설명을 입력하세요..."
+                                                placeholder="Enter a detailed description of the protocol..."
                                             />
                                         ) : (
                                             <div style={{ padding: '16px', background: 'var(--neutral-50)', borderRadius: '12px', color: 'var(--neutral-600)', fontSize: '13px', lineHeight: '1.6', border: '1px solid var(--neutral-100)' }}>
-                                                {protocol.description || '이 프로토콜에 대한 추가 설명이 없습니다.'}
+                                                {protocol.description || 'No additional description for this protocol.'}
                                             </div>
                                         )}
                                     </section>
@@ -623,7 +623,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                         gap: '12px'
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                            <label style={{ fontSize: '13px', fontWeight: 800, color: 'var(--neutral-600)' }}>설정할 인스턴스 선택:</label>
+                                            <label style={{ fontSize: '13px', fontWeight: 800, color: 'var(--neutral-600)' }}>Select Instance to Configure:</label>
                                             <select
                                                 value={selectedInstanceId || ''}
                                                 onChange={(e) => setSelectedInstanceId(parseInt(e.target.value))}

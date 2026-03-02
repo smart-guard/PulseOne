@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../styles/base.css';
 import '../styles/alarm-history.css';
 
@@ -36,6 +37,7 @@ interface LoginStats {
 
 const LoginHistory: React.FC = () => {
   const [loginRecords, setLoginRecords] = useState<LoginRecord[]>([]);
+    const { t } = useTranslation(['loginHistory', 'common']);
   const [stats, setStats] = useState<LoginStats | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<LoginRecord | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
@@ -62,11 +64,11 @@ const LoginHistory: React.FC = () => {
     const now = new Date();
     
     const users = [
-      { username: 'admin', fullName: '시스템 관리자', email: 'admin@company.com', role: 'admin' },
-      { username: 'manager1', fullName: '김매니저', email: 'manager1@company.com', role: 'manager' },
-      { username: 'engineer1', fullName: '이엔지니어', email: 'engineer1@company.com', role: 'engineer' },
-      { username: 'operator1', fullName: '박운영자', email: 'operator1@company.com', role: 'operator' },
-      { username: 'viewer1', fullName: '정조회자', email: 'viewer1@company.com', role: 'viewer' }
+      { username: 'admin', fullName: 'System Admin', email: 'admin@company.com', role: 'admin' },
+      { username: 'manager1', fullName: 'Kim Manager', email: 'manager1@company.com', role: 'manager' },
+      { username: 'engineer1', fullName: 'Lee Engineer', email: 'engineer1@company.com', role: 'engineer' },
+      { username: 'operator1', fullName: 'Park Operator', email: 'operator1@company.com', role: 'operator' },
+      { username: 'viewer1', fullName: 'Chung Viewer', email: 'viewer1@company.com', role: 'viewer' }
     ];
 
     const browsers = ['Chrome', 'Firefox', 'Safari', 'Edge'];
@@ -102,7 +104,7 @@ const LoginHistory: React.FC = () => {
         loginMethod: methods[Math.floor(Math.random() * methods.length)],
         success,
         failureReason: !success ? 
-          ['잘못된 비밀번호', '계정 잠김', '세션 만료', '네트워크 오류'][Math.floor(Math.random() * 4)] : undefined,
+          ['Wrong password', 'Account locked', 'Session expired', 'Network error'][Math.floor(Math.random() * 4)] : undefined,
         sessionId: `sess_${Date.now()}_${i}`
       };
 
@@ -179,8 +181,8 @@ const LoginHistory: React.FC = () => {
   const formatDuration = (minutes: number): string => {
     const hours = Math.floor(minutes / 60);
     const mins = Math.floor(minutes % 60);
-    if (hours > 0) return `${hours}시간 ${mins}분`;
-    return `${mins}분`;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
   };
 
   // 상태 아이콘 및 색상
@@ -205,15 +207,15 @@ const LoginHistory: React.FC = () => {
     <div className="alarm-history-container">
       {/* 페이지 헤더 */}
       <div className="page-header">
-        <h1 className="page-title">로그인 이력</h1>
+        <h1 className="page-title">{t('labels.loginHistory', {ns: 'auditLog'})}</h1>
         <div className="page-actions">
           <button className="btn btn-outline">
             <i className="fas fa-download"></i>
-            내보내기
+            Export
           </button>
           <button className="btn btn-outline">
             <i className="fas fa-shield-alt"></i>
-            보안 분석
+            Security Analysis
           </button>
         </div>
       </div>
@@ -224,38 +226,38 @@ const LoginHistory: React.FC = () => {
           <div className="summary-stats">
             <div className="stat-card">
               <div className="stat-value">{stats.totalLogins}</div>
-              <div className="stat-label">총 로그인</div>
+              <div className="stat-label">{t('labels.totalLogins', {ns: 'auditLog'})}</div>
             </div>
             <div className="stat-card status-cleared">
               <div className="stat-value">{stats.successfulLogins}</div>
-              <div className="stat-label">성공</div>
+              <div className="stat-label">{t('labels.successful', {ns: 'auditLog'})}</div>
             </div>
             <div className="stat-card status-active">
               <div className="stat-value">{stats.failedLogins}</div>
-              <div className="stat-label">실패</div>
+              <div className="stat-label">Failed</div>
             </div>
             <div className="stat-card">
               <div className="stat-value">{stats.uniqueUsers}</div>
-              <div className="stat-label">활성 사용자</div>
+              <div className="stat-label">{t('labels.activeUsers', {ns: 'auditLog'})}</div>
             </div>
             <div className="stat-card">
               <div className="stat-value">{Math.round(stats.averageSessionDuration)}</div>
-              <div className="stat-label">평균 세션(분)</div>
+              <div className="stat-label">{t('labels.avgSessionMin', {ns: 'auditLog'})}</div>
             </div>
             <div className="stat-card status-acknowledged">
               <div className="stat-value">{stats.recentFailures}</div>
-              <div className="stat-label">최근 실패</div>
+              <div className="stat-label">{t('labels.recentFailures', {ns: 'auditLog'})}</div>
             </div>
           </div>
 
           <div className="top-sources">
-            <h4>활성 사용자 TOP 5</h4>
+            <h4>Top 5 Active Users</h4>
             <div className="source-list">
               {stats.topUsers.map((user, index) => (
                 <div key={user.username} className="source-item">
                   <span className="source-rank">#{index + 1}</span>
                   <span className="source-name">{user.username}</span>
-                  <span className="source-count">{user.count}회</span>
+                  <span className="source-count">{user.count}x</span>
                 </div>
               ))}
             </div>
@@ -266,7 +268,7 @@ const LoginHistory: React.FC = () => {
       {/* 필터 패널 */}
       <div className="filter-panel">
         <div className="filter-section">
-          <h3>조회 기간</h3>
+          <h3>{t('labels.timeRange', {ns: 'auditLog'})}</h3>
           <div className="date-filter">
             <div className="date-inputs">
               <input
@@ -284,25 +286,25 @@ const LoginHistory: React.FC = () => {
               />
             </div>
             <div className="quick-dates">
-              <button className="btn btn-sm btn-outline" onClick={() => setQuickDateRange(1)}>1시간</button>
-              <button className="btn btn-sm btn-outline" onClick={() => setQuickDateRange(24)}>24시간</button>
-              <button className="btn btn-sm btn-outline" onClick={() => setQuickDateRange(24 * 7)}>7일</button>
-              <button className="btn btn-sm btn-outline" onClick={() => setQuickDateRange(24 * 30)}>30일</button>
+              <button className="btn btn-sm btn-outline" onClick={() => setQuickDateRange(1)}>1hr</button>
+              <button className="btn btn-sm btn-outline" onClick={() => setQuickDateRange(24)}>24hrs</button>
+              <button className="btn btn-sm btn-outline" onClick={() => setQuickDateRange(24 * 7)}>7d</button>
+              <button className="btn btn-sm btn-outline" onClick={() => setQuickDateRange(24 * 30)}>30d</button>
             </div>
           </div>
         </div>
 
         <div className="filter-section">
-          <h3>필터</h3>
+          <h3>{t('labels.filter', {ns: 'auditLog'})}</h3>
           <div className="filter-row">
             <div className="filter-group">
-              <label>사용자</label>
+              <label>{t('filter.user', {ns: 'auditLog'})}</label>
               <select
                 value={filterUser}
                 onChange={(e) => setFilterUser(e.target.value)}
                 className="filter-select"
               >
-                <option value="all">전체</option>
+                <option value="all">All</option>
                 {uniqueUsers.map(user => (
                   <option key={user} value={user}>{user}</option>
                 ))}
@@ -310,38 +312,38 @@ const LoginHistory: React.FC = () => {
             </div>
 
             <div className="filter-group">
-              <label>상태</label>
+              <label>{t('labels.status', {ns: 'auditLog'})}</label>
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
                 className="filter-select"
               >
-                <option value="all">전체</option>
-                <option value="success">성공</option>
-                <option value="failed">실패</option>
+                <option value="all">All</option>
+                <option value="success">{t('labels.successful', {ns: 'auditLog'})}</option>
+                <option value="failed">Failed</option>
               </select>
             </div>
 
             <div className="filter-group">
-              <label>로그인 방법</label>
+              <label>{t('labels.loginMethod', {ns: 'auditLog'})}</label>
               <select
                 value={filterMethod}
                 onChange={(e) => setFilterMethod(e.target.value)}
                 className="filter-select"
               >
-                <option value="all">전체</option>
-                <option value="password">비밀번호</option>
-                <option value="sso">SSO</option>
-                <option value="api_key">API 키</option>
+                <option value="all">All</option>
+                <option value="password">{t('labels.password', {ns: 'auditLog'})}</option>
+                <option value="sso">{t('labels.sso', {ns: 'auditLog'})}</option>
+                <option value="api_key">{t('labels.apiKey', {ns: 'auditLog'})}</option>
               </select>
             </div>
 
             <div className="filter-group flex-1">
-              <label>검색</label>
+              <label>{t('search', {ns: 'common'})}</label>
               <div className="search-container">
                 <input
                   type="text"
-                  placeholder="사용자명, IP, 브라우저 검색..."
+                  placeholder="Search username, IP, browser..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="search-input"
@@ -356,25 +358,25 @@ const LoginHistory: React.FC = () => {
       {/* 결과 정보 */}
       <div className="result-info">
         <span className="result-count">
-          총 {filteredRecords.length}개 기록 (전체 {loginRecords.length}개 중)
+          {filteredRecords.length} record(s) (of {loginRecords.length} total)
         </span>
         <span className="date-range-display">
           {dateRange.start.toLocaleString()} ~ {dateRange.end.toLocaleString()}
         </span>
       </div>
 
-      {/* 로그인 이력 목록 */}
+      {/* Login History 목록 */}
       <div className="events-list">
         <div className="events-table">
           <div className="table-header">
-            <div className="header-cell">시간</div>
-            <div className="header-cell">사용자</div>
-            <div className="header-cell">상태</div>
-            <div className="header-cell">방법</div>
-            <div className="header-cell">위치/디바이스</div>
-            <div className="header-cell">세션</div>
-            <div className="header-cell">IP 주소</div>
-            <div className="header-cell">액션</div>
+            <div className="header-cell">{t('table.time', {ns: 'auditLog'})}</div>
+            <div className="header-cell">{t('filter.user', {ns: 'auditLog'})}</div>
+            <div className="header-cell">{t('labels.status', {ns: 'auditLog'})}</div>
+            <div className="header-cell">{t('labels.method', {ns: 'auditLog'})}</div>
+            <div className="header-cell">{t('labels.locationdevice', {ns: 'auditLog'})}</div>
+            <div className="header-cell">{t('labels.session', {ns: 'auditLog'})}</div>
+            <div className="header-cell">{t('labels.ipAddress', {ns: 'auditLog'})}</div>
+            <div className="header-cell">{t('table.action', {ns: 'auditLog'})}</div>
           </div>
 
           {currentRecords.map(record => (
@@ -385,7 +387,7 @@ const LoginHistory: React.FC = () => {
                 </div>
                 {record.logoutTime && (
                   <div className="duration">
-                    로그아웃: {record.logoutTime.toLocaleString()}
+                    Logout: {record.logoutTime.toLocaleString()}
                   </div>
                 )}
               </div>
@@ -399,7 +401,7 @@ const LoginHistory: React.FC = () => {
               <div className="table-cell status-cell">
                 <span className={`status-badge ${record.success ? 'status-cleared' : 'status-active'}`}>
                   <i className={`fas ${getStatusIcon(record.success)}`}></i>
-                  {record.success ? '성공' : '실패'}
+                  {record.success ? 'Success' : 'Failed'}
                 </span>
                 {!record.success && record.failureReason && (
                   <div className="severity">{record.failureReason}</div>
@@ -409,8 +411,8 @@ const LoginHistory: React.FC = () => {
               <div className="table-cell priority-cell">
                 <span className="priority-badge priority-medium">
                   <i className={`fas ${getMethodIcon(record.loginMethod)}`}></i>
-                  {record.loginMethod === 'password' ? '비밀번호' :
-                   record.loginMethod === 'sso' ? 'SSO' : 'API 키'}
+                  {record.loginMethod === 'password' ? 'Password' :
+                   record.loginMethod === 'sso' ? 'SSO' : 'API Key'}
                 </span>
               </div>
 
@@ -423,12 +425,12 @@ const LoginHistory: React.FC = () => {
               <div className="table-cell message-cell">
                 {record.duration ? (
                   <div className="message-text">
-                    세션: {formatDuration(record.duration)}
+                    Session: {formatDuration(record.duration)}
                   </div>
                 ) : record.success ? (
-                  <div className="message-text">진행 중</div>
+                  <div className="message-text">{t('labels.inProgress', {ns: 'auditLog'})}</div>
                 ) : (
-                  <div className="message-text">세션 없음</div>
+                  <div className="message-text">{t('labels.noSession', {ns: 'auditLog'})}</div>
                 )}
                 <div className="notification-info">
                   <small className="text-xs text-neutral-500">
@@ -451,7 +453,7 @@ const LoginHistory: React.FC = () => {
                   <button
                     className="btn btn-sm btn-primary"
                     onClick={() => handleViewDetails(record)}
-                    title="상세 보기"
+                    title="View Details"
                   >
                     <i className="fas fa-eye"></i>
                   </button>
@@ -464,9 +466,9 @@ const LoginHistory: React.FC = () => {
         {currentRecords.length === 0 && (
           <div className="empty-state">
             <i className="fas fa-sign-in-alt empty-icon"></i>
-            <div className="empty-title">로그인 기록이 없습니다</div>
+            <div className="empty-title">{t('labels.noLoginHistory', {ns: 'auditLog'})}</div>
             <div className="empty-description">
-              선택한 기간과 필터 조건에 해당하는 로그인 기록이 없습니다.
+              No login history matching the selected period and filter conditions.
             </div>
           </div>
         )}
@@ -475,7 +477,7 @@ const LoginHistory: React.FC = () => {
         {filteredRecords.length > 0 && (
           <div className="pagination-container">
             <div className="pagination-info">
-              {startIndex + 1}-{Math.min(endIndex, filteredRecords.length)} / {filteredRecords.length} 항목
+              {startIndex + 1}-{Math.min(endIndex, filteredRecords.length)} / {filteredRecords.length} record(s)
             </div>
             
             <div className="pagination-controls">
@@ -487,10 +489,10 @@ const LoginHistory: React.FC = () => {
                 }}
                 className="page-size-select"
               >
-                <option value={25}>25개씩</option>
-                <option value={50}>50개씩</option>
-                <option value={100}>100개씩</option>
-                <option value={200}>200개씩</option>
+                <option value={25}>25/page</option>
+                <option value={50}>50/page</option>
+                <option value={100}>100/page</option>
+                <option value={200}>200/page</option>
               </select>
 
               <button
@@ -536,7 +538,7 @@ const LoginHistory: React.FC = () => {
         <div className="modal-overlay">
           <div className="modal-container">
             <div className="modal-header">
-              <h2>로그인 기록 상세 정보</h2>
+              <h2>{t('labels.loginRecordDetails', {ns: 'auditLog'})}</h2>
               <button
                 className="modal-close-btn"
                 onClick={() => setShowDetailsModal(false)}
@@ -547,55 +549,55 @@ const LoginHistory: React.FC = () => {
 
             <div className="modal-content">
               <div className="detail-section">
-                <h3>사용자 정보</h3>
+                <h3>{t('labels.userInfo', {ns: 'auditLog'})}</h3>
                 <div className="detail-grid">
                   <div className="detail-item">
-                    <label>사용자명:</label>
+                    <label>{t('labels.username', {ns: 'auditLog'})}</label>
                     <span>{selectedRecord.username}</span>
                   </div>
                   <div className="detail-item">
-                    <label>이름:</label>
+                    <label>{t('labels.name', {ns: 'auditLog'})}</label>
                     <span>{selectedRecord.fullName}</span>
                   </div>
                   <div className="detail-item">
-                    <label>이메일:</label>
+                    <label>{t('labels.email', {ns: 'auditLog'})}</label>
                     <span>{selectedRecord.email}</span>
                   </div>
                   <div className="detail-item">
-                    <label>역할:</label>
+                    <label>{t('labels.role', {ns: 'auditLog'})}</label>
                     <span>{selectedRecord.role}</span>
                   </div>
                 </div>
               </div>
 
               <div className="detail-section">
-                <h3>로그인 정보</h3>
+                <h3>{t('labels.loginInfo', {ns: 'auditLog'})}</h3>
                 <div className="detail-grid">
                   <div className="detail-item">
-                    <label>로그인 시간:</label>
+                    <label>{t('labels.loginTime', {ns: 'auditLog'})}</label>
                     <span>{selectedRecord.loginTime.toLocaleString()}</span>
                   </div>
                   <div className="detail-item">
-                    <label>로그아웃 시간:</label>
-                    <span>{selectedRecord.logoutTime?.toLocaleString() || '진행 중'}</span>
+                    <label>{t('labels.logoutTime', {ns: 'auditLog'})}</label>
+                    <span>{selectedRecord.logoutTime?.toLocaleString() || 'In Progress'}</span>
                   </div>
                   <div className="detail-item">
-                    <label>세션 기간:</label>
+                    <label>{t('labels.sessionDuration', {ns: 'auditLog'})}</label>
                     <span>{selectedRecord.duration ? formatDuration(selectedRecord.duration) : '-'}</span>
                   </div>
                   <div className="detail-item">
-                    <label>로그인 방법:</label>
+                    <label>{t('labels.loginMethod1', {ns: 'auditLog'})}</label>
                     <span>{selectedRecord.loginMethod}</span>
                   </div>
                   <div className="detail-item">
-                    <label>상태:</label>
+                    <label>{t('labels.status1', {ns: 'auditLog'})}</label>
                     <span className={selectedRecord.success ? 'text-success-600' : 'text-error-600'}>
                       {selectedRecord.success ? '성공' : '실패'}
                     </span>
                   </div>
                   {!selectedRecord.success && (
                     <div className="detail-item">
-                      <label>실패 사유:</label>
+                      <label>{t('labels.failureReason', {ns: 'auditLog'})}</label>
                       <span>{selectedRecord.failureReason}</span>
                     </div>
                   )}
@@ -606,23 +608,23 @@ const LoginHistory: React.FC = () => {
                 <h3>기술 정보</h3>
                 <div className="detail-grid">
                   <div className="detail-item">
-                    <label>IP 주소:</label>
+                    <label>{t('labels.ipAddress1', {ns: 'auditLog'})}</label>
                     <span>{selectedRecord.ipAddress}</span>
                   </div>
                   <div className="detail-item">
-                    <label>브라우저:</label>
+                    <label>{t('labels.browser', {ns: 'auditLog'})}</label>
                     <span>{selectedRecord.browser}</span>
                   </div>
                   <div className="detail-item">
-                    <label>운영체제:</label>
+                    <label>{t('labels.os', {ns: 'auditLog'})}</label>
                     <span>{selectedRecord.os}</span>
                   </div>
                   <div className="detail-item">
-                    <label>디바이스:</label>
+                    <label>{t('labels.device', {ns: 'auditLog'})}</label>
                     <span>{selectedRecord.device}</span>
                   </div>
                   <div className="detail-item">
-                    <label>위치:</label>
+                    <label>{t('labels.location', {ns: 'auditLog'})}</label>
                     <span>{selectedRecord.location || 'Unknown'}</span>
                   </div>
                   <div className="detail-item">
@@ -630,7 +632,7 @@ const LoginHistory: React.FC = () => {
                     <span>{selectedRecord.sessionId}</span>
                   </div>
                   <div className="detail-item full-width">
-                    <label>User Agent:</label>
+                    <label>{t('labels.userAgent', {ns: 'auditLog'})}</label>
                     <span style={{ wordBreak: 'break-all', fontSize: 'var(--text-xs)' }}>
                       {selectedRecord.userAgent}
                     </span>

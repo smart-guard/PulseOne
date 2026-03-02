@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlarmApiService, AlarmRule } from '../../api/services/alarmApi';
 import { useConfirmContext } from '../common/ConfirmProvider';
 import '../../styles/alarm-settings.css';
@@ -8,42 +9,42 @@ import '../../styles/limits-grid.css';
 
 // --- Constants ---
 const SCRIPT_PATTERNS = [
-  { id: 'threshold_above', label: '단순 상한값', icon: '📈', script: 'return value > 100;' },
-  { id: 'threshold_below', label: '단순 하한값', icon: '📉', script: 'return value < 0;' },
-  { id: 'moving_avg', label: '이동 평균', icon: '📊', script: '// moving average\nconst avg = (value + prev_value) / 2;\nreturn avg > 80;' },
-  { id: 'hysteresis', label: '히스테리시스', icon: '➰', script: 'if (!is_active) return value > 90;\nelse return value > 80;' },
-  { id: 'rate_of_change', label: '급격한 변화량', icon: '⚡', script: 'return Math.abs(value - prev_value) > 10;' }
+  { id: 'threshold_above', label: 'Simple Upper Limit', icon: '📈', script: 'return value > 100;' },
+  { id: 'threshold_below', label: 'Simple Lower Limit', icon: '📉', script: 'return value < 0;' },
+  { id: 'moving_avg', label: 'Moving Average', icon: '📊', script: '// moving average\nconst avg = (value + prev_value) / 2;\nreturn avg > 80;' },
+  { id: 'hysteresis', label: 'Hysteresis', icon: '➰', script: 'if (!is_active) return value > 90;\nelse return value > 80;' },
+  { id: 'rate_of_change', label: 'Rapid Rate of Change', icon: '⚡', script: 'return Math.abs(value - prev_value) > 10;' }
 ];
 
 const ALARM_PRESETS = [
   {
-    id: 'high_temp', icon: '🔥', title: '고온 경보', apply: {
-      name: '시스템 고온 경보', category: 'temperature', alarm_type: 'analog' as const, high_limit: '80', high_high_limit: '90', severity: 'high' as const,
-      tags: ['#high_temp', '#safety'], description: '냉각 시스템 이상 또는 부하 증가로 인한 내부 온도 상승을 감지합니다. 지속될 경우 하드웨어 손상이 발생할 수 있습니다.'
+    id: 'high_temp', icon: '🔥', title: 'High Temperature Alarm', apply: {
+      name: 'System High Temp Alarm', category: 'temperature', alarm_type: 'analog' as const, high_limit: '80', high_high_limit: '90', severity: 'high' as const,
+      tags: ['#high_temp', '#safety'], description: 'Detects internal temperature rise due to cooling system issues or increased load. May cause hardware damage if sustained.'
     }
   },
   {
-    id: 'comm_loss', icon: '🔌', title: '통신 끊김', apply: {
-      name: '통신 끊김 감지', category: 'system', target_type: 'device' as const, alarm_type: 'digital' as const, trigger_condition: 'connection_lost', severity: 'critical' as const,
-      tags: ['#network', '#critical'], description: '디바이스와의 연결이 끊겼습니다. 네트워크 상태 또는 전원 공급 여부를 확인해야 합니다.'
+    id: 'comm_loss', icon: '🔌', title: 'Communication Lost', apply: {
+      name: 'Connection Loss Detection', category: 'system', target_type: 'device' as const, alarm_type: 'digital' as const, trigger_condition: 'connection_lost', severity: 'critical' as const,
+      tags: ['#network', '#critical'], description: 'Device connection has been lost. Check network status or power supply.'
     }
   },
   {
-    id: 'delayed_trigger', icon: '⌛', title: '지연 발생', apply: {
-      name: '지연 발생 경보', category: 'general', alarm_type: 'analog' as const, high_limit: '100', deadband: '5.0', severity: 'medium' as const,
-      description: '일시적인 노이즈나 튀는 값에 의한 알람 오동작을 방지하기 위해 지연 시간을 적용한 경보입니다.'
+    id: 'delayed_trigger', icon: '⌛', title: 'Delayed Trigger', apply: {
+      name: 'Delay-Based Alarm', category: 'general', alarm_type: 'analog' as const, high_limit: '100', deadband: '5.0', severity: 'medium' as const,
+      description: 'An alarm with delay to prevent false triggers from temporary noise or spikes.'
     }
   },
   {
-    id: 'complex_cond', icon: '🔴', title: '복합 조건', apply: {
-      name: '복합 조건 알람', category: 'safety', target_type: 'data_point' as const, alarm_type: 'script' as const, condition_script: 'return value > 50 && prev_value < 50;', severity: 'high' as const,
-      description: '단순 임계값만으로 설명하기 어려운 복잡한 로직(변화 감지 등)을 활용한 정밀 알람 설정입니다.'
+    id: 'complex_cond', icon: '🔴', title: 'Complex Condition', apply: {
+      name: 'Complex Condition Alarm', category: 'safety', target_type: 'data_point' as const, alarm_type: 'script' as const, condition_script: 'return value > 50 && prev_value < 50;', severity: 'high' as const,
+      description: 'Precise alarm using complex logic (e.g., change detection) that cannot be expressed with simple thresholds.'
     }
   }
 ];
 
 const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
-  'temperature': '온도', 'pressure': '압력', 'flow': '유량', 'level': '레벨', 'vibration': '진동', 'electrical': '전기', 'safety': '안전', 'general': '일반'
+  'temperature': 'Temperature', 'pressure': 'Pressure', 'flow': 'Flow', 'level': 'Level', 'vibration': 'Vibration', 'electrical': 'Electrical', 'safety': 'Safety', 'general': 'General'
 };
 
 // --- Interfaces ---
@@ -95,6 +96,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
 }) => {
   const tagInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
+    const { t } = useTranslation(['alarms', 'common']);
   const [formData, setFormData] = useState<AlarmRuleFormData>({
     name: '', description: '', target_type: 'data_point', target_id: '', selected_device_id: '', target_group: '',
     alarm_type: 'analog', high_high_limit: '', high_limit: '', low_limit: '', low_low_limit: '', deadband: '2.0',
@@ -151,21 +153,21 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
         const unit = (dp.unit || '').toLowerCase();
 
         // Temperature inference
-        if (unit.includes('c') || unit.includes('f') || name.includes('temp') || name.includes('온도')) {
+        if (unit.includes('c') || unit.includes('f') || name.includes('temp') || name.includes('temperature')) {
           setFormData(prev => ({
             ...prev,
             category: 'temperature',
             alarm_type: 'analog',
-            description: prev.description || `[${dp.name}] 데이터포인트의 온도 이상을 감지하는 규칙입니다.`
+            description: prev.description || `Detects temperature anomaly in [${dp.name}] data point.`
           }));
         }
         // Pressure inference
-        else if (unit.includes('bar') || unit.includes('pa') || name.includes('press') || name.includes('압력')) {
+        else if (unit.includes('bar') || unit.includes('pa') || name.includes('press') || name.includes('pressure')) {
           setFormData(prev => ({
             ...prev,
             category: 'pressure',
             alarm_type: 'analog',
-            description: prev.description || `[${dp.name}] 데이터포인트의 압력 변화를 모니터링합니다.`
+            description: prev.description || `Monitors pressure changes in [${dp.name}] data point.`
           }));
         }
       }
@@ -176,9 +178,9 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
   const getDataPointOptions = () => dataPoints.filter(dp => dp.device_id.toString() === formData.selected_device_id).map(dp => ({ value: dp.id.toString(), label: dp.name }));
 
   const getSelectedTargetName = () => {
-    if (formData.target_type === 'device') return devices.find(d => d.id.toString() === formData.target_id)?.name || '디바이스';
-    if (formData.target_type === 'data_point') return dataPoints.find(p => p.id.toString() === formData.target_id)?.name || '데이터포인트';
-    return '가상포인트';
+    if (formData.target_type === 'device') return devices.find(d => d.id.toString() === formData.target_id)?.name || 'Device';
+    if (formData.target_type === 'data_point') return dataPoints.find(p => p.id.toString() === formData.target_id)?.name || 'Data Point';
+    return 'Virtual Point';
   };
 
   const addTag = (tag: string) => {
@@ -203,11 +205,11 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
 
   const handleSubmit = async () => {
     if (!formData.name) {
-      await confirm({ title: '입력 확인', message: '규칙 이름을 입력하세요.', confirmText: '확인', showCancelButton: false, confirmButtonType: 'primary' });
+      await confirm({ title: 'Input Required', message: 'Please enter a rule name.', confirmText: 'OK', showCancelButton: false, confirmButtonType: 'primary' });
       return;
     }
     if (!formData.target_id) {
-      await confirm({ title: '입력 확인', message: '타겟을 선택하세요.', confirmText: '확인', showCancelButton: false, confirmButtonType: 'primary' });
+      await confirm({ title: 'Input Required', message: 'Please select a target.', confirmText: 'OK', showCancelButton: false, confirmButtonType: 'primary' });
       return;
     }
 
@@ -233,9 +235,9 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
 
       if (response && response.success) {
         await confirm({
-          title: mode === 'create' ? '생성 완료' : '수정 완료',
-          message: mode === 'create' ? '새로운 알람 규칙이 생성되었습니다.' : '알람 규칙이 수정되었습니다.',
-          confirmText: '확인',
+          title: mode === 'create' ? 'Created' : 'Updated',
+          message: mode === 'create' ? 'New alarm rule created.' : 'Alarm rule updated.',
+          confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'primary'
         });
@@ -243,9 +245,9 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
         onClose();
       } else {
         await confirm({
-          title: '저장 실패',
-          message: `저장에 실패했습니다: ${response?.message || '알 수 없는 오류'}`,
-          confirmText: '확인',
+          title: 'Save Failed',
+          message: `Save failed: ${response?.message || 'Unknown error'}`,
+          confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'danger'
         });
@@ -253,9 +255,9 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
     } catch (error: any) {
       console.error(error);
       await confirm({
-        title: '오류 발생',
-        message: `저장 도중 오류가 발생했습니다: ${error.message || 'Unknown error'}`,
-        confirmText: '확인',
+        title: 'Error',
+        message: `Error occurred while saving: ${error.message || 'Unknown error'}`,
+        confirmText: 'OK',
         showCancelButton: false,
         confirmButtonType: 'danger'
       });
@@ -267,11 +269,11 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
   const generateSentence = () => {
     const targetName = getSelectedTargetName();
     const pills: { text: string; highlight?: boolean }[] = [];
-    pills.push({ text: "만약" });
+    pills.push({ text: "If" });
     pills.push({ text: `[${targetName}]`, highlight: true });
-    pills.push({ text: "의" });
-    pills.push({ text: formData.alarm_type === 'analog' ? '아날로그' : '상태', highlight: true });
-    pills.push({ text: "값이" });
+    pills.push({ text: "of" });
+    pills.push({ text: formData.alarm_type === 'analog' ? 'Analog' : 'Status', highlight: true });
+    pills.push({ text: "value is" });
 
     if (formData.alarm_type === 'analog') {
       const val = formData.high_limit || formData.trigger_condition || "...";
@@ -280,7 +282,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
       pills.push({ text: `[${formData.trigger_condition || '...'}]`, highlight: true });
     }
 
-    pills.push({ text: "이면 알람을 발생합니다." });
+    pills.push({ text: "then trigger alarm." });
     return pills;
   };
 
@@ -303,12 +305,12 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
     <div className="modal-overlay">
       <div className="modal modal-xl">
         <div className="modal-header">
-          <h2 className="modal-title">{mode === 'create' ? '새 알람 규칙 생성:' : `알람 규칙 수정: ${rule?.name}`}</h2>
+          <h2 className="modal-title">{mode === 'create' ? 'Create New Alarm Rule:' : `Edit Alarm Rule: ${rule?.name}`}</h2>
           <button className="close-button" onClick={onClose}><i className="fas fa-times"></i></button>
         </div>
         <div className="modal-content">
           <div className="form-section-header" style={{ padding: '24px 32px 0 32px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--neutral-600)' }}>
-            <i className="fas fa-pencil-alt"></i> 빠른 시작 (프리셋 & 템플릿)
+            <i className="fas fa-pencil-alt"></i> Quick Start (Presets & Templates)
           </div>
           <div className="preset-horizontal-scroll-container" style={{ padding: '12px 32px 24px 32px' }}>
             <div className="preset-horizontal-list">
@@ -328,7 +330,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
               <div className="form-section">
                 <div className="form-group">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <label className="form-label" style={{ marginBottom: 0 }}>규칙 이름 *</label>
+                    <label className="form-label" style={{ marginBottom: 0 }}>Rule Name *</label>
                     <label className="toggle-switch-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
                       <input
                         type="checkbox"
@@ -337,25 +339,25 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                         style={{ accentColor: 'var(--success-500)', transform: 'scale(1.2)' }}
                       />
                       <span style={{ color: formData.is_enabled ? 'var(--success-600)' : 'var(--neutral-400)' }}>
-                        {formData.is_enabled ? '활성화됨' : '비활성'}
+                        {formData.is_enabled ? 'Enabled' : 'Disabled'}
                       </span>
                     </label>
                   </div>
-                  <input type="text" className="form-input" placeholder="알람 규칙 이름을 입력하세요" value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))} />
+                  <input type="text" className="form-input" placeholder="Enter alarm rule name" value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">카테고리</label>
+                  <label className="form-label">Category</label>
                   <select className="form-select" value={formData.category} onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}>
-                    <option value="">선택하세요</option>
+                    <option value="">Select</option>
                     {Object.entries(CATEGORY_DISPLAY_NAMES).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">설명</label>
-                  <textarea className="form-input" placeholder="알람 규칙에 대한 설명을 입력하세요" rows={2} value={formData.description} onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))} />
+                  <label className="form-label">Description</label>
+                  <textarea className="form-input" placeholder="Enter a description for this alarm rule" rows={2} value={formData.description} onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">태그</label>
+                  <label className="form-label">Tags</label>
                   <div className="tags-input" onClick={() => tagInputRef.current?.focus()}>
                     {formData.tags.map(t => (
                       <span key={t} className="tag-item">
@@ -369,7 +371,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                       ref={tagInputRef}
                       type="text"
                       className="tags-input-field"
-                      placeholder="태그 입력 후 Enter 또는 콤마 (예: #핵심)"
+                      placeholder="Enter tag then press Enter or comma"
                       onKeyDown={e => {
                         if (e.key === 'Enter' || e.key === ',') {
                           e.preventDefault();
@@ -385,30 +387,30 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
               {/* --- Section 2: Target Selection --- */}
               <div className="form-section">
                 <div className="form-group">
-                  <label className="form-label">타겟 타입 *</label>
+                  <label className="form-label">Target Type *</label>
                   <div className="logic-pill-container" style={{ display: 'flex', gap: '8px' }}>
                     {['data_point', 'device', 'virtual_point'].map(t => (
                       <button key={t} type="button" className={`logic-pill ${formData.target_type === t ? 'active' : ''}`} onClick={() => handleTargetTypeChange(t)}>
-                        {t === 'data_point' ? '데이터포인트' : t === 'device' ? '디바이스' : '가상포인트'}
+                        {t === 'data_point' ? 'Data Point' : t === 'device' ? 'Device' : 'Virtual Point'}
                       </button>
                     ))}
                   </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">타겟 그룹</label>
-                  <input type="text" className="form-input" placeholder="타겟 그룹 (선택사항)" value={formData.target_group} onChange={e => setFormData(prev => ({ ...prev, target_group: e.target.value }))} />
+                  <label className="form-label">Target Group</label>
+                  <input type="text" className="form-input" placeholder="Target group (optional)" value={formData.target_group} onChange={e => setFormData(prev => ({ ...prev, target_group: e.target.value }))} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">디바이스 선택 *</label>
+                  <label className="form-label">Select Device *</label>
                   <select className="form-select" value={formData.selected_device_id} onChange={e => handleDeviceChange(e.target.value)}>
-                    <option value="">디바이스를 선택하세요</option>
+                    <option value="">Select a device</option>
                     {getDeviceOptions().map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">데이터포인트 선택 *</label>
+                  <label className="form-label">Select Data Point *</label>
                   <select className="form-select" value={formData.target_id} onChange={e => handleTargetChange(e.target.value)} disabled={!formData.selected_device_id}>
-                    <option value="">데이터포인트를 선택하세요</option>
+                    <option value="">Select a data point</option>
                     {getDataPointOptions().map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
@@ -416,12 +418,12 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
 
               {/* --- Section 3: Condition Settings --- */}
               <div className="form-section">
-                <div className="section-title">조건 설정</div>
+                <div className="section-title">Condition Settings</div>
                 <div className="form-group">
                   <div className="logic-pill-container" style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
                     {['analog', 'digital', 'script'].map(t => (
                       <button key={t} type="button" className={`logic-pill ${formData.alarm_type === t ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, alarm_type: t as any }))}>
-                        {t === 'analog' ? '아날로그' : t === 'digital' ? '디지털' : '스크립트'}
+                        {t === 'analog' ? 'Analog' : t === 'digital' ? 'Digital' : 'Script'}
                       </button>
                     ))}
                   </div>
@@ -437,10 +439,10 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                       </div>
                     ))}
                     <div className="form-group">
-                      <label className="form-label" title="알람 해제 히스테리시스. 값이 임계값에서 이 값만큼 더 내려가야 알람이 해제됩니다. 채터링 방지에 필수입니다.">
-                        DEADBAND &nbsp;<i className="fas fa-info-circle" style={{ color: 'var(--primary-400)', fontSize: '11px' }} title="채터링 방지: 임계값 ± Deadband 범위 안에서 값이 오락가락해도 알람이 뜨지 않습니다."></i>
+                      <label className="form-label" title="Alarm clear hysteresis. Value must drop this amount below threshold before alarm clears. Required to prevent chattering.">
+                        DEADBAND &nbsp;<i className="fas fa-info-circle" style={{ color: 'var(--primary-400)', fontSize: '11px' }} title="Chattering prevention: Alarm will not trigger if value fluctuates within threshold ± Deadband range."></i>
                       </label>
-                      <input type="number" className="form-input" placeholder="예: 5.0" value={formData.deadband} onChange={e => setFormData(prev => ({ ...prev, deadband: e.target.value }))} />
+                      <input type="number" className="form-input" placeholder="e.g. 5.0" value={formData.deadband} onChange={e => setFormData(prev => ({ ...prev, deadband: e.target.value }))} />
                     </div>
                     <div className="form-group">
                       <label className="form-label">ROC LIMIT</label>
@@ -450,12 +452,12 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                 )}
                 {formData.alarm_type === 'digital' && (
                   <div className="form-group">
-                    <label className="form-label">트리거 조건</label>
+                    <label className="form-label">Trigger Condition</label>
                     <select className="form-select" value={formData.trigger_condition} onChange={e => setFormData(prev => ({ ...prev, trigger_condition: e.target.value }))}>
-                      <option value="on_true">값이 True일 때 (1)</option>
-                      <option value="on_false">값이 False일 때 (0)</option>
-                      <option value="on_change">상태가 변할 때</option>
-                      <option value="connection_lost">연결 끊김</option>
+                      <option value="on_true">When value is True (1)</option>
+                      <option value="on_false">When value is False (0)</option>
+                      <option value="on_change">On State Change</option>
+                      <option value="connection_lost">Connection Lost</option>
                     </select>
                   </div>
                 )}
@@ -475,7 +477,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
 
               {/* --- Section 4: Notifications & Actions --- */}
               <div className="form-section">
-                <div className="section-title">알림 및 조치</div>
+                <div className="section-title">Notifications & Actions</div>
 
                 {/* Latching - 가장 중요하므로 최상단 강조 박스 */}
                 <div style={{
@@ -493,12 +495,12 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                     />
                     <div>
                       <div style={{ fontWeight: 600, fontSize: '13px', color: formData.is_latched ? 'var(--warning-700, #b45309)' : 'var(--neutral-700)' }}>
-                        발보 잘츠 (Latching)
-                        {formData.is_latched && <span style={{ marginLeft: '8px', fontSize: '11px', background: 'var(--warning-200)', color: 'var(--warning-800)', padding: '1px 6px', borderRadius: '10px' }}>활성화됨</span>}
+                        Latching
+                        {formData.is_latched && <span style={{ marginLeft: '8px', fontSize: '11px', background: 'var(--warning-200)', color: 'var(--warning-800)', padding: '1px 6px', borderRadius: '10px' }}>Enabled</span>}
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginTop: '2px', lineHeight: 1.4 }}>
-                        상태가 정상으로 복귀돼도 운전원이 <strong>직접 확인 버튼</strong>을 눏러야 알람이 해제됩니다.
-                        Critical 알람에 권장합니다.
+                        Even after the state returns to normal, the operator must press <strong>the Acknowledge button</strong> to clear the alarm.
+                        Recommended for Critical alarms.
                       </div>
                     </div>
                   </label>
@@ -506,9 +508,9 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
 
                 <div className="notification-grid">
                   <div className="checkbox-group">
-                    <label className="checkbox-label" title="알람 발생 시 자동으로 확인 처리. 일반적으로 비활성화 권장.">
+                    <label className="checkbox-label" title="Automatically acknowledges alarm on trigger. Disabling is generally recommended.">
                       <input type="checkbox" checked={formData.auto_acknowledge} onChange={e => setFormData(prev => ({ ...prev, auto_acknowledge: e.target.checked }))} />
-                      자동 확인 (Auto Ack)
+                      Auto Acknowledge
                     </label>
                   </div>
                   <div className="checkbox-group">
@@ -560,7 +562,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                 If delete button is here, it stays on the left. */}
           </div>
           <div className="footer-right" style={{ display: 'flex', gap: '12px' }}>
-            <button type="button" className="btn btn-secondary" style={{ minWidth: '100px' }} onClick={onClose}>취소</button>
+            <button type="button" className="btn btn-secondary" style={{ minWidth: '100px' }} onClick={onClose}>{t('cancel', {ns: 'common'})}</button>
             <button type="button" className="btn btn-primary" style={{ minWidth: '100px' }} onClick={handleSubmit}>
               {mode === 'create' ? '생성' : '수정'}
             </button>

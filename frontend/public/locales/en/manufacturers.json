@@ -1,0 +1,112 @@
+{
+    "title": "Manufacturer Management",
+    "description": "Manage hardware manufacturer information. Model detail management is available in the 'Device Master Model' page.",
+    "register": "Register New Manufacturer",
+    "detail": "Detail",
+    "edit": "Edit",
+    "delete": "Delete",
+    "restore": "Restore",
+    "noDescription": "No manufacturer description.",
+    "cardView": "Card View",
+    "listView": "List View",
+    "showDeleted": "Show Deleted Manufacturers",
+    "stats": {
+        "totalManufacturers": "Total Manufacturers",
+        "totalModels": "Total Models",
+        "countries": "Countries"
+    },
+    "filter": {
+        "status": "Status",
+        "all": "All",
+        "active": "Active",
+        "inactive": "Inactive"
+    },
+    "table": {
+        "name": "Manufacturer Name",
+        "description": "Description",
+        "modelCount": "Model Count",
+        "country": "Country",
+        "status": "Status",
+        "deleted": "Deleted"
+    },
+    "badge": {
+        "active": "Active",
+        "inactive": "Inactive",
+        "deleted": "Deleted"
+    },
+    "confirm": {
+        "deleteTitle": "Confirm Manufacturer Deletion",
+        "deleteMsg": "Are you sure you want to delete '{{name}}'? Cannot delete if there are linked models.",
+        "deleteText": "Delete",
+        "deleteSuccessTitle": "Deletion Complete",
+        "deleteSuccessMsg": "Manufacturer has been successfully deleted.",
+        "deleteFailTitle": "Deletion Failed",
+        "restoreTitle": "Confirm Manufacturer Restoration",
+        "restoreMsg": "Are you sure you want to restore '{{name}}'?",
+        "restoreText": "Restore",
+        "restoreSuccessTitle": "Restoration Complete",
+        "restoreSuccessMsg": "Manufacturer has been successfully restored.",
+        "restoreFailTitle": "Restoration Failed",
+        "errorTitle": "Error Occurred"
+    },
+    "loading": "An error occurred while loading manufacturer information.",
+    "modal": {
+        "createTitle": "Register Manufacturer"
+    },
+    "field": {
+        "name": "Manufacturer Name",
+        "description": "Description"
+    },
+    "countries": {
+        "KR": "South Korea",
+        "US": "United States",
+        "DE": "Germany",
+        "JP": "Japan",
+        "CN": "China",
+        "TW": "Taiwan",
+        "FR": "France",
+        "GB": "United Kingdom",
+        "IT": "Italy",
+        "CH": "Switzerland",
+        "VN": "Vietnam",
+        "CA": "Canada",
+        "NL": "Netherlands",
+        "SE": "Sweden",
+        "IL": "Israel",
+        "FI": "Finland",
+        "AT": "Austria",
+        "BE": "Belgium",
+        "DK": "Denmark",
+        "NO": "Norway",
+        "ES": "Spain",
+        "BR": "Brazil",
+        "IN": "India",
+        "MX": "Mexico",
+        "SG": "Singapore",
+        "MY": "Malaysia",
+        "TH": "Thailand",
+        "AU": "Australia",
+        "RU": "Russia",
+        "TR": "Turkey",
+        "CZ": "Czech Republic",
+        "PL": "Poland",
+        "PT": "Portugal",
+        "HU": "Hungary",
+        "IE": "Ireland",
+        "GR": "Greece",
+        "LU": "Luxembourg",
+        "ID": "Indonesia",
+        "PH": "Philippines",
+        "AE": "UAE",
+        "SA": "Saudi Arabia",
+        "ZA": "South Africa"
+    },
+    "labels": {
+        "website": "Website",
+        "logoImageUrl": "Logo Image URL",
+        "failedToLoadManufacturerInformation": "Failed to load manufacturer information.",
+        "selectACountry": "Select a country",
+        "activeStatus": "Active Status",
+        "manufacturerLogo": "Manufacturer Logo"
+    }
+}

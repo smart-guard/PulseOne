@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DeviceApiService, ProtocolInfo } from '../../../api/services/deviceApi';
 import { ProtocolApiService, ProtocolInstance } from '../../../api/services/protocolApi';
 import { GroupApiService, DeviceGroup } from '../../../api/services/groupApi';
@@ -24,6 +25,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   onUpdateSettings,
   showModal
 }) => {
+  const { t } = useTranslation(['devices', 'common']);
   // ========================================================================
   // 상태 관리
   // ========================================================================
@@ -365,19 +367,19 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   ];
 
   /**
-   * 연결 테스트
+   * Connection Test
    */
   const handleTestConnection = async () => {
     if (!device?.id) {
       if (showModal) {
         showModal({
           type: 'error',
-          title: '연결 테스트 불가',
-          message: '저장된 디바이스만 연결 테스트가 가능합니다.',
+          title: t('devices:basicInfo.testUnavailable'),
+          message: t('devices:basicInfo.testUnavailableMsg'),
           onConfirm: () => { }
         });
       } else {
-        alert('저장된 디바이스만 연결 테스트가 가능합니다.');
+        alert(t('devices:basicInfo.testUnavailableMsg'));
       }
       return;
     }
@@ -392,49 +394,49 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
           if (showModal) {
             showModal({
               type: 'success',
-              title: '연결 성공',
-              message: `✅ 실제 장비와 정상적으로 통신되었습니다.\n측정된 응답 시간: ${result.response_time_ms}ms`,
+              title: t('devices:basicInfo.testSuccess'),
+              message: t('devices:basicInfo.testSuccessMsg', { ms: result.response_time_ms }),
               onConfirm: () => { }
             });
           } else {
-            alert(`✅ 연결 성공!\n응답시간: ${result.response_time_ms}ms`);
+            alert(`✅ Connection OK!\nResponse time: ${result.response_time_ms}ms`);
           }
         } else {
           if (showModal) {
             showModal({
               type: 'error',
-              title: '연결 실패',
-              message: `❌ 하드웨어와 연결할 수 없습니다.\n오류 원인: ${result.error_message}`,
+              title: t('devices:basicInfo.testFailed'),
+              message: t('devices:basicInfo.testFailedMsg', { error: result.error_message }),
               onConfirm: () => { }
             });
           } else {
-            alert(`❌ 연결 실패!\n오류: ${result.error_message}`);
+            alert(`❌ Connection failed!\nError: ${result.error_message}`);
           }
         }
       } else {
         if (showModal) {
           showModal({
             type: 'error',
-            title: '테스트 실패',
-            message: `❌ 서버 시스템 오류: ${response.error}`,
+            title: t('devices:basicInfo.testFailed'),
+            message: `❌ Server error: ${response.error}`,
             onConfirm: () => { }
           });
         } else {
-          alert(`❌ 테스트 실패: ${response.error}`);
+          alert(`❌ Test failed: ${response.error}`);
         }
       }
     } catch (error) {
-      console.error('연결 테스트 실패:', error);
+      console.error('Connection Test 실패:', error);
       const errMsg = error instanceof Error ? error.message : 'Unknown error';
       if (showModal) {
         showModal({
           type: 'error',
-          title: '연결 테스트 오류',
-          message: `❌ 네트워크 또는 서버 통신에 문제가 발생했습니다.\n${errMsg}`,
+          title: t('devices:basicInfo.testFailed'),
+          message: `❌ Network/server error.\n${errMsg}`,
           onConfirm: () => { }
         });
       } else {
-        alert(`❌ 연결 테스트 오류: ${errMsg}`);
+        alert(`❌ Connection test error: ${errMsg}`);
       }
     } finally {
       setIsTestingConnection(false);
@@ -653,7 +655,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
       case 'MODBUS_TCP':
         return '192.168.1.100:502';
       case 'MODBUS_RTU':
-        return '/dev/ttyUSB0 또는 COM1';
+        return '/dev/ttyUSB0 or COM1';
       case 'MQTT':
         return 'mqtt://192.168.1.100:1883';
       case 'BACNET':
@@ -668,7 +670,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
       case 'SNMP':
         return '192.168.1.100:161';
       default:
-        return '연결 주소를 입력하세요';
+        return t('devices:basicInfo.connectionAddrPlaceholder');
     }
   };
 
@@ -683,12 +685,12 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
 
         {/* 1. 기본 정보 */}
         <div className="bi-card">
-          <h3>📋 기본 정보</h3>
+          <h3>📋 {t('devices:basicInfo.title')}</h3>
           <div className="bi-form-stack">
             {/* 시스템 관리자용 테넌트 선택 (목록이 있을 때만 표시) */}
             {availableTenants.length > 0 && (
               <div className="bi-field">
-                <label>고객사 (Tenant)</label>
+                <label>{t('devices:basicInfo.tenant')}</label>
                 {mode === 'view' ? (
                   <div className="form-val">{availableTenants.find(t => t.id === displayData?.tenant_id)?.company_name || displayData?.tenant_id || 'N/A'}</div>
                 ) : (
@@ -701,7 +703,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                       onUpdateField('site_id', ''); // 테넌트 변경 시 사이트 초기화
                     }}
                   >
-                    <option value="">고객사를 선택하세요</option>
+                    <option value="">{t('devices:basicInfo.selectTenant')}</option>
                     {availableTenants.map(t => (
                       <option key={t.id} value={t.id}>{t.company_name}</option>
                     ))}
@@ -710,7 +712,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
               </div>
             )}
             <div className="bi-field">
-              <label>디바이스명 *</label>
+              <label>{t('devices:basicInfo.deviceName')}</label>
               {mode === 'view' ? (
                 <div className="form-val">{displayData?.name || 'N/A'} (ID: {displayData?.id})</div>
               ) : (
@@ -719,14 +721,14 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   className="bi-input"
                   value={editData?.name || ''}
                   onChange={(e) => onUpdateField('name', e.target.value)}
-                  placeholder="디바이스명"
+                  placeholder={t('devices:basicInfo.deviceNamePlaceholder')}
                   required
                 />
               )}
             </div>
 
             <div className="bi-field">
-              <label>설치 사이트 *</label>
+              <label>{t('devices:basicInfo.installSite')}</label>
               {mode === 'view' ? (
                 <div className="form-val">{displayData?.site_name || displayData?.site_id || 'N/A'}</div>
               ) : (
@@ -736,17 +738,17 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   onChange={(e) => onUpdateField('site_id', parseInt(e.target.value))}
                   required
                 >
-                  <option value="">사이트를 선택하세요</option>
+                  <option value="">{t('devices:basicInfo.selectSite')}</option>
                   {availableSites.map(site => (
                     <option key={site.id} value={site.id}>{site.name}</option>
                   ))}
-                  {isLoadingSites && <option disabled>로딩 중...</option>}
+                  {isLoadingSites && <option disabled>{t('devices:basicInfo.loadingOptions')}</option>}
                 </select>
               )}
             </div>
 
             <div className="bi-field">
-              <label>디바이스 타입</label>
+              <label>{t('devices:basicInfo.deviceType')}</label>
               {mode === 'view' ? (
                 <div className="form-val">{displayData?.device_type || 'N/A'}</div>
               ) : (
@@ -757,18 +759,18 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                 >
                   <option value="PLC">PLC</option>
                   <option value="HMI">HMI</option>
-                  <option value="SENSOR">센서</option>
-                  <option value="ACTUATOR">액추에이터</option>
-                  <option value="METER">미터</option>
-                  <option value="CONTROLLER">컨트롤러</option>
-                  <option value="GATEWAY">게이트웨이</option>
-                  <option value="OTHER">기타</option>
+                  <option value="SENSOR">Sensor</option>
+                  <option value="ACTUATOR">Actuator</option>
+                  <option value="METER">Meter</option>
+                  <option value="CONTROLLER">Controller</option>
+                  <option value="GATEWAY">Gateway</option>
+                  <option value="OTHER">Other</option>
                 </select>
               )}
             </div>
 
             <div className="bi-field">
-              <label>설명</label>
+              <label>{t('devices:basicInfo.description')}</label>
               {mode === 'view' ? (
                 <div className="form-val">{displayData?.description || 'N/A'}</div>
               ) : (
@@ -776,14 +778,14 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   className="bi-input"
                   value={editData?.description || ''}
                   onChange={(e) => onUpdateField('description', e.target.value)}
-                  placeholder="설명"
+                  placeholder={t('devices:basicInfo.descriptionPlaceholder')}
                   rows={2}
                 />
               )}
             </div>
 
             <div className="bi-field">
-              <label>장치 그룹 (다중 선택 가능)</label>
+              <label>{t('devices:basicInfo.deviceGroup')}</label>
               {mode === 'view' ? (
                 <div className="bi-tag-container">
                   {displayData?.groups && displayData.groups.length > 0 ? (
@@ -793,7 +795,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                       </span>
                     ))
                   ) : (
-                    <div className="form-val">그룹 없음</div>
+                    <div className="form-val">{t('devices:basicInfo.noGroup')}</div>
                   )}
                 </div>
               ) : (
@@ -825,7 +827,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                         );
                       })
                     ) : (
-                      <div className="bi-no-data">사용 가능한 그룹이 없습니다.</div>
+                      <div className="bi-no-data">{t('devices:basicInfo.noGroup')}</div>
                     )}
                   </div>
                 </div>
@@ -836,10 +838,10 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
 
         {/* 2. 제조사 정보 */}
         <div className="bi-card">
-          <h3>🏭 제조사 정보</h3>
+          <h3>🏭 {t('devices:basicInfo.manufacturer')}</h3>
           <div className="bi-form-stack">
             <div className="bi-field">
-              <label>제조사</label>
+              <label>{t('devices:basicInfo.manufacturer')}</label>
               {mode === 'view' ? (
                 <div className="form-val">{displayData?.manufacturer || 'N/A'}</div>
               ) : (
@@ -853,20 +855,20 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                     onUpdateField('model', '');
                   }}
                 >
-                  <option value="">제조사를 선택하세요</option>
+                  <option value="">{t('devices:basicInfo.selectManufacturer')}</option>
                   {availableManufacturers.map(m => (
                     <option key={m.id} value={m.name}>{m.name}</option>
                   ))}
                   {/* 기존에 목록에 없는 수동 입력값 지원 */}
                   {editData?.manufacturer && !availableManufacturers.find(m => m.name === editData.manufacturer) && (
-                    <option value={editData.manufacturer}>{editData.manufacturer} (수동 입력됨)</option>
+                    <option value={editData.manufacturer}>{editData.manufacturer} (manual)</option>
                   )}
                 </select>
               )}
             </div>
 
             <div className="bi-field">
-              <label>모델명</label>
+              <label>{t('devices:basicInfo.model')}</label>
               {mode === 'view' ? (
                 <div className="form-val">{displayData?.model || 'N/A'}</div>
               ) : (
@@ -875,13 +877,13 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   className="bi-input"
                   value={editData?.model || ''}
                   onChange={(e) => onUpdateField('model', e.target.value)}
-                  placeholder="모델명 직접 입력"
+                  placeholder={t('devices:basicInfo.selectModel')}
                 />
               )}
             </div>
 
             <div className="bi-field">
-              <label>시리얼 번호</label>
+              <label>Serial No.</label>
               {mode === 'view' ? (
                 <div className="form-val">{displayData?.serial_number || 'N/A'}</div>
               ) : (
@@ -890,13 +892,13 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   className="bi-input"
                   value={editData?.serial_number || ''}
                   onChange={(e) => onUpdateField('serial_number', e.target.value)}
-                  placeholder="시리얼 번호"
+                  placeholder="Serial Number"
                 />
               )}
             </div>
 
             <div className="bi-field">
-              <label>태그 (쉼표로 구분)</label>
+              <label>{t('devices:basicInfo.tags')}</label>
               {mode === 'view' ? (
                 <div className="bi-tag-container">
                   {Array.isArray(displayData?.tags) ? (
@@ -920,7 +922,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   className="bi-input"
                   value={Array.isArray(editData?.tags) ? editData.tags.join(', ') : editData?.tags || ''}
                   onChange={(e) => onUpdateField('tags', e.target.value.split(',').map(s => s.trim()).filter(s => s))}
-                  placeholder="예: 센서, 1층, 중요"
+                  placeholder={t('devices:basicInfo.tagsPlaceholder')}
                 />
               )}
             </div>
@@ -929,11 +931,11 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
 
         {/* 3. 운영 설정 */}
         <div className="bi-card">
-          <h3>⚙️ 운영 설정</h3>
+          <h3>⚙️ Operational Settings</h3>
           <div className="bi-form-stack">
             <div className="bi-field-row">
               <div className="bi-field flex-1">
-                <label>폴링 (ms)</label>
+                <label>Polling (ms)</label>
                 {mode === 'view' ? (
                   <div className="form-val">{displayData?.polling_interval || 'N/A'}</div>
                 ) : (
@@ -951,7 +953,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                 )}
               </div>
               <div className="bi-field flex-1">
-                <label>타임아웃</label>
+                <label>Timeout</label>
                 {mode === 'view' ? (
                   <div className="form-val">{displayData?.timeout || 'N/A'}</div>
                 ) : (
@@ -971,7 +973,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
             </div>
 
             <div className="bi-field">
-              <label>재시도 횟수</label>
+              <label>Retry Count</label>
               <div className="flex-row gap-2">
                 {mode === 'view' ? (
                   <div className="form-val">{displayData?.retry_count || 'N/A'}</div>
@@ -993,10 +995,10 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
             </div>
 
             <div className="bi-field">
-              <label>활성화</label>
+              <label>Enabled</label>
               {mode === 'view' ? (
                 <span className={`status-badge-left ${displayData?.is_enabled ? 'enabled' : 'disabled'}`}>
-                  {displayData?.is_enabled ? '활성화됨' : '비활성화됨'}
+                  {displayData?.is_enabled ? 'Enabled' : 'Disabled'}
                 </span>
               ) : (
                 <label className="switch">
@@ -1011,7 +1013,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
             </div>
 
             <div className="bi-field">
-              <label>담당 콜렉터 (Edge Server) *</label>
+              <label>Assigned Collector (Edge Server) *</label>
               {mode === 'view' ? (
                 <div className="form-val">
                   {availableCollectors.find(c => c.id === displayData?.edge_server_id)?.name || `ID: ${displayData?.edge_server_id || '0 (Default)'}`}
@@ -1023,7 +1025,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   onChange={(e) => onUpdateField('edge_server_id', parseInt(e.target.value))}
                   required
                 >
-                  <option value={0}>기본 콜렉터 (ID: 0)</option>
+                  <option value={0}>Default Collector (ID: 0)</option>
                   {availableCollectors.map(collector => (
                     <option key={collector.id} value={collector.id}>
                       {collector.name} ({collector.host})
@@ -1042,11 +1044,11 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
 
         {/* 4. 네트워크 설정 (Moved here) */}
         <div className="bi-card">
-          <h3>🌐 네트워크 설정</h3>
+          <h3>🌐 {t('devices:basicInfo.ipAddress')}</h3>
 
           <div className="bi-form-stack">
             <div className="bi-field">
-              <label>프로토콜 *</label>
+              <label>{t('devices:basicInfo.protocol')}</label>
               {mode === 'view' ? (
                 <div className="form-val">
                   {getProtocolDisplayName(displayData?.protocol_type, displayData?.protocol_id)}
@@ -1059,7 +1061,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   disabled={isLoadingProtocols}
                 >
                   {isLoadingProtocols ? (
-                    <option>로딩 중...</option>
+                    <option>{t('devices:basicInfo.loadingOptions')}</option>
                   ) : availableProtocols.length > 0 ? (
                     availableProtocols.map(protocol => (
                       <option key={protocol.id} value={protocol.id}>
@@ -1067,7 +1069,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                       </option>
                     ))
                   ) : (
-                    <option>프로토콜 없음</option>
+                    <option>No protocols</option>
                   )}
                 </select>
               )}
@@ -1076,7 +1078,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
             {/* 🔥 NEW: 프로토콜 인스턴스 선택 (인스턴스가 존재할 때만 표시) */}
             {availableInstances.length > 0 && (
               <div className="bi-field">
-                <label>연결 인스턴스 (Broker/VHost)</label>
+                <label>{t('devices:basicInfo.protocolInstance')}</label>
                 {mode === 'view' ? (
                   <div className="form-val">
                     {editData?.instance_name ||
@@ -1098,7 +1100,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                     disabled={isLoadingInstances}
                     style={isAutoMatched ? { borderColor: 'var(--primary-400)', backgroundColor: 'var(--primary-50)' } : {}}
                   >
-                    <option value="">자동 할당 / 기본값</option>
+                    <option value="">{t('devices:basicInfo.autoMatched')}</option>
                     {availableInstances.map(inst => (
                       <option key={inst.id} value={inst.id}>
                         {inst.instance_name} {inst.vhost ? `(${inst.vhost})` : ''}
@@ -1108,18 +1110,16 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                 )}
                 {mode !== 'view' && (
                   <div className="hint-text" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: isAutoMatched ? 'var(--primary-600)' : 'inherit' }}>
-                    {isAutoMatched ? (
-                      <><i className="fas fa-magic" style={{ fontSize: '10px' }}></i> 엔드포인트 정보를 바탕으로 인스턴스가 자동 매칭되었습니다.</>
-                    ) : (
-                      '특정 브로커나 연결 인스턴스를 지정하려면 선택하세요.'
-                    )}
+                    {isAutoMatched
+                      ? <><i className="fas fa-magic" style={{ fontSize: '10px' }}></i> {t('devices:basicInfo.autoMatched')}</>
+                      : t('devices:basicInfo.selectInstance')}
                   </div>
                 )}
               </div>
             )}
 
             <div className="bi-field">
-              <label>{isRtuDevice ? '포트 *' : '엔드포인트 *'}</label>
+              <label>{isRtuDevice ? 'Port *' : t('devices:basicInfo.ipAddress')}</label>
               {mode === 'view' ? (
                 <div className="form-val text-break">{displayData?.endpoint || 'N/A'}</div>
               ) : (
@@ -1179,7 +1179,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                         required
                       />
                       <div className="hint-text">
-                        데이터 및 파일 수신을 위한 <strong>최상위 토픽</strong>입니다. 쉼표(,)로 구분하여 여러 토픽을 지정할 수 있습니다.
+                        The <strong>top-level topic</strong> for receiving data and files. Separate multiple topics with commas (,).
                       </div>
                     </>
                   )}
@@ -1217,12 +1217,12 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
 
             {mode === 'view' && displayData?.protocol && displayData.protocol.default_port && (
               <div className="bi-field">
-                <label>기본 포트</label>
+                <label>Default Port</label>
                 <div className="form-val">{displayData.protocol.default_port}</div>
               </div>
             )}
 
-            {/* 연결 테스트 버튼 (View 모드) */}
+            {/* Connection Test 버튼 (View 모드) */}
             {mode === 'view' && device?.id && (
               <div className="bi-field" style={{ marginTop: 'auto' }}>
                 <button
@@ -1236,7 +1236,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   ) : (
                     <i className="fas fa-plug"></i>
                   )}
-                  {isTestingConnection ? '...' : '테스트'}
+                  {isTestingConnection ? '...' : t('devices:basicInfo.connectionTest')}
                 </button>
               </div>
             )}
@@ -1250,20 +1250,20 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
       {isRtuDevice && mode !== 'view' && (
         <div className="bi-card full-width">
           <div className="bi-rtu-header">
-            <i className="fas fa-microchip"></i> RTU 상세 설정
+            <i className="fas fa-microchip"></i> {t('devices:basicInfo.rtuSettings')}
           </div>
 
           <div className="bi-grid-row"> {/* Use grid for RTU params too */}
             <div className="bi-form-stack">
               <div className="bi-field">
-                <label>역할</label>
+                <label>{t('devices:basicInfo.deviceRole')}</label>
                 <select
                   className="bi-select"
                   value={rtuConfig.device_role || 'master'}
                   onChange={(e) => handleDeviceRoleChange(e.target.value)}
                 >
-                  <option value="master">마스터</option>
-                  <option value="slave">슬래이브</option>
+                  <option value="master">{t('devices:basicInfo.master')}</option>
+                  <option value="slave">{t('devices:basicInfo.slave')}</option>
                 </select>
               </div>
               {rtuConfig.device_role === 'slave' && (
@@ -1338,7 +1338,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
           </div>
           {isSlaveIdDuplicate && (
             <div className="bi-error-banner" style={{ marginTop: '10px', padding: '8px', background: 'rgba(255, 0, 0, 0.1)', color: '#d32f2f', borderRadius: '4px', fontSize: '0.85rem' }}>
-              <i className="fas fa-exclamation-triangle"></i> 동일 사이트 및 엔드포인트에 이미 같은 Slave ID가 존재합니다.
+              <i className="fas fa-exclamation-triangle"></i> {t('devices:basicInfo.slaveIdDuplicate')}
             </div>
           )}
         </div>
@@ -1349,10 +1349,10 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
       {/* 5. 고급 데이터 (엔지니어링 메타데이터) */}
       {(mode === 'edit' || mode === 'create' || (mode === 'view' && (Object.keys(displayData?.metadata || {}).length > 0 || Object.keys(displayData?.custom_fields || {}).length > 0))) && (
         <div className="bi-card full-width" style={{ marginTop: '16px' }}>
-          <h3><i className="fas fa-database"></i> 확장 엔지니어링 데이터</h3>
+          <h3><i className="fas fa-database"></i> {t('devices:basicInfo.metadata')}</h3>
           <div className="bi-grid-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
             <div className="bi-field">
-              <label>시스템 메타데이터 (JSON)</label>
+              <label>{t('devices:basicInfo.metadata')}</label>
               {mode === 'view' ? (
                 <pre className="json-preview">{JSON.stringify(displayData?.metadata || {}, null, 2)}</pre>
               ) : (
@@ -1372,7 +1372,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
               )}
             </div>
             <div className="bi-field">
-              <label>사용자 정의 필드 (JSON)</label>
+              <label>{t('devices:basicInfo.customFields')}</label>
               {mode === 'view' ? (
                 <pre className="json-preview">{JSON.stringify(displayData?.custom_fields || {}, null, 2)}</pre>
               ) : (
@@ -1398,19 +1398,19 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
       {/* 5. 추가 정보 (View Mode Only) */}
       {mode === 'view' && (
         <div className="bi-card full-width">
-          <h3>ℹ️ 추가 정보</h3>
+          <h3>ℹ️ Additional Info</h3>
           <div className="bi-field-row">
             <div className="bi-field">
-              <label>생성: </label>
+              <label>Created: </label>
               <span className="form-val-inline">{displayData?.created_at ? new Date(displayData.created_at).toLocaleString() : '-'}</span>
             </div>
             <div className="bi-field">
-              <label>수정: </label>
+              <label>Modified: </label>
               <span className="form-val-inline">{displayData?.updated_at ? new Date(displayData.updated_at).toLocaleString() : '-'}</span>
             </div>
             {displayData?.installation_date && (
               <div className="bi-field">
-                <label>설치: </label>
+                <label>Installed: </label>
                 <span className="form-val-inline">{new Date(displayData.installation_date).toLocaleDateString()}</span>
               </div>
             )}
@@ -1751,7 +1751,7 @@ const TopicEditorModal: React.FC<{
         {/* Body */}
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="hint-text" style={{ marginBottom: '8px', color: '#666' }}>
-            각 토픽을 <strong>새로운 줄(Enter)</strong>에 입력하세요. 저장 시 자동으로 쉼표(,)로 구분되어 처리됩니다.
+            Enter each topic on a <strong>new line (Enter)</strong>. Topics will be automatically separated by commas when saved.
           </div>
           <textarea
             value={value}

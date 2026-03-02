@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { ProtocolApiService, ProtocolInstance, ApiResponse } from '../../api/services/protocolApi';
 import { useConfirmContext } from '../common/ConfirmProvider';
@@ -41,6 +42,7 @@ interface ProtocolInstanceManagerProps {
 const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ protocolId }) => {
     const navigate = useNavigate();
     const [instances, setInstances] = useState<ProtocolInstance[]>([]);
+    const { t } = useTranslation(['protocols', 'common']);
     const [pagination, setPagination] = useState({
         current: 1,
         pageSize: 10,
@@ -162,22 +164,22 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
 
         const changes: string[] = [];
         if (editingInstance && originalFormData) {
-            if (formData.instance_name !== originalFormData.instance_name) changes.push(`이름: ${originalFormData.instance_name} ➔ ${formData.instance_name}`);
+            if (formData.instance_name !== originalFormData.instance_name) changes.push(`Name: ${originalFormData.instance_name} ➔ ${formData.instance_name}`);
             if (formData.vhost !== originalFormData.vhost) changes.push(`Vhost: ${originalFormData.vhost} ➔ ${formData.vhost}`);
-            if (formData.description !== originalFormData.description) changes.push(`설명 수정됨`);
-            if (formData.is_enabled !== originalFormData.is_enabled) changes.push(`활성화 상태: ${originalFormData.is_enabled ? 'ON' : 'OFF'} ➔ ${formData.is_enabled ? 'ON' : 'OFF'}`);
+            if (formData.description !== originalFormData.description) changes.push(`Description changed`);
+            if (formData.is_enabled !== originalFormData.is_enabled) changes.push(`Enabled state: ${originalFormData.is_enabled ? 'ON' : 'OFF'} ➔ ${formData.is_enabled ? 'ON' : 'OFF'}`);
             if (formData.tenant_id !== originalFormData.tenant_id) {
                 const oldTenant = tenants.find(t => t.id === originalFormData.tenant_id)?.name || 'Shared';
                 const newTenant = tenants.find(t => t.id === formData.tenant_id)?.name || 'Shared';
-                changes.push(`소유 테넌트: ${oldTenant} ➔ ${newTenant}`);
+                changes.push(`Owner Tenant: ${oldTenant} ➔ ${newTenant}`);
             }
-            if (formData.broker_type !== originalFormData.broker_type) changes.push(`제어 모드: ${originalFormData.broker_type} ➔ ${formData.broker_type}`);
+            if (formData.broker_type !== originalFormData.broker_type) changes.push(`Control mode: ${originalFormData.broker_type} ➔ ${formData.broker_type}`);
 
             if (changes.length === 0) {
                 await confirm({
-                    title: '알림',
-                    message: '변경사항이 없습니다.',
-                    confirmText: '확인',
+                    title: 'Notice',
+                    message: 'No changes detected.',
+                    confirmText: 'OK',
                     confirmButtonType: 'primary',
                     showCancelButton: false
                 });
@@ -185,18 +187,18 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
             }
 
             const ok = await confirm({
-                title: '설정 수정 확인',
-                message: `다음 변경사항을 저장하시겠습니까?\n\n${changes.map(c => `• ${c}`).join('\n')}`,
-                confirmText: '수정 완료',
+                title: 'Confirm Settings Update',
+                message: `Save the following changes?\n\n${changes.map(c => `• ${c}`).join('\n')}`,
+                confirmText: 'Save Changes',
                 confirmButtonType: 'primary'
             });
             if (!ok) return;
         } else {
             // New creation confirmation
             const ok = await confirm({
-                title: '인스턴스 추가 확인',
-                message: `새로운 인스턴스 [${formData.instance_name}]을(를) 추가하시겠습니까?`,
-                confirmText: '추가하기',
+                title: 'Confirm Add Instance',
+                message: `Add new instance [${formData.instance_name}]?`,
+                confirmText: 'Add',
                 confirmButtonType: 'primary'
             });
             if (!ok) return;
@@ -213,9 +215,9 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
 
             if (response.success) {
                 await confirm({
-                    title: '완료',
-                    message: editingInstance ? '인스턴스 설정이 수정되었습니다.' : '새로운 인스턴스가 추가되었습니다.',
-                    confirmText: '확인',
+                    title: 'Done',
+                    message: editingInstance ? 'Instance settings updated.' : 'New instance added.',
+                    confirmText: 'OK',
                     confirmButtonType: 'primary',
                     showCancelButton: false
                 });
@@ -235,10 +237,10 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
 
     const handleDelete = async (id: number) => {
         const confirmed = await confirm({
-            title: '인스턴스 삭제',
-            message: '정말로 이 인스턴스를 삭제하시겠습니까? 관련 연결이 실시간으로 끊어집니다.',
-            confirmText: '삭제',
-            cancelText: '취소',
+            title: 'Delete Instance',
+            message: 'Delete this instance? All related connections will be terminated immediately.',
+            confirmText: 'Delete',
+            cancelText: 'Cancel',
             confirmButtonType: 'danger'
         });
 
@@ -305,7 +307,7 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                     disabled={current === 1}
                     style={{ padding: '6px 10px', border: '1px solid var(--neutral-300)', borderRadius: '4px', background: 'white', cursor: 'pointer' }}
                 >
-                    이전
+                    Previous
                 </button>
                 <span style={{ padding: '6px 10px', border: '1px solid var(--neutral-300)', borderRadius: '4px', background: 'var(--primary-50)', color: 'var(--primary-700)', fontWeight: 600 }}>
                     {current} / {totalPages}
@@ -315,7 +317,7 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                     disabled={current === totalPages}
                     style={{ padding: '6px 10px', border: '1px solid var(--neutral-300)', borderRadius: '4px', background: 'white', cursor: 'pointer' }}
                 >
-                    다음
+                    Next
                 </button>
                 {showSizeChanger && (
                     <select
@@ -323,9 +325,9 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                         onChange={handlePageSizeChange}
                         style={{ padding: '6px 10px', border: '1px solid var(--neutral-300)', borderRadius: '4px', background: 'white', cursor: 'pointer' }}
                     >
-                        <option value={10}>10 / 페이지</option>
-                        <option value={20}>20 / 페이지</option>
-                        <option value={50}>50 / 페이지</option>
+                        <option value={10}>10 / page</option>
+                        <option value={20}>20 / page</option>
+                        <option value={50}>50 / page</option>
                     </select>
                 )}
             </div>
@@ -338,9 +340,9 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
             {/* Header Section */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <div>
-                    <h3 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>브로커 인스턴스 관리</h3>
+                    <h3 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>{t('labels.brokerInstanceManagement', {ns: 'protocols'})}</h3>
                     <p style={{ color: 'var(--neutral-500)', fontSize: '13px', margin: '4px 0 0 0' }}>
-                        멀티 테넌트 및 격리된 보안 환경을 위한 가상 호스트(vhost)별 연결을 관리합니다.
+                        Manages per-vhost connections for multi-tenant and isolated security environments.
                     </p>
                 </div>
                 {!isAdding && !editingInstance && (
@@ -360,7 +362,7 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                             gap: '8px'
                         }}
                     >
-                        <i className="fas fa-plus"></i> 인스턴스 추가
+                        <i className="fas fa-plus"></i> Add Instance
                     </button>
                 )}
             </div>
@@ -371,14 +373,14 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                     {/* Editor Header with Tenant Selector */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                         <h4 style={{ margin: 0, fontSize: '16px' }}>
-                            {editingInstance ? '인스턴스 설정 수정' : '새 인스턴스 추가'}
+                            {editingInstance ? 'Edit Instance Settings' : 'Add New Instance'}
                         </h4>
 
                         {/* 🔥 System Admin Only: Tenant Selector in Header */}
                         {userRole === 'system_admin' && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--primary-700)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <i className="fas fa-building"></i> 소유 테넌트
+                                    <i className="fas fa-building"></i> Owner Tenant
                                 </label>
                                 <select
                                     value={formData.tenant_id || ''}
@@ -393,7 +395,7 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                                         background: '#fff'
                                     }}
                                 >
-                                    <option value="">공용 (Global Shared)</option>
+                                    <option value="">{t('labels.publicGlobalShared', {ns: 'protocols'})}</option>
                                     {tenants.map(t => (
                                         <option key={t.id} value={t.id}>{t.name}</option>
                                     ))}
@@ -405,7 +407,7 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
                         <div className="form-group">
-                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700 }}>브로커 연결 모드</label>
+                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700 }}>{t('labels.brokerConnectionMode', {ns: 'protocols'})}</label>
                             <div style={{ display: 'flex', gap: '20px', padding: '10px 0' }}>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
                                     <input
@@ -414,7 +416,7 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                                         checked={formData.broker_type === 'INTERNAL'}
                                         onChange={() => setFormData({ ...formData, broker_type: 'INTERNAL' })}
                                     />
-                                    <strong>Internal</strong> (PulseOne 관리형)
+                                    <strong>{t('labels.internal', {ns: 'protocols'})}</strong> (PulseOne Managed)
                                 </label>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
                                     <input
@@ -423,24 +425,24 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                                         checked={formData.broker_type === 'EXTERNAL'}
                                         onChange={() => setFormData({ ...formData, broker_type: 'EXTERNAL' })}
                                     />
-                                    <strong>External</strong> (외부 표준 브로커)
+                                    <strong>{t('labels.external', {ns: 'protocols'})}</strong> (External Standard Broker)
                                 </label>
                             </div>
                             <div style={{ fontSize: '12px', color: 'var(--neutral-500)', marginTop: '-8px' }}>
                                 {formData.broker_type === 'INTERNAL'
-                                    ? 'PulseOne 내부 RabbitMQ 브로커를 사용하며 Vhost와 API Key로 격리됩니다.'
-                                    : 'AWS IoT, Azure EventGrid 또는 타사 MQTT 브로커와 직접 연동합니다.'}
+                                    ? 'Uses PulseOne internal RabbitMQ broker, isolated by Vhost and API Key.'
+                                    : 'Integrate directly with AWS IoT, Azure EventGrid, or third-party MQTT brokers.'}
                             </div>
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                             <div className="form-group">
-                                <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700 }}>인스턴스 이름</label>
+                                <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700 }}>{t('labels.instanceName', {ns: 'protocols'})}</label>
                                 <input
                                     type="text"
                                     value={formData.instance_name}
                                     onChange={e => setFormData({ ...formData, instance_name: e.target.value })}
-                                    placeholder="예: 고객사-A-전용"
+                                    placeholder="e.g. Client-A-Dedicated"
                                     required
                                     style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--neutral-300)' }}
                                 />
@@ -448,12 +450,12 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
 
                             {formData.broker_type === 'INTERNAL' && (
                                 <div className="form-group">
-                                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700 }}>Vhost (Virtual Host)</label>
+                                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700 }}>{t('labels.vhostVirtualHost', {ns: 'protocols'})}</label>
                                     <input
                                         type="text"
                                         value={formData.vhost}
                                         onChange={e => setFormData({ ...formData, vhost: e.target.value })}
-                                        placeholder="예: /client-a"
+                                        placeholder="e.g. /client-a"
                                         required
                                         style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--neutral-300)' }}
                                     />
@@ -462,11 +464,11 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                         </div>
 
                         <div className="form-group">
-                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700 }}>설명</label>
+                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700 }}>{t('field.description', {ns: 'protocols'})}</label>
                             <textarea
                                 value={formData.description}
                                 onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                placeholder="인스턴스 용도 및 테넌트 식별 정보"
+                                placeholder="Instance purpose and tenant identifier"
                                 style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--neutral-300)', minHeight: '80px', resize: 'vertical' }}
                             />
                         </div>
@@ -478,7 +480,7 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                                 checked={formData.is_enabled}
                                 onChange={e => setFormData({ ...formData, is_enabled: e.target.checked })}
                             />
-                            <label htmlFor="is_enabled" style={{ fontSize: '14px' }}>인스턴스 활성화 (즉시 연결 시도)</label>
+                            <label htmlFor="is_enabled" style={{ fontSize: '14px' }}>{t('labels.enableInstanceConnectImmediately', {ns: 'protocols'})}</label>
                         </div>
                         <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                             <button
@@ -487,7 +489,7 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                                 disabled={loading}
                                 style={{ padding: '10px 24px', background: 'var(--primary-600)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
                             >
-                                {loading ? '저장 중...' : '설정 저장'}
+                                {loading ? 'Saving...' : 'Save Settings'}
                             </button>
                             <button
                                 type="button"
@@ -507,7 +509,7 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                 ) : instances.length === 0 ? (
                     <div style={{ padding: '40px', textAlign: 'center', color: 'var(--neutral-400)', background: 'var(--neutral-50)', borderRadius: '12px', border: '1px dashed var(--neutral-300)' }}>
                         <i className="fas fa-info-circle" style={{ display: 'block', fontSize: '24px', marginBottom: '12px' }}></i>
-                        등록된 인스턴스가 없습니다. '인스턴스 추가' 버튼을 눌러 새 연결을 만드세요.
+                        등록된 인스턴스가 없습니다. 'Add Instance' 버튼을 눌러 새 연결을 만드세요.
                     </div>
                 ) : (
                     <>
@@ -518,8 +520,8 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                                         <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>상태</th>
                                         <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>모드</th>
                                         <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>인스턴스명</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>소유 테넌트</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>API Key</th>
+                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>{t('labels.ownerTenant', {ns: 'protocols'})}</th>
+                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>{t('labels.apiKey', {ns: 'protocols'})}</th>
                                         <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700 }}>작업</th>
                                     </tr>
                                 </thead>

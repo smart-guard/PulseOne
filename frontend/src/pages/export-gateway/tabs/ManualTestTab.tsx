@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, Space, Select, Button, Tag, Modal, Input, Radio } from 'antd';
 import exportGatewayApi, { Gateway, Assignment, ExportTarget, DataPoint, PayloadTemplate } from '../../../api/services/exportGatewayApi';
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
@@ -26,6 +27,7 @@ interface ManualTestTabProps {
 
 const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
     const [gateways, setGateways] = useState<Gateway[]>([]);
+    const { t } = useTranslation(['dataExport', 'common']);
     const [targets, setTargets] = useState<ExportTarget[]>([]);
     const [templates, setTemplates] = useState<PayloadTemplate[]>([]);
     const [allPoints, setAllPoints] = useState<DataPoint[]>([]);
@@ -305,24 +307,24 @@ const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
 
             if (res.success) {
                 await confirm({
-                    title: '전송 요청 성공',
-                    message: `데이터 "${testValue}"가 관련 타겟(${currentMapping.target_names.map((t: any) => t.name).join(', ')})으로 전송 요청되었습니다.`,
+                    title: 'Send Request Success',
+                    message: `Data "${testValue}" send requested to target(s): ${currentMapping.target_names.map((t: any) => t.name).join(', ')}.`,
                     showCancelButton: false,
                     confirmButtonType: 'success'
                 });
                 setIsModalOpen(false);
             } else {
                 await confirm({
-                    title: '전송 실패',
-                    message: res.message || '데이터 전송에 실패했습니다.',
+                    title: 'Send Failed',
+                    message: res.message || 'Data transmission failed.',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
             }
         } catch (error) {
             await confirm({
-                title: '에러',
-                message: '수동 전송 요청 중 오류가 발생했습니다.',
+                title: 'Error',
+                message: 'Error occurred during manual send request.',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -337,15 +339,15 @@ const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
             <Card style={{ padding: '24px 24px 40px 24px', minHeight: 'fit-content' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                     <div>
-                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>수동 데이터 전송 테스트</h3>
-                        <p style={{ margin: '4px 0 0', color: 'var(--neutral-500)', fontSize: '13px' }}>등록된 게이트웨이의 매핑 정보를 기반으로 데이터를 수동으로 전송해 봅니다.</p>
+                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>{t('labels.manualDataSendTest', {ns: 'dataExport'})}</h3>
+                        <p style={{ margin: '4px 0 0', color: 'var(--neutral-500)', fontSize: '13px' }}>Manually send data based on mapping information from registered gateways.</p>
                     </div>
                     <Space size="large">
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <span style={{ fontWeight: 600, fontSize: '14px' }}>게이트웨이 선택:</span>
+                            <span style={{ fontWeight: 600, fontSize: '14px' }}>{t('labels.selectGateway', {ns: 'dataExport'})}</span>
                             <Select
                                 style={{ width: 250 }}
-                                placeholder="게이트웨이를 선택하세요"
+                                placeholder="Select a gateway"
                                 value={selectedGatewayId}
                                 onChange={setSelectedGatewayId}
                                 size="large"
@@ -365,7 +367,7 @@ const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
                             onClick={() => selectedGatewayId && fetchGatewayMappings(selectedGatewayId)}
                             disabled={!selectedGatewayId || loading}
                         >
-                            새로고침
+                            Refresh
                         </Button>
                     </Space>
                 </div>
@@ -373,12 +375,12 @@ const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
                 {!selectedGatewayId ? (
                     <div style={{ padding: '100px', textAlign: 'center', background: 'var(--neutral-50)', borderRadius: '12px', border: '1px dashed var(--neutral-300)' }}>
                         <i className="fas fa-mouse-pointer" style={{ fontSize: '48px', color: 'var(--neutral-300)', marginBottom: '16px' }} />
-                        <div style={{ fontSize: '15px', color: 'var(--neutral-500)', fontWeight: 600 }}>테스트를 진행할 게이트웨이를 선택해 주세요.</div>
+                        <div style={{ fontSize: '15px', color: 'var(--neutral-500)', fontWeight: 600 }}>{t('labels.pleaseSelectAGatewayToTest', {ns: 'dataExport'})}</div>
                     </div>
                 ) : loading && testMappings.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '100px' }}>
                         <i className="fas fa-spinner fa-spin fa-2x" style={{ color: 'var(--primary-500)' }} />
-                        <p style={{ marginTop: '16px', color: 'var(--neutral-500)' }}>매핑 정보 로딩 중...</p>
+                        <p style={{ marginTop: '16px', color: 'var(--neutral-500)' }}>{t('labels.loadingMappingInfo', {ns: 'dataExport'})}</p>
                     </div>
                 ) : (
                     <div style={{
@@ -395,11 +397,11 @@ const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
                         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
                             <thead style={{ background: 'var(--neutral-100)', position: 'sticky', top: 0, zIndex: 10 }}>
                                 <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--neutral-200)' }}>
-                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)' }}>포인트 정보</th>
-                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)' }}>전송 대상 (Multi-Target)</th>
-                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)' }}>전송 필드명</th>
-                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)' }}>Building ID</th>
-                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)', textAlign: 'center' }}>조작</th>
+                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)' }}>{t('manualTab.pointInfo', {ns: 'dataExport'})}</th>
+                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)' }}>{t('labels.sendTargetMultitarget', {ns: 'dataExport'})}</th>
+                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)' }}>{t('manualTab.fieldName', {ns: 'dataExport'})}</th>
+                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)' }}>{t('labels.buildingId', {ns: 'dataExport'})}</th>
+                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)', textAlign: 'center' }}>{t('gwTab.colAction', {ns: 'dataExport'})}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -433,7 +435,7 @@ const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
                                                     icon={<i className="fas fa-paper-plane" />}
                                                     onClick={() => handleOpenTest(m)}
                                                 >
-                                                    전송 테스트
+                                                    Send Test
                                                 </Button>
                                             </td>
                                         </tr>
@@ -442,7 +444,7 @@ const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
                                 {testMappings.length === 0 && (
                                     <tr>
                                         <td colSpan={5} style={{ padding: '60px', textAlign: 'center', color: 'var(--neutral-400)' }}>
-                                            할당된 매핑 정보가 없습니다. 해당 게이트웨이의 데이터 매핑 설정을 확인해 주세요.
+                                            No mapping info assigned. Check the gateway's data mapping settings.
                                         </td>
                                     </tr>
                                 )}
@@ -458,7 +460,7 @@ const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '95%' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <i className="fas fa-flask" style={{ color: 'var(--primary-500)' }} />
-                            <span>데이터 전송 테스트 (Multi-Target)</span>
+                            <span>{t('labels.dataSendTestMultitarget', {ns: 'dataExport'})}</span>
                         </div>
                         <Button
                             size="small"
@@ -466,16 +468,16 @@ const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
                             onClick={() => setShowJsonPreview(!showJsonPreview)}
                             type={showJsonPreview ? "primary" : "default"}
                         >
-                            전송 데이터 확인
+                            Verify Sent Data
                         </Button>
                     </div>
                 }
                 open={isModalOpen}
                 onCancel={() => setIsModalOpen(false)}
                 footer={[
-                    <Button key="cancel" onClick={() => setIsModalOpen(false)}>취소</Button>,
+                    <Button key="cancel" onClick={() => setIsModalOpen(false)}>{t('cancel', {ns: 'common'})}</Button>,
                     <Button key="send" type="primary" icon={<i className="fas fa-paper-plane" />} loading={loading} onClick={handleSendTest}>
-                        모든 타겟으로 전송
+                        Send to All Targets
                     </Button>
                 ]}
                 width={showJsonPreview ? 800 : 450}
@@ -487,46 +489,46 @@ const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             <div style={{ background: 'var(--neutral-50)', padding: '16px', borderRadius: '8px', fontSize: '13px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                    <span style={{ color: 'var(--neutral-500)' }}>대상 타겟:</span>
+                                    <span style={{ color: 'var(--neutral-500)' }}>{t('labels.target', {ns: 'dataExport'})}</span>
                                     <span style={{ fontWeight: 600, textAlign: 'right' }}>
                                         {currentMapping.target_names && currentMapping.target_names.map((t: any) => t.name).join(', ')}
                                     </span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                    <span style={{ color: 'var(--neutral-500)' }}>전송 필드:</span>
+                                    <span style={{ color: 'var(--neutral-500)' }}>{t('labels.sendFields', {ns: 'dataExport'})}</span>
                                     <span style={{ fontWeight: 600, color: 'var(--primary-600)' }}>{currentMapping.target_field_name}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--neutral-500)' }}>원본 포인트:</span>
+                                    <span style={{ color: 'var(--neutral-500)' }}>{t('labels.sourcePoint', {ns: 'dataExport'})}</span>
                                     <span style={{ fontWeight: 600 }}>{allPoints.find(p => p.id === currentMapping.point_id)?.name || currentMapping.point_id}</span>
                                 </div>
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontWeight: 700 }}>전송할 데이터 값 (Override)</label>
+                                <label style={{ fontWeight: 700 }}>{t('labels.sendDataValueOverride', {ns: 'dataExport'})}</label>
                                 <Input
                                     size="large"
                                     type="number"
                                     value={testValue}
                                     onChange={e => setTestValue(e.target.value)}
-                                    placeholder="숫자 값을 입력하세요"
+                                    placeholder="Enter a numeric value"
                                     style={{ width: '100%' }}
                                     autoFocus
                                 />
                                 <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                                    실제 포인트의 최근 값을 불러왔습니다. 변경하여 전송할 수 있습니다.
+                                    Loaded the latest point value. You can modify it before sending.
                                 </div>
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ fontWeight: 700 }}>알람 상태 값 (al Override)</label>
+                                <label style={{ fontWeight: 700 }}>{t('labels.alarmStateValueOverride', {ns: 'dataExport'})}</label>
                                 <Radio.Group
                                     value={testAlValue}
                                     onChange={e => setTestAlValue(e.target.value)}
                                     buttonStyle="solid"
                                     size="large"
                                 >
-                                    <Radio.Button value={0}>0 (정상)</Radio.Button>
+                                    <Radio.Button value={0}>0 (Normal)</Radio.Button>
                                     <Radio.Button value={1}>1 (알람)</Radio.Button>
                                     <Radio.Button value={2}>2 (주의)</Radio.Button>
                                 </Radio.Group>
@@ -559,7 +561,7 @@ const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
                                         spellCheck={false}
                                     />
                                     <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '8px' }}>
-                                        <Tag color="blue" style={{ margin: 0, opacity: 0.7, fontSize: '10px' }}>EDITABLE</Tag>
+                                        <Tag color="blue" style={{ margin: 0, opacity: 0.7, fontSize: '10px' }}>{t('labels.editable', {ns: 'dataExport'})}</Tag>
                                     </div>
                                 </div>
                                 <div style={{ marginTop: '12px', fontSize: '11px', color: 'var(--neutral-400)' }}>

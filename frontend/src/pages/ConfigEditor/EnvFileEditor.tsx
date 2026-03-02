@@ -1,5 +1,6 @@
 // frontend/src/pages/ConfigEditor/EnvFileEditor.tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button, Space, Typography, Alert, message, Tooltip } from 'antd';
 import {
     SaveOutlined,
@@ -20,6 +21,7 @@ interface EnvFileEditorProps {
 
 const EnvFileEditor: React.FC<EnvFileEditorProps> = ({ filename }) => {
     const [content, setContent] = useState('');
+    const { t } = useTranslation(['systemSettings', 'common']);
     const [originalContent, setOriginalContent] = useState('');
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -39,7 +41,7 @@ const EnvFileEditor: React.FC<EnvFileEditorProps> = ({ filename }) => {
             }
         } catch (err: any) {
             setStatus({ type: 'error', msg: err.message || 'Failed to load file content' });
-            message.error('파일 내용을 불러오지 못했습니다.');
+            message.error('Failed to load file content.');
         } finally {
             setLoading(false);
         }
@@ -57,11 +59,11 @@ const EnvFileEditor: React.FC<EnvFileEditorProps> = ({ filename }) => {
         try {
             await ConfigApiService.saveFileContent(filename, content);
             setOriginalContent(content);
-            setStatus({ type: 'success', msg: '설정이 성공적으로 저장되었습니다. 시스템 재시작을 권장합니다.' });
-            message.success('설정이 저장되었습니다.');
+            setStatus({ type: 'success', msg: 'Settings saved successfully. System restart is recommended.' });
+            message.success('Settings saved.');
         } catch (err: any) {
             setStatus({ type: 'error', msg: err.message || 'Failed to save file' });
-            message.error('저장에 실패했습니다.');
+            message.error('Save failed.');
         } finally {
             setSaving(false);
         }
@@ -69,7 +71,7 @@ const EnvFileEditor: React.FC<EnvFileEditorProps> = ({ filename }) => {
 
     const handleReset = useCallback(() => {
         setContent(originalContent);
-        message.info('변경 사항이 초기화되었습니다.');
+        message.info('Changes have been reset.');
     }, [originalContent]);
 
     const handleEncrypt = async () => {
@@ -80,7 +82,7 @@ const EnvFileEditor: React.FC<EnvFileEditorProps> = ({ filename }) => {
         const selectedText = content.substring(start, end);
 
         if (!selectedText) {
-            message.warning('암호화할 텍스트를 선택해주세요.');
+            message.warning('Please select text to encrypt.');
             return;
         }
 
@@ -89,10 +91,10 @@ const EnvFileEditor: React.FC<EnvFileEditorProps> = ({ filename }) => {
             if (response.success && response.data) {
                 const newContent = content.substring(0, start) + response.data.encrypted + content.substring(end);
                 setContent(newContent);
-                message.success('선택된 텍스트가 암호화되었습니다.');
+                message.success('Selected text has been encrypted.');
             }
         } catch (err: any) {
-            message.error('암호화 실패: ' + err.message);
+            message.error('Encryption failed: ' + err.message);
         }
     };
 
@@ -104,12 +106,12 @@ const EnvFileEditor: React.FC<EnvFileEditorProps> = ({ filename }) => {
         const selectedText = content.substring(start, end);
 
         if (!selectedText) {
-            message.warning('복호화할 텍스트(ENC:...)를 선택해주세요.');
+            message.warning('Please select ENC:... text to decrypt.');
             return;
         }
 
         if (!selectedText.startsWith('ENC:')) {
-            message.warning('선택된 텍스트가 암호화된 형식(ENC:...)이 아닙니다.');
+            message.warning('Selected text is not in ENC:... encrypted format.');
             return;
         }
 
@@ -118,10 +120,10 @@ const EnvFileEditor: React.FC<EnvFileEditorProps> = ({ filename }) => {
             if (response.success && response.data) {
                 const newContent = content.substring(0, start) + response.data.decrypted + content.substring(end);
                 setContent(newContent);
-                message.success('선택된 텍스트가 복호화되었습니다. (저장 전 다시 암호화하세요!)');
+                message.success('Selected text has been decrypted. (Please re-encrypt before saving!)');
             }
         } catch (err: any) {
-            message.error('복호화 실패: ' + err.message);
+            message.error('Decryption failed: ' + err.message);
         }
     };
 

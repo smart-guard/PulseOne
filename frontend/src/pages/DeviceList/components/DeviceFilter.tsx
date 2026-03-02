@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface DeviceFilterProps {
     searchTerm: string;
@@ -23,38 +24,39 @@ const DeviceFilter: React.FC<DeviceFilterProps> = ({
     onConnectionChange,
     availableProtocols,
 }) => {
+    const { t } = useTranslation(['devices']);
     return (
         <div className="device-list-filters">
             <div className="device-list-search">
                 <i className="fas fa-search"></i>
                 <input
                     type="text"
-                    placeholder="디바이스 이름, 설명, 제조사 검색..."
+                    placeholder={t('devices:basicInfo.deviceNamePlaceholder')}
                     value={searchTerm}
                     onChange={(e) => onSearchChange(e.target.value)}
                 />
             </div>
 
             <select value={statusFilter} onChange={(e) => onStatusChange(e.target.value)}>
-                <option value="all">모든 상태</option>
-                <option value="running">실행 중</option>
-                <option value="stopped">중지됨</option>
-                <option value="error">오류</option>
-                <option value="disabled">비활성화</option>
+                <option value="all">{t('devices:filter.all')}</option>
+                <option value="running">{t('devices:services.running', 'Running')}</option>
+                <option value="stopped">{t('devices:services.stopped', 'Stopped')}</option>
+                <option value="error">{t('devices:filter.error')}</option>
+                <option value="disabled">Disabled</option>
             </select>
 
             <select value={protocolFilter} onChange={(e) => onProtocolChange(e.target.value)}>
-                <option value="all">모든 프로토콜</option>
+                <option value="all">{t('devices:allProtocols')}</option>
                 {availableProtocols.map(protocol => (
                     <option key={protocol} value={protocol}>{protocol}</option>
                 ))}
             </select>
 
             <select value={connectionFilter} onChange={(e) => onConnectionChange(e.target.value)}>
-                <option value="all">모든 연결상태</option>
-                <option value="connected">연결됨</option>
-                <option value="disconnected">연결 끊김</option>
-                <option value="error">연결 오류</option>
+                <option value="all">{t('devices:filter.all')}</option>
+                <option value="connected">{t('devices:filter.connected')}</option>
+                <option value="disconnected">{t('devices:filter.disconnected')}</option>
+                <option value="error">{t('devices:filter.error')}</option>
             </select>
         </div>
     );

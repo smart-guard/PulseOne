@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export interface TemplateImportExportModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
   loading = false
 }) => {
   const [selectedTemplates, setSelectedTemplates] = useState<number[]>([]);
+    const { t } = useTranslation(['deviceTemplates', 'common']);
   const [csvData, setCsvData] = useState('');
   const [parseResults, setParseResults] = useState<any>(null);
   const [importResults, setImportResults] = useState<any>(null);
@@ -73,7 +75,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
   // CSV에서 템플릿으로 변환
   const csvRowToTemplate = (row: string[]): any => {
     if (row.length < CSV_HEADERS.length) {
-      throw new Error(`CSV 행에 필요한 컬럼이 부족합니다. 필요: ${CSV_HEADERS.length}, 실제: ${row.length}`);
+      throw new Error(`CSV row has insufficient columns. Required: ${CSV_HEADERS.length}, Actual: ${row.length}`);
     }
 
     return {
@@ -154,7 +156,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
     try {
       const lines = csvContent.split('\n').filter(line => line.trim());
       if (lines.length < 2) {
-        throw new Error('CSV 파일이 비어있거나 헤더만 있습니다.');
+        throw new Error('CSV file is empty or contains only headers.');
       }
 
       const headerLine = lines[0];
@@ -165,7 +167,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
       const missingHeaders = CSV_HEADERS.filter(h => !headers.includes(h));
       
       if (missingHeaders.length > 0) {
-        throw new Error(`필수 헤더가 누락되었습니다: ${missingHeaders.join(', ')}`);
+        throw new Error(`Required headers are missing: ${missingHeaders.join(', ')}`);
       }
 
       // 데이터 파싱
@@ -179,7 +181,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
           
           // 기본 유효성 검사
           if (!template.name) {
-            errors.push(`행 ${i + 2}: 템플릿명이 필요합니다`);
+            errors.push(`Row ${i + 2}: Template name is required`);
             continue;
           }
           
@@ -188,7 +190,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
             rowNumber: i + 2
           });
         } catch (error) {
-          errors.push(`행 ${i + 2}: ${error instanceof Error ? error.message : '파싱 오류'}`);
+          errors.push(`Row ${i + 2}: ${error instanceof Error ? error.message : 'Parse error'}`);
         }
       }
 
@@ -204,7 +206,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
       setParseResults({
         success: false,
         templates: [],
-        errors: [error instanceof Error ? error.message : 'CSV 파싱 오류'],
+        errors: [error instanceof Error ? error.message : 'CSV parse error'],
         totalRows: 0,
         validRows: 0
       });
@@ -214,7 +216,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
   // 템플릿 가져오기 실행
   const handleImport = async () => {
     if (!parseResults?.templates || parseResults.templates.length === 0) {
-      alert('가져올 템플릿이 없습니다.');
+      alert('No templates to import.');
       return;
     }
 
@@ -224,14 +226,14 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
         setImportResults({
           success: true,
           imported: parseResults.templates.length,
-          message: `${parseResults.templates.length}개 템플릿이 성공적으로 가져와졌습니다.`
+          message: `${parseResults.templates.length} template(s) imported successfully.`
         });
       }
     } catch (error) {
       setImportResults({
         success: false,
         imported: 0,
-        message: error instanceof Error ? error.message : '가져오기 실패'
+        message: error instanceof Error ? error.message : 'Import failed'
       });
     }
   };
@@ -246,10 +248,10 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
     <div>
       <div style={{ marginBottom: '20px' }}>
         <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', fontWeight: '600' }}>
-          내보낼 템플릿 선택
+          Select Templates to Export
         </h3>
         <p style={{ margin: '0 0 16px 0', fontSize: '14px', color: '#6b7280' }}>
-          엑셀에서 편집 가능한 CSV 형식으로 내보냅니다.
+          Export as CSV format editable in Excel.
         </p>
         
         <div style={{ marginBottom: '16px' }}>
@@ -259,7 +261,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
               checked={selectedTemplates.length === templates.length && templates.length > 0}
               onChange={(e) => handleSelectAll(e.target.checked)}
             />
-            <span style={{ fontSize: '14px', fontWeight: '500' }}>모든 템플릿 선택</span>
+            <span style={{ fontSize: '14px', fontWeight: '500' }}>{t('labels.selectAllTemplates', {ns: 'deviceTemplates'})}</span>
           </label>
         </div>
       </div>
@@ -311,7 +313,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
           fontSize: '14px',
           color: '#1e40af'
         }}>
-          {selectedTemplates.length}개 템플릿이 선택되었습니다.
+          {selectedTemplates.length} template(s) selected.
         </div>
       )}
     </div>
@@ -322,10 +324,10 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
     <div>
       <div style={{ marginBottom: '20px' }}>
         <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', fontWeight: '600' }}>
-          CSV 파일에서 템플릿 가져오기
+          Import Templates from CSV File
         </h3>
         <p style={{ margin: '0 0 16px 0', fontSize: '14px', color: '#6b7280' }}>
-          내보내기에서 생성된 CSV 파일을 업로드하세요.
+          Upload the CSV file generated from export.
         </p>
       </div>
 
@@ -352,7 +354,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
             width: '100%'
           }}
         >
-          CSV 파일 선택
+          Select CSV File
         </button>
       </div>
 
@@ -367,22 +369,22 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
             color: parseResults.success ? '#166534' : '#dc2626'
           }}>
             <div style={{ fontWeight: '600', marginBottom: '8px' }}>
-              {parseResults.success ? '파싱 성공' : '파싱 오류'}
+              {parseResults.success ? 'Parse Success' : 'Parse Error'}
             </div>
             <div style={{ fontSize: '14px' }}>
-              총 {parseResults.totalRows}행 중 {parseResults.validRows}행 유효
+              {parseResults.validRows} of {parseResults.totalRows} row(s) valid
             </div>
             
             {parseResults.errors.length > 0 && (
               <div style={{ marginTop: '12px' }}>
-                <div style={{ fontWeight: '500', marginBottom: '4px' }}>오류 목록:</div>
+                <div style={{ fontWeight: '500', marginBottom: '4px' }}>{t('labels.errorList', {ns: 'deviceTemplates'})}</div>
                 <ul style={{ margin: 0, paddingLeft: '20px' }}>
                   {parseResults.errors.slice(0, 5).map((error, idx) => (
                     <li key={idx} style={{ fontSize: '12px' }}>{error}</li>
                   ))}
                   {parseResults.errors.length > 5 && (
                     <li style={{ fontSize: '12px', color: '#9ca3af' }}>
-                      ... 외 {parseResults.errors.length - 5}개 오류
+                      ... and {parseResults.errors.length - 5} more
                     </li>
                   )}
                 </ul>
@@ -406,7 +408,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
         </div>
       )}
 
-      {/* CSV 형식 안내 */}
+      {/* CSV Format Guide */}
       <div style={{
         padding: '16px',
         background: '#f8fafc',
@@ -414,13 +416,13 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
         border: '1px solid #e5e7eb'
       }}>
         <div style={{ fontWeight: '500', marginBottom: '8px', fontSize: '14px' }}>
-          CSV 형식 안내
+          CSV Format Guide
         </div>
         <div style={{ fontSize: '12px', color: '#6b7280', lineHeight: '1.5' }}>
-          • 첫 번째 행은 헤더여야 합니다<br/>
-          • 필수 컬럼: {CSV_HEADERS.slice(0, 5).join(', ')}<br/>
-          • Boolean 값은 TRUE/FALSE로 입력<br/>
-          • 적용 가능 데이터 타입은 세미콜론(;)으로 구분
+          • First row must be the header<br/>
+          • Required columns: {CSV_HEADERS.slice(0, 5).join(', ')}<br/>
+          • Boolean values: TRUE or FALSE<br/>
+          • Separate applicable data types with semicolons (;)
         </div>
       </div>
     </div>
@@ -459,7 +461,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
         <div style={{ padding: '24px', borderBottom: '1px solid #e5e7eb' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ fontSize: '24px', fontWeight: '700', margin: 0, color: '#111827' }}>
-              템플릿 {mode === 'export' ? '내보내기' : '가져오기'}
+              Template {mode === 'export' ? 'Export' : 'Import'}
             </h2>
             <button
               onClick={onClose}
@@ -494,7 +496,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
           <div>
             {mode === 'export' && selectedTemplates.length > 0 && (
               <span style={{ fontSize: '14px', color: '#6b7280' }}>
-                {selectedTemplates.length}개 템플릿 선택됨
+                {selectedTemplates.length} template(s) selected
               </span>
             )}
           </div>
@@ -515,7 +517,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
                 opacity: loading ? 0.6 : 1
               }}
             >
-              취소
+              Cancel
             </button>
 
             {mode === 'export' ? (
@@ -533,7 +535,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
                   fontWeight: '500'
                 }}
               >
-                CSV 다운로드
+                CSV Download
               </button>
             ) : (
               <button
@@ -550,7 +552,7 @@ const TemplateImportExportModal: React.FC<TemplateImportExportModalProps> = ({
                   fontWeight: '500'
                 }}
               >
-                {loading ? '가져오는 중...' : '템플릿 가져오기'}
+                {loading ? 'Importing...' : 'Import Template'}
               </button>
             )}
           </div>

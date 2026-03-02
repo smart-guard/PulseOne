@@ -1,0 +1,56 @@
+{
+    "title": "Permission Management",
+    "description": "Define and manage system Roles and Permissions.",
+    "createRole": "New Role",
+    "loading": "Loading data...",
+    "empty": "No roles registered.",
+    "stats": {
+        "totalRoles": "Total Roles",
+        "systemRoles": "System Roles",
+        "customRoles": "Custom Roles"
+    },
+    "filter": {
+        "type": "Type",
+        "all": "All",
+        "system": "System",
+        "custom": "Custom"
+    },
+    "table": {
+        "roleName": "Role Name (ID)",
+        "description": "Description",
+        "type": "Type",
+        "assignedUsers": "Assigned Users",
+        "createdAt": "Created At",
+        "userCount": "{{count}} users"
+    },
+    "badge": {
+        "system": "System",
+        "custom": "Custom"
+    },
+    "roleModal": {
+        "name": "Role Name",
+        "description": "Description",
+        "permissions": "Permission Settings"
+    },
+    "labels": {
+        "users": "Users",
+        "userDetails": "User Details",
+        "fullName": "Full Name",
+        "email": "Email",
+        "contact": "Contact",
+        "department": "Department",
+        "accountStatus": "Account Status",
+        "assignedRole": "Assigned Role",
+        "activePermissionPolicy": "Active Permission Policy",
+        "siteAccess": "Site Access",
+        "fullAccessSystemAdmin": "Full Access (System Admin)",
+        "companyTenant": "Company (Tenant)",
+        "selectACompany": "Select a company",
+        "username": "Username",
+        "phoneNumber": "Phone Number",
+        "systemRole": "System Role",
+        "selectARole": "Select a role",
+        "detailedPermissions": "Detailed Permissions",
+        "noSitesRegistered": "No sites registered."
+    }
+}

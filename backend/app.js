@@ -800,6 +800,8 @@ app.use('/api/control-logs', require('./routes/control-logs'));
 // ControlLogService Redis 구독 초기화 (비동기, non-blocking)
 try {
     const controlLog = require('./lib/services/ControlLogService');
+    // Phase 2: Socket.IO 실시간 emit 활성화
+    if (io) controlLog.setIo(io);
     controlLog.ensureTable().then(() => {
         controlLog.initialize().then(() => {
             logger.services('INFO', '✅ ControlLogService 초기화 완료 (control:result 구독)');
@@ -809,6 +811,51 @@ try {
     logger.services('WARN', 'ControlLogService 로드 실패', { error: e.message });
 }
 
+
+// ── Phase 3: 예약 제어 스케줄러 초기화 ────────────────────────
+try {
+    const controlScheduler = require('./lib/services/ControlSchedulerService');
+    controlScheduler.initialize().then(() => {
+        logger.services('INFO', '✅ ControlSchedulerService 초기화 완료');
+    }).catch(e => logger.services('WARN', 'ControlSchedulerService 초기화 실패', { error: e.message }));
+    app.use('/api/control-schedules', require('./routes/control-schedules'));
+    logger.system('INFO', 'control-schedules 라우트 등록 완료');
+} catch (e) {
+    logger.services('WARN', 'ControlSchedulerService 로드 실패', { error: e.message });
+}
+
+// ── Phase 4: 제어 시퀀스 서비스 초기화 ─────────────────────────
+try {
+    const controlSequence = require('./lib/services/ControlSequenceService');
+    controlSequence.ensureTable().catch(e =>
+        logger.services('WARN', 'ControlSequenceService DB 테이블 보장 실패', { error: e.message })
+    );
+    app.use('/api/control-sequences', require('./routes/control-sequences'));
+    logger.system('INFO', 'control-sequences 라우트 등록 완료');
+} catch (e) {
+    logger.services('WARN', 'ControlSequenceService 로드 실패', { error: e.message });
+}
+
+// ── Phase 7: 알림 서비스 io 주입 ────────────────────────────────
+try {
+    const notificationService = require('./lib/services/NotificationService');
+    if (io) notificationService.setIo(io);
+    logger.services('INFO', '✅ NotificationService io 주입 완료');
+} catch (e) {
+    logger.services('WARN', 'NotificationService 로드 실패', { error: e.message });
+}
+
+// ── Phase 8: 제어 템플릿 ────────────────────────────────────────
+try {
+    const controlTemplate = require('./lib/services/ControlTemplateService');
+    controlTemplate.ensureTable().catch(e =>
+        logger.services('WARN', 'ControlTemplateService DB 테이블 보장 실패', { error: e.message })
+    );
+    app.use('/api/control-templates', require('./routes/control-templates'));
+    logger.system('INFO', 'control-templates 라우트 등록 완료');
+} catch (e) {
+    logger.services('WARN', 'ControlTemplateService 로드 실패', { error: e.message });
+}
 
 // 신규 추가: 게이트웨이(Edge Server) 관리
 // 2025-01-20 추가: Export Gateway 통합 관제

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ProtocolApiService } from '../../../api/services/protocolApi';
 import './ProtocolModal.css';
 
@@ -76,6 +77,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
     is_deprecated: false,
     min_firmware_version: ''
   });
+    const { t } = useTranslation(['protocols', 'common']);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,10 +112,10 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
       if (response.success) {
         setProtocol(response.data);
       } else {
-        throw new Error(response.message || '프로토콜 로드 실패');
+        throw new Error(response.message || 'Protocol load failed');
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '프로토콜 로드 실패';
+      const errorMessage = err instanceof Error ? err.message : 'Protocol load failed';
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -126,9 +128,9 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
     // 편집 모드에서는 확인 팝업 표시
     if (mode === 'edit') {
       const isConfirmed = await confirm({
-        title: '프로토콜 수정 확인',
-        message: `프로토콜 "${protocol.display_name || protocol.protocol_type}"을(를) 수정하시겠습니까?\n\n수정된 설정은 즉시 적용되며, 이 프로토콜을 사용하는 디바이스들에게 영향을 줄 수 있습니다.`,
-        confirmText: '수정하기',
+        title: 'Confirm Protocol Edit',
+        message: `Modify protocol "${protocol.display_name || protocol.protocol_type}"?\n\nChanges take effect immediately and may affect devices using this protocol.`,
+        confirmText: 'Save Changes',
         confirmButtonType: 'warning'
       });
 
@@ -147,7 +149,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
       setError(null);
 
       if (!protocol.protocol_type || !protocol.display_name) {
-        throw new Error('프로토콜 타입과 표시명은 필수입니다.');
+        throw new Error('Protocol type and display name are required.');
       }
 
       let response;
@@ -155,14 +157,14 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
       if (mode === 'edit' && protocolId) {
         response = await ProtocolApiService.updateProtocol(protocolId, protocol);
       } else {
-        throw new Error('지원되지 않는 모드입니다.');
+        throw new Error('Unsupported mode.');
       }
 
       if (response?.success) {
         await confirm({
-          title: '저장 완료',
-          message: `프로토콜 "${protocol.display_name}" 설정이 성공적으로 수정되었습니다.`,
-          confirmText: '확인',
+          title: 'Save Complete',
+          message: `Protocol "${protocol.display_name}" settings updated successfully.`,
+          confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'primary'
         });
@@ -171,10 +173,10 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
           onSave(response.data);
         }
       } else {
-        throw new Error(response?.message || '저장 실패');
+        throw new Error(response?.message || 'Save failed');
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '저장 실패';
+      const errorMessage = err instanceof Error ? err.message : 'Save failed';
       setError(errorMessage);
     } finally {
       setSaving(false);
@@ -215,7 +217,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
         [key]: value
       };
 
-      // 만약 브로커를 활성화하는데 API 키가 없으면 자동 생성
+      // 만약 브로커를 Enabled하는데 API 키가 없으면 자동 생성
       if (key === 'broker_enabled' && value === true && !updatedParams.broker_api_key) {
         updatedParams.broker_api_key = crypto.randomUUID();
         updatedParams.broker_api_key_updated_at = new Date().toISOString();
@@ -230,8 +232,8 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
 
   const handleReissueApiKey = async () => {
     const confirmed = await confirm({
-      title: 'API 키 재발급',
-      message: '새로운 API 키를 발급하시겠습니까? 기존 키를 사용하는 장치들의 연결이 끊어질 수 있습니다.',
+      title: 'Reissue API Key',
+      message: 'Issue a new API key? Devices using the existing key may lose connection.',
       confirmButtonType: 'warning'
     });
     if (confirmed) {
@@ -248,7 +250,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
 
   const isReadOnly = mode === 'view';
   // System Protocol: Always "Configuration" context
-  const title = mode === 'edit' ? '프로토콜 설정 편집' : '프로토콜 상세보기';
+  const title = mode === 'edit' ? 'Edit Protocol Settings' : 'Protocol Details';
 
   if (!isOpen) return null;
 
@@ -277,7 +279,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
             flexDirection: 'column',
             gap: '16px'
           }}>
-            <div>프로토콜 정보를 불러오는 중...</div>
+            <div>{t('labels.loadingProtocolInfo', {ns: 'protocols'})}</div>
           </div>
         ) : (
           <>
@@ -290,107 +292,107 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
             <div className="mgmt-modal-body">
               <form id="protocol-form" onSubmit={handleSubmit}>
                 <div className="mgmt-modal-form-grid">
-                  {/* 기본 정보 */}
+                  {/* Basic Info */}
                   <div className="mgmt-modal-form-section">
-                    <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
+                    <h3><i className="fas fa-info-circle"></i> Basic Info</h3>
 
                     <div className="mgmt-modal-form-row">
                       <div className="mgmt-modal-form-group">
-                        <label className="required">프로토콜 타입</label>
+                        <label className="required">{t('labels.protocolType', {ns: 'protocols'})}</label>
                         <input
                           type="text"
                           className="mgmt-form-control"
                           value={protocol.protocol_type || ''}
                           readOnly={true} // System ID - Always ReadOnly
                           style={{ backgroundColor: 'var(--neutral-100)', cursor: 'not-allowed' }}
-                          title="시스템 정의 값으로 변경할 수 없습니다."
+                          title="Cannot change. System-defined value."
                         />
                       </div>
                       <div className="mgmt-modal-form-group">
-                        <label className="required">표시명</label>
+                        <label className="required">{t('labels.displayName', {ns: 'protocols'})}</label>
                         <input
                           type="text"
                           className="mgmt-form-control"
                           value={protocol.display_name || ''}
                           onChange={(e) => handleInputChange('display_name', e.target.value)}
                           readOnly={isReadOnly}
-                          placeholder="예: Modbus TCP"
+                          placeholder="e.g. Modbus TCP"
                           required
                         />
                       </div>
                     </div>
 
                     <div className="mgmt-modal-form-group">
-                      <label>설명</label>
+                      <label>{t('field.description', {ns: 'protocols'})}</label>
                       <textarea
                         className="mgmt-form-control"
                         value={protocol.description || ''}
                         onChange={(e) => handleInputChange('description', e.target.value)}
                         readOnly={isReadOnly}
-                        placeholder="프로토콜에 대한 내용을 입력하세요"
+                        placeholder="Enter protocol description"
                         rows={3}
                       />
                     </div>
 
                     <div className="mgmt-modal-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
                       <div className="mgmt-modal-form-group">
-                        <label>카테고리</label>
+                        <label>{t('table.category', {ns: 'protocols'})}</label>
                         <select
                           className="mgmt-form-control"
                           value={protocol.category || ''}
                           onChange={(e) => handleInputChange('category', e.target.value)}
                           disabled={isReadOnly}
                         >
-                          <option value="industrial">산업용</option>
-                          <option value="iot">IoT</option>
-                          <option value="building_automation">빌딩 자동화</option>
-                          <option value="network">네트워크</option>
-                          <option value="web">웹</option>
+                          <option value="industrial">{t('labels.industrial', {ns: 'protocols'})}</option>
+                          <option value="iot">{t('labels.iot', {ns: 'protocols'})}</option>
+                          <option value="building_automation">{t('labels.buildingAutomation', {ns: 'protocols'})}</option>
+                          <option value="network">{t('labels.network', {ns: 'protocols'})}</option>
+                          <option value="web">{t('labels.web', {ns: 'protocols'})}</option>
                         </select>
                       </div>
                       <div className="mgmt-modal-form-group">
-                        <label>기본 포트</label>
+                        <label>{t('table.defaultPort', {ns: 'protocols'})}</label>
                         <input
                           type="number"
                           className="mgmt-form-control"
                           value={protocol.default_port || ''}
                           onChange={(e) => handleInputChange('default_port', e.target.value ? parseInt(e.target.value) : null)}
                           readOnly={isReadOnly}
-                          placeholder="예: 502"
+                          placeholder="e.g. 502"
                         />
                       </div>
                       <div className="mgmt-modal-form-group">
-                        <label>제조사/벤더</label>
+                        <label>{t('table.vendor', {ns: 'protocols'})}</label>
                         <input
                           type="text"
                           className="mgmt-form-control"
                           value={protocol.vendor || ''}
                           onChange={(e) => handleInputChange('vendor', e.target.value)}
                           readOnly={isReadOnly}
-                          placeholder="예: Modbus Org"
+                          placeholder="e.g. Modbus Org"
                         />
                       </div>
                       <div className="mgmt-modal-form-group">
-                        <label>최소 펌웨어</label>
+                        <label>{t('labels.minFirmware', {ns: 'protocols'})}</label>
                         <input
                           type="text"
                           className="mgmt-form-control"
                           value={protocol.min_firmware_version || ''}
                           onChange={(e) => handleInputChange('min_firmware_version', e.target.value)}
                           readOnly={isReadOnly}
-                          placeholder="예: v1.0.0"
+                          placeholder="e.g. v1.0.0"
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* 기술 설정 */}
+                  {/* Technical Settings */}
                   <div className="mgmt-modal-form-section">
-                    <h3><i className="fas fa-cogs"></i> 기술 설정</h3>
+                    <h3><i className="fas fa-cogs"></i> Technical Settings</h3>
 
                     <div className="mgmt-modal-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
                       <div className="mgmt-modal-form-group">
-                        <label>기본 폴링 주기 (ms)</label>
+                        <label>{t('labels.defaultPollingIntervalMs', {ns: 'protocols'})}</label>
                         <input
                           type="number"
                           className="mgmt-form-control"
@@ -401,7 +403,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                         />
                       </div>
                       <div className="mgmt-modal-form-group">
-                        <label>기본 타임아웃 (ms)</label>
+                        <label>{t('labels.defaultTimeoutMs', {ns: 'protocols'})}</label>
                         <input
                           type="number"
                           className="mgmt-form-control"
@@ -412,7 +414,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                         />
                       </div>
                       <div className="mgmt-modal-form-group">
-                        <label>최대 동시 연결 수</label>
+                        <label>{t('labels.maxConcurrentConnections', {ns: 'protocols'})}</label>
                         <input
                           type="number"
                           className="mgmt-form-control"
@@ -439,12 +441,12 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                             onChange={(e) => handleInputChange('uses_serial', e.target.checked)}
                             disabled={isReadOnly || protocol.capabilities?.serial === 'unsupported' || protocol.capabilities?.serial === 'required'}
                           />
-                          시리얼 사용
+                          Serial Support
                         </label>
                         <small style={{ color: '#6b7280', fontSize: '11px', display: 'block', marginTop: '-4px', marginLeft: '24px' }}>
-                          RS-232/485 통신 필요 여부
-                          {protocol.capabilities?.serial === 'unsupported' && " (미지원)"}
-                          {protocol.capabilities?.serial === 'required' && " (필수)"}
+                          Whether RS-232/485 communication is required
+                          {protocol.capabilities?.serial === 'unsupported' && " (Not Supported)"}
+                          {protocol.capabilities?.serial === 'required' && " (Required)"}
                         </small>
                       </div>
                       <div className="mgmt-checkbox-group" style={{
@@ -461,12 +463,12 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                             onChange={(e) => handleInputChange('requires_broker', e.target.checked)}
                             disabled={isReadOnly || protocol.capabilities?.broker === 'unsupported' || protocol.capabilities?.broker === 'required'}
                           />
-                          브로커 필요
+                          Broker Required
                         </label>
                         <small style={{ color: '#6b7280', fontSize: '11px', display: 'block', marginTop: '-4px', marginLeft: '24px' }}>
-                          MQTT 서버 등 중계기 필요 여부
-                          {protocol.capabilities?.broker === 'unsupported' && " (미지원)"}
-                          {protocol.capabilities?.broker === 'required' && " (필수)"}
+                          Whether an MQTT server or relay is required
+                          {protocol.capabilities?.broker === 'unsupported' && " (Not Supported)"}
+                          {protocol.capabilities?.broker === 'required' && " (Required)"}
                         </small>
                       </div>
                       <div className="mgmt-checkbox-group">
@@ -477,7 +479,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                             onChange={(e) => handleInputChange('is_enabled', e.target.checked)}
                             disabled={isReadOnly}
                           />
-                          활성화
+                          Enabled
                         </label>
                       </div>
                       <div className="mgmt-checkbox-group">
@@ -488,7 +490,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                             onChange={(e) => handleInputChange('is_deprecated', e.target.checked)}
                             disabled={isReadOnly}
                           />
-                          사용 중단 예정
+                          Deprecated
                         </label>
                       </div>
                     </div>
@@ -497,13 +499,13 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                   {/* MQTT 전용 브로커 설정 - 상세 대시보드로 이동 */}
                   {protocol.protocol_type === 'MQTT' && (
                     <div className="mgmt-modal-form-section" style={{ border: '2px dashed var(--primary-200)', padding: '24px', borderRadius: '8px', backgroundColor: 'var(--primary-25)', textAlign: 'center' }}>
-                      <h3 style={{ color: 'var(--primary-600)', marginBottom: '12px' }}><i className="fas fa-server"></i> 브로커 설정 안내</h3>
+                      <h3 style={{ color: 'var(--primary-600)', marginBottom: '12px' }}><i className="fas fa-server"></i> Broker Settings Guide</h3>
                       <p style={{ fontSize: '13px', color: 'var(--neutral-600)', lineHeight: '1.6', marginTop: '8px' }}>
-                        PulseOne MQTT 브로커 및 실시간 모니터링 기능은<br />
-                        <strong>커뮤니케이션 대시보드</strong>로 통합되었습니다.
+                        PulseOne MQTT broker and real-time monitoring features have been<br />
+                        <strong>{t('labels.communicationDashboard', {ns: 'protocols'})}</strong>integrated.
                       </p>
                       <div style={{ marginTop: '16px', fontSize: '12px', color: 'var(--primary-600)', fontWeight: 600 }}>
-                        (프로토콜 목록에서 MQTT를 선택하여 대시보드에 진입하세요)
+                        (Select MQTT from the protocol list to enter the dashboard)
                       </div>
                     </div>
                   )}
@@ -514,7 +516,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                     {/* 드라이버 역량 (Capabilities) */}
                     <div className="mgmt-modal-form-domain">
                       <div className="mgmt-modal-form-section">
-                        <h3><i className="fas fa-microchip"></i> 드라이버 역량</h3>
+                        <h3><i className="fas fa-microchip"></i> Driver Capabilities</h3>
                         <div className="mgmt-modal-form-group">
                           <label>지원 명령어 (쉼표로 구분)</label>
                           <div className="mgmt-capability-badge-container" style={{ marginBottom: '8px' }}>

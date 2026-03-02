@@ -134,7 +134,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                 font-size: 14px !important;
             }
 
-            /* 고급 설정 (JSON) 및 텍스트 영역 확장 */
+            /* Advanced Settings (JSON) 및 텍스트 영역 확장 */
             .target-mgmt-modal textarea.mgmt-input {
                 height: auto !important;
                 min-height: 450px !important; /* 영역이 많으므로 길게 확장 */
@@ -200,10 +200,10 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
     const handleCloseModal = async () => {
         if (hasChanges) {
             const confirmed = await confirm({
-                title: '변경사항 유실 주의',
-                message: '수정 중인 내용이 있습니다. 저장하지 않고 닫으시면 모든 데이터가 사라집니다. 정말 닫으시겠습니까?',
-                confirmText: '닫기',
-                cancelText: '취소',
+                title: 'Unsaved Changes Warning',
+                message: 'You have unsaved changes. Closing without saving will lose all data. Continue?',
+                confirmText: 'Close',
+                cancelText: 'Cancel',
                 confirmButtonType: 'warning'
             });
             if (!confirmed) return;
@@ -219,8 +219,8 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
 
         if (!hasChanges && editingTarget?.id) {
             await confirm({
-                title: '수정사항 없음',
-                message: '수정된 정보가 없습니다.',
+                title: 'No Changes',
+                message: 'No information has been modified.',
                 showCancelButton: false,
                 confirmButtonType: 'primary'
             });
@@ -248,8 +248,8 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
 
             if (response.success) {
                 await confirm({
-                    title: '저장 완료',
-                    message: '전송 타겟 정보가 성공적으로 저장되었습니다.',
+                    title: 'Save Complete',
+                    message: 'Target information saved successfully.',
                     showCancelButton: false,
                     confirmButtonType: 'success'
                 });
@@ -258,16 +258,16 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                 fetchData();
             } else {
                 await confirm({
-                    title: '저장 실패',
-                    message: response.message || '정보를 저장하는 중 오류가 발생했습니다.',
+                    title: 'Save Failed',
+                    message: response.message || 'Error occurred while saving.',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
             }
         } catch (error) {
             await confirm({
-                title: '저장 실패',
-                message: '전송 타겟 정보를 저장하는 중 오류가 발생했습니다.',
+                title: 'Save Failed',
+                message: 'Error occurred while saving target information.',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -276,7 +276,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
 
     const handleTestConnection = async () => {
         if (!editingTarget?.target_type || !editingTarget?.config) {
-            await confirm({ title: '입력 부족', message: '테스트할 정보가 설정되지 않았습니다.', showCancelButton: false, confirmButtonType: 'warning' });
+            await confirm({ title: 'Insufficient Input', message: 'No information has been set for testing.', showCancelButton: false, confirmButtonType: 'warning' });
             return;
         }
 
@@ -289,23 +289,23 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
 
             if (response.success) {
                 await confirm({
-                    title: '테스트 성공',
-                    message: response.message || '연결 테스트가 성공적으로 완료되었습니다.',
+                    title: 'Test Successful',
+                    message: response.message || 'Connection test completed successfully.',
                     showCancelButton: false,
                     confirmButtonType: 'success'
                 });
             } else {
                 await confirm({
-                    title: '테스트 실패',
-                    message: response.message || '알 수 없는 이유로 실패했습니다.',
+                    title: 'Test Failed',
+                    message: response.message || 'Failed for an unknown reason.',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
             }
         } catch (error: any) {
             await confirm({
-                title: '테스트 오류',
-                message: error.message || '서버와 통신 중 오류가 발생했습니다.',
+                title: 'Test Error',
+                message: error.message || 'Error communicating with server.',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -316,9 +316,9 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
 
     const handleDelete = async (id: number) => {
         const confirmed = await confirm({
-            title: '타겟 삭제 확인',
-            message: '정말 이 전송 타겟을 삭제하시겠습니까?',
-            confirmText: '삭제',
+            title: 'Confirm Target Delete',
+            message: 'Are you sure you want to delete this target?',
+            confirmText: 'Delete',
             confirmButtonType: 'danger'
         });
 
@@ -327,16 +327,16 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
             await exportGatewayApi.deleteTarget(id, tenantId);
             fetchData();
         } catch (error) {
-            await confirm({ title: '삭제 실패', message: '타겟을 삭제하는 중 오류가 발생했습니다.', showCancelButton: false, confirmButtonType: 'danger' });
+            await confirm({ title: 'Delete Failed', message: 'Error occurred while deleting target.', showCancelButton: false, confirmButtonType: 'danger' });
         }
     };
 
     return (
         <div>
             <div className="mgmt-header-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>전송 타겟 설정</h3>
+                <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>Transmission Target Settings</h3>
                 <button className="btn btn-primary btn-sm" onClick={() => { setEditingTarget({ target_type: 'http', is_enabled: true, config: {} }); setIsModalOpen(true); }}>
-                    <i className="fas fa-plus" /> 타겟 추가
+                    <i className="fas fa-plus" /> Add Target
                 </button>
             </div>
 
@@ -344,10 +344,10 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                 <table className="mgmt-table">
                     <thead>
                         <tr>
-                            <th>이름</th>
-                            <th>타입</th>
-                            <th>상태</th>
-                            <th>관리</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Manage</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -361,7 +361,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                 </td>
                                 <td>
                                     <span className={`mgmt-badge ${t.is_enabled ? 'success' : 'neutral'}`}>
-                                        {t.is_enabled ? '활성화' : '비활성'}
+                                        {t.is_enabled ? 'Active' : 'Inactive'}
                                     </span>
                                 </td>
                                 <td>
@@ -369,8 +369,8 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                         <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs" onClick={() => {
                                             setEditingTarget({ ...t, config: typeof t.config === 'string' ? t.config : JSON.stringify(t.config, null, 2) });
                                             setIsModalOpen(true);
-                                        }} style={{ width: 'auto' }}>수정</button>
-                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs mgmt-btn-error" onClick={() => handleDelete(t.id)} style={{ width: 'auto' }}>삭제</button>
+                                        }} style={{ width: 'auto' }}>Edit</button>
+                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs mgmt-btn-error" onClick={() => handleDelete(t.id)} style={{ width: 'auto' }}>Delete</button>
                                     </div>
                                 </td>
                             </tr>
@@ -384,7 +384,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                     <div className="mgmt-modal-container target-mgmt-modal" style={{ width: '95vw', maxWidth: '1600px', display: 'flex', flexDirection: 'column', height: '75vh', maxHeight: '85vh', background: 'white', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.3)', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                         <div className="mgmt-modal-header">
                             <div className="mgmt-modal-title">
-                                <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>{editingTarget?.id ? "전송 타겟 수정" : "전송 타겟 추가"}</h2>
+                                <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>{editingTarget?.id ? "Edit Export Target" : "Add Export Target"}</h2>
                             </div>
                             <button className="mgmt-close-btn" onClick={handleCloseModal} style={{ fontSize: '24px' }}>&times;</button>
                         </div>
@@ -393,28 +393,28 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                 <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', height: '100%' }}>
                                     {/* Column 1: Basic Info */}
                                     <div style={{ flex: 1, maxWidth: '400px', borderRight: '1px solid #eee', paddingRight: '20px', display: 'flex', flexDirection: 'column' }}>
-                                        <div style={{ marginBottom: '15px', fontWeight: 'bold', color: '#333' }}>기본 정보</div>
+                                        <div style={{ marginBottom: '15px', fontWeight: 'bold', color: '#333' }}>Basic Info</div>
                                         <div className="mgmt-modal-form-group">
-                                            <label>타겟 명칭</label>
+                                            <label>Target Name</label>
                                             <input
                                                 type="text"
                                                 className="mgmt-input"
                                                 required
                                                 value={editingTarget?.name || ''}
                                                 onChange={e => { setEditingTarget({ ...editingTarget, name: e.target.value }); setHasChanges(true); }}
-                                                placeholder="예: 본사 관제 시스템"
+                                                placeholder="e.g. HQ Control System"
                                             />
                                         </div>
                                         {isAdmin && !tenantId && (
                                             <div className="mgmt-modal-form-group">
-                                                <label>소속 테넌트 <span style={{ color: 'red' }}>*</span></label>
+                                                <label>Tenant <span style={{ color: 'red' }}>*</span></label>
                                                 <select
                                                     className="mgmt-select"
                                                     required
                                                     value={editingTarget?.tenant_id || ''}
                                                     onChange={e => { setEditingTarget({ ...editingTarget, tenant_id: parseInt(e.target.value) }); setHasChanges(true); }}
                                                 >
-                                                    <option value="">(테넌트 선택)</option>
+                                                    <option value="">(Select Tenant)</option>
                                                     {tenants.map(t => (
                                                         <option key={t.id} value={t.id}>{t.company_name}</option>
                                                     ))}
@@ -422,7 +422,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                             </div>
                                         )}
                                         <div className="mgmt-modal-form-group">
-                                            <label>전송 프로토콜</label>
+                                            <label>Transmission Protocol</label>
                                             <select
                                                 className="mgmt-select"
                                                 required
@@ -441,7 +441,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
 
                                     {/* Column 2: Protocol Specific Config */}
                                     <div style={{ flex: 1, paddingRight: '20px', display: 'flex', flexDirection: 'column' }}>
-                                        <div style={{ marginBottom: '15px', fontWeight: 'bold', color: '#333' }}>전송 설정 상세</div>
+                                        <div style={{ marginBottom: '15px', fontWeight: 'bold', color: '#333' }}>Transmission Settings</div>
                                         {editingTarget?.target_type?.toLowerCase() === 'http' ? (
                                             <>
                                                 <div className="mgmt-modal-form-group">
@@ -508,10 +508,10 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
 
                                                 {/* 인증 키: headers.x-api-key에만 저장 */}
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>인증 키 (API Key / Token)</label>
+                                                    <label>Auth Key (API Key / Token)</label>
                                                     <Input.Password
                                                         className="mgmt-input"
-                                                        placeholder="x-api-key 값 입력"
+                                                        placeholder="Enter x-api-key value"
                                                         value={(() => {
                                                             const c = getConfigObject(editingTarget.config);
                                                             const val = c.headers?.['x-api-key'] || '';
@@ -534,7 +534,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                             });
                                                         }}
                                                     />
-                                                    <div className="mgmt-modal-form-hint">입력 시 x-api-key 헤더에 저장됩니다.</div>
+                                                    <div className="mgmt-modal-form-hint">Stored as x-api-key header when filled.</div>
                                                 </div>
                                             </>
                                         ) : editingTarget?.target_type?.toLowerCase() === 's3' ? (
@@ -589,7 +589,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                     <input
                                                         type="text"
                                                         className="mgmt-input"
-                                                        placeholder="예: {year}/{month}/{day}/{hour}/{minute}/{second}_{building_id}.json"
+                                                        placeholder="e.g. {year}/{month}/{day}/{hour}/{minute}/{second}_{building_id}.json"
                                                         value={getConfigObject(editingTarget.config).ObjectKeyTemplate || ''}
                                                         onChange={e => {
                                                             const c = getConfigObject(editingTarget.config);
@@ -598,7 +598,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                             setHasChanges(true);
                                                         }}
                                                     />
-                                                    <div className="mgmt-modal-form-hint">사용 가능 변수: {'{year}, {month}, {day}, {hour}, {minute}, {second}, {building_id}'}</div>
+                                                    <div className="mgmt-modal-form-hint">Available variables: {'{year}, {month}, {day}, {hour}, {minute}, {second}, {building_id}'}</div>
                                                 </div>
                                                 <div className="mgmt-modal-form-group">
                                                     <label>Access Key ID</label>
@@ -647,8 +647,8 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                             </>
                                         ) : (
                                             <div className="mgmt-alert info">
-                                                이 타겟 유형은 별도의 입력 폼을 제공하지 않습니다 ({editingTarget?.target_type?.toLowerCase()}).
-                                                오른쪽의 JSON 설정 창을 사용하여 직접 구성하세요.
+                                                This target type does not have a separate input form ({editingTarget?.target_type?.toLowerCase()}).
+                                                Use the JSON settings panel on the right to configure directly.
                                             </div>
                                         )}
                                         {/* Activation Checkbox Moved below Column 2 inputs */}
@@ -660,16 +660,16 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                     onChange={e => { setEditingTarget({ ...editingTarget, is_enabled: e.target.checked }); setHasChanges(true); }}
                                                     style={{ marginRight: '8px' }}
                                                 />
-                                                이 타겟 활성화
+                                                Activate Target
                                             </label>
                                         </div>
                                     </div>
 
                                     {/* Column 3: JSON Config */}
                                     <div style={{ flex: 1.2, minWidth: '300px', borderLeft: '1px solid #eee', paddingLeft: '20px', display: 'flex', flexDirection: 'column' }}>
-                                        <div style={{ marginBottom: '15px', fontWeight: 'bold', color: '#333' }}>고급 설정 (JSON)</div>
+                                        <div style={{ marginBottom: '15px', fontWeight: 'bold', color: '#333' }}>Advanced Settings (JSON)</div>
                                         <div className="modal-form-hint" style={{ marginBottom: '10px' }}>
-                                            왼쪽 입력값과 자동 동기화됩니다. 세부 조정이 필요할 때 직접 편집하세요.
+                                            Auto-synced with the left form. Edit directly for fine-tuning.
                                         </div>
                                         <textarea
                                             className="mgmt-input"
@@ -685,17 +685,17 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                 <button type="button" className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={handleTestConnection} disabled={isTesting} style={{ marginRight: 'auto', borderColor: 'var(--primary-500)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', gap: '8px', width: 'auto' }}>
                                     {isTesting ? (
                                         <>
-                                            <i className="fas fa-spinner fa-spin" /> 테스트 중...
+                                            <i className="fas fa-spinner fa-spin" /> Testing...
                                         </>
                                     ) : (
                                         <>
-                                            <i className="fas fa-plug" /> 접속 테스트
+                                            <i className="fas fa-plug" /> Connection Test
                                         </>
                                     )}
                                 </button>
                                 <div className="mgmt-footer-right" style={{ display: 'flex', gap: '8px' }}>
-                                    <button type="button" className="mgmt-btn mgmt-btn-outline" onClick={() => setIsModalOpen(false)} style={{ width: 'auto' }}>취소</button>
-                                    <button type="submit" className="mgmt-btn mgmt-btn-primary" style={{ width: 'auto' }}>저장하기</button>
+                                    <button type="button" className="mgmt-btn mgmt-btn-outline" onClick={() => setIsModalOpen(false)} style={{ width: 'auto' }}>Cancel</button>
+                                    <button type="submit" className="mgmt-btn mgmt-btn-primary" style={{ width: 'auto' }}>Save</button>
                                 </div>
                             </div>
                         </form>

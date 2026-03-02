@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlarmRuleSettings } from '../../api/services/alarmApi';
 import '../../styles/alarm-settings.css';
 
@@ -28,6 +29,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
   loading
 }) => {
   const [updateSettings, setUpdateSettings] = useState<Partial<AlarmRuleSettings>>({});
+    const { t } = useTranslation(['alarms', 'common']);
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
 
   const handleFieldToggle = (field: string) => {
@@ -52,7 +54,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
 
   const handleSubmit = () => {
     if (selectedFields.size === 0) {
-      alert('변경할 설정을 선택해주세요.');
+      alert('Please select a setting to change.');
       return;
     }
 
@@ -70,7 +72,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
     <div className="modal-overlay">
       <div className="modal-container">
         <div className="modal-header">
-          <h2 className="modal-title">일괄 설정 변경</h2>
+          <h2 className="modal-title">{t('labels.bulkSettingsChange', {ns: 'alarms'})}</h2>
           <button
             className="modal-close-btn"
             onClick={onClose}
@@ -83,7 +85,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
         <div className="modal-content">
           {/* 선택된 규칙 요약 */}
           <div className="form-section">
-            <h3>선택된 알람 규칙 ({selectedRules.length}개)</h3>
+            <h3>Selected Alarm Rules ({selectedRules.length})</h3>
             <div className="selected-rules-summary">
               {rules.slice(0, 5).map(rule => (
                 <div key={rule.id} className="rule-summary-item">
@@ -93,7 +95,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
               ))}
               {rules.length > 5 && (
                 <div className="rule-summary-item more">
-                  외 {rules.length - 5}개 규칙...
+                  and {rules.length - 5} more rule(s)...
                 </div>
               )}
             </div>
@@ -101,9 +103,9 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
 
           {/* 일괄 변경 설정 */}
           <div className="form-section">
-            <h3>변경할 설정 선택</h3>
+            <h3>{t('bulk.selectSettings', {ns: 'alarms'})}</h3>
             <p className="form-help">
-              체크한 설정만 선택된 모든 규칙에 일괄 적용됩니다.
+              Only checked settings will be applied to all selected rules.
             </p>
 
             {/* 우선순위 설정 */}
@@ -114,7 +116,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                   checked={selectedFields.has('priority')}
                   onChange={() => handleFieldToggle('priority')}
                 />
-                <span>우선순위</span>
+                <span>{t('bulk.priority', {ns: 'alarms'})}</span>
               </label>
               {selectedFields.has('priority') && (
                 <select
@@ -122,10 +124,10 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                   onChange={(e) => handleSettingChange('priority', e.target.value)}
                   className="form-select"
                 >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="critical">Critical</option>
+                  <option value="low">{t('severity.low', {ns: 'alarms'})}</option>
+                  <option value="medium">{t('severity.medium', {ns: 'alarms'})}</option>
+                  <option value="high">{t('severity.high', {ns: 'alarms'})}</option>
+                  <option value="critical">{t('severity.critical', {ns: 'alarms'})}</option>
                 </select>
               )}
             </div>
@@ -138,7 +140,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                   checked={selectedFields.has('severity')}
                   onChange={() => handleFieldToggle('severity')}
                 />
-                <span>심각도</span>
+                <span>{t('severity.label', {ns: 'alarms'})}</span>
               </label>
               {selectedFields.has('severity') && (
                 <select
@@ -146,16 +148,16 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                   onChange={(e) => handleSettingChange('severity', Number(e.target.value))}
                   className="form-select"
                 >
-                  <option value={1}>1 (가장 낮음)</option>
-                  <option value={2}>2 (낮음)</option>
-                  <option value={3}>3 (보통)</option>
-                  <option value={4}>4 (높음)</option>
-                  <option value={5}>5 (가장 높음)</option>
+                  <option value={1}>1 (Lowest)</option>
+                  <option value={2}>2 (Low)</option>
+                  <option value={3}>3 (Normal)</option>
+                  <option value={4}>4 (High)</option>
+                  <option value={5}>5 (Highest)</option>
                 </select>
               )}
             </div>
 
-            {/* 자동 승인 */}
+            {/* Auto Approve */}
             <div className="bulk-setting-group">
               <label className="bulk-setting-label">
                 <input
@@ -163,7 +165,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                   checked={selectedFields.has('autoAcknowledge')}
                   onChange={() => handleFieldToggle('autoAcknowledge')}
                 />
-                <span>자동 승인</span>
+                <span>{t('labels.autoApprove', {ns: 'alarms'})}</span>
               </label>
               {selectedFields.has('autoAcknowledge') && (
                 <div className="bulk-setting-options">
@@ -174,7 +176,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                       checked={updateSettings.autoAcknowledge === true}
                       onChange={() => handleSettingChange('autoAcknowledge', true)}
                     />
-                    활성화
+                    Enabled
                   </label>
                   <label className="radio-label">
                     <input
@@ -183,13 +185,13 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                       checked={updateSettings.autoAcknowledge === false}
                       onChange={() => handleSettingChange('autoAcknowledge', false)}
                     />
-                    비활성화
+                    Disabled
                   </label>
                 </div>
               )}
             </div>
 
-            {/* 자동 리셋 */}
+            {/* Auto Reset */}
             <div className="bulk-setting-group">
               <label className="bulk-setting-label">
                 <input
@@ -197,7 +199,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                   checked={selectedFields.has('autoReset')}
                   onChange={() => handleFieldToggle('autoReset')}
                 />
-                <span>자동 리셋</span>
+                <span>{t('bulk.autoReset', {ns: 'alarms'})}</span>
               </label>
               {selectedFields.has('autoReset') && (
                 <div className="bulk-setting-options">
@@ -208,7 +210,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                       checked={updateSettings.autoReset === true}
                       onChange={() => handleSettingChange('autoReset', true)}
                     />
-                    활성화
+                    Enabled
                   </label>
                   <label className="radio-label">
                     <input
@@ -217,13 +219,13 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                       checked={updateSettings.autoReset === false}
                       onChange={() => handleSettingChange('autoReset', false)}
                     />
-                    비활성화
+                    Disabled
                   </label>
                 </div>
               )}
             </div>
 
-            {/* 이메일 알림 */}
+            {/* Email Notifications */}
             <div className="bulk-setting-group">
               <label className="bulk-setting-label">
                 <input
@@ -231,7 +233,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                   checked={selectedFields.has('emailEnabled')}
                   onChange={() => handleFieldToggle('emailEnabled')}
                 />
-                <span>이메일 알림</span>
+                <span>{t('labels.emailNotifications', {ns: 'alarms'})}</span>
               </label>
               {selectedFields.has('emailEnabled') && (
                 <div className="bulk-setting-options">
@@ -242,7 +244,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                       checked={updateSettings.emailEnabled === true}
                       onChange={() => handleSettingChange('emailEnabled', true)}
                     />
-                    활성화
+                    Enabled
                   </label>
                   <label className="radio-label">
                     <input
@@ -251,13 +253,13 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                       checked={updateSettings.emailEnabled === false}
                       onChange={() => handleSettingChange('emailEnabled', false)}
                     />
-                    비활성화
+                    Disabled
                   </label>
                 </div>
               )}
             </div>
 
-            {/* SMS 알림 */}
+            {/* SMS Notification */}
             <div className="bulk-setting-group">
               <label className="bulk-setting-label">
                 <input
@@ -265,7 +267,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                   checked={selectedFields.has('smsEnabled')}
                   onChange={() => handleFieldToggle('smsEnabled')}
                 />
-                <span>SMS 알림</span>
+                <span>{t('bulk.smsEnabled', {ns: 'alarms'})}</span>
               </label>
               {selectedFields.has('smsEnabled') && (
                 <div className="bulk-setting-options">
@@ -276,7 +278,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                       checked={updateSettings.smsEnabled === true}
                       onChange={() => handleSettingChange('smsEnabled', true)}
                     />
-                    활성화
+                    Enabled
                   </label>
                   <label className="radio-label">
                     <input
@@ -285,7 +287,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                       checked={updateSettings.smsEnabled === false}
                       onChange={() => handleSettingChange('smsEnabled', false)}
                     />
-                    비활성화
+                    Disabled
                   </label>
                 </div>
               )}
@@ -299,7 +301,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                   checked={selectedFields.has('suppressDuration')}
                   onChange={() => handleFieldToggle('suppressDuration')}
                 />
-                <span>중복 억제 시간 (초)</span>
+                <span>{t('labels.duplicateSuppressionTimeS', {ns: 'alarms'})}</span>
               </label>
               {selectedFields.has('suppressDuration') && (
                 <input
@@ -321,7 +323,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                   checked={selectedFields.has('escalationTime')}
                   onChange={() => handleFieldToggle('escalationTime')}
                 />
-                <span>에스컬레이션 시간 (분)</span>
+                <span>{t('bulk.escalationTime', {ns: 'alarms'})}</span>
               </label>
               {selectedFields.has('escalationTime') && (
                 <input
@@ -335,7 +337,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
               )}
             </div>
 
-            {/* 규칙 활성화/비활성화 */}
+            {/* 규칙 Enabled/Disabled */}
             <div className="bulk-setting-group">
               <label className="bulk-setting-label">
                 <input
@@ -343,7 +345,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                   checked={selectedFields.has('isEnabled')}
                   onChange={() => handleFieldToggle('isEnabled')}
                 />
-                <span>알람 활성화</span>
+                <span>{t('bulk.isEnabled', {ns: 'alarms'})}</span>
               </label>
               {selectedFields.has('isEnabled') && (
                 <div className="bulk-setting-options">
@@ -354,7 +356,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                       checked={updateSettings.isEnabled === true}
                       onChange={() => handleSettingChange('isEnabled', true)}
                     />
-                    활성화
+                    Enabled
                   </label>
                   <label className="radio-label">
                     <input
@@ -363,17 +365,17 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
                       checked={updateSettings.isEnabled === false}
                       onChange={() => handleSettingChange('isEnabled', false)}
                     />
-                    비활성화
+                    Disabled
                   </label>
                 </div>
               )}
             </div>
           </div>
 
-          {/* 적용 미리보기 */}
+          {/* Apply 미리보기 */}
           {selectedFields.size > 0 && (
             <div className="form-section">
-              <h3>적용될 변경사항</h3>
+              <h3>{t('bulk.previewTitle', {ns: 'alarms'})}</h3>
               <div className="preview-changes">
                 {Array.from(selectedFields).map(field => (
                   <div key={field} className="change-item">
@@ -384,7 +386,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
               </div>
               <div className="preview-warning">
                 <i className="fas fa-exclamation-triangle"></i>
-                이 변경사항이 선택된 {selectedRules.length}개 규칙에 모두 적용됩니다.
+                These changes will apply to all {selectedRules.length} selected rules.
               </div>
             </div>
           )}
@@ -396,7 +398,7 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
             onClick={onClose}
             disabled={loading}
           >
-            취소
+            Cancel
           </button>
           <button
             className="btn btn-primary"
@@ -415,15 +417,15 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
 // 헬퍼 함수들
 const getFieldDisplayName = (field: string): string => {
   const fieldNames: Record<string, string> = {
-    priority: '우선순위',
-    severity: '심각도',
-    autoAcknowledge: '자동 승인',
-    autoReset: '자동 리셋',
-    emailEnabled: '이메일 알림',
-    smsEnabled: 'SMS 알림',
-    suppressDuration: '중복 억제 시간',
-    escalationTime: '에스컬레이션 시간',
-    isEnabled: '알람 활성화'
+    priority: 'Priority',
+    severity: 'Severity',
+    autoAcknowledge: 'Auto Approve',
+    autoReset: 'Auto Reset',
+    emailEnabled: 'Email Notifications',
+    smsEnabled: 'SMS Notification',
+    suppressDuration: 'Duplicate Suppression Time',
+    escalationTime: 'Escalation Time',
+    isEnabled: 'Alarm Enabled'
   };
   return fieldNames[field] || field;
 };
@@ -435,17 +437,17 @@ const formatFieldValue = (field: string, value: any): string => {
     case 'priority':
       return value.toString().toUpperCase();
     case 'severity':
-      return `${value} (${['', '가장 낮음', '낮음', '보통', '높음', '가장 높음'][value] || ''})`;
+      return `${value} (${['', 'Lowest', 'Low', 'Medium', 'High', 'Highest'][value] || ''})`;
     case 'autoAcknowledge':
     case 'autoReset':
     case 'emailEnabled':
     case 'smsEnabled':
     case 'isEnabled':
-      return value ? '활성화' : '비활성화';
+      return value ? 'Enabled' : 'Disabled';
     case 'suppressDuration':
-      return `${value}초`;
+      return `${value}s`;
     case 'escalationTime':
-      return `${value}분`;
+      return `${value}min`;
     default:
       return value.toString();
   }

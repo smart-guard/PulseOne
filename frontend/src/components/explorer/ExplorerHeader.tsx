@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface ExplorerHeaderProps {
     connectionStatus: 'connected' | 'connecting' | 'disconnected';
@@ -33,6 +34,8 @@ const ExplorerHeader: React.FC<ExplorerHeaderProps> = ({
     isLoading,
     exportDisabled,
 }) => {
+    const { t } = useTranslation(['dataExplorer', 'common']);
+
     return (
         <div className="page-header">
             <div className="header-left">
@@ -47,20 +50,20 @@ const ExplorerHeader: React.FC<ExplorerHeaderProps> = ({
                             {connectionStatus === 'disconnected' && '❌'}
                         </span>
                         <span>
-                            {connectionStatus === 'connected' && 'API 연결됨'}
-                            {connectionStatus === 'connecting' && 'API 연결중'}
-                            {connectionStatus === 'disconnected' && 'API 연결 끊김'}
+                            {connectionStatus === 'connected' && t('status.connected', { ns: 'dataExplorer' })}
+                            {connectionStatus === 'connecting' && t('status.connecting', { ns: 'dataExplorer' })}
+                            {connectionStatus === 'disconnected' && t('status.disconnected', { ns: 'dataExplorer' })}
                         </span>
                         <span>
-                            ({statistics.total_devices || 0}개 디바이스, {activeDevicesCount}개 활성)
+                            ({statistics.total_devices || 0} {t('status.devices', { ns: 'dataExplorer' })}, {activeDevicesCount} {t('status.active', { ns: 'dataExplorer' })})
                         </span>
                     </div>
                     <div>
-                        마지막 업데이트: {lastRefresh.toLocaleTimeString()}
+                        {t('lastUpdated', { ns: 'dataExplorer' })}: {lastRefresh.toLocaleTimeString()}
                     </div>
                     {!!statistics.rtu_masters && (
                         <div style={{ fontSize: '12px', color: '#6b7280' }}>
-                            RTU: 마스터 {statistics.rtu_masters}개, 슬레이브 {statistics.rtu_slaves}개
+                            RTU: {t('rtuMaster', { ns: 'dataExplorer' })} {statistics.rtu_masters}, {t('rtuSlave', { ns: 'dataExplorer' })} {statistics.rtu_slaves}
                         </div>
                     )}
                 </div>
@@ -74,7 +77,7 @@ const ExplorerHeader: React.FC<ExplorerHeaderProps> = ({
                             checked={autoRefresh}
                             onChange={(e) => setAutoRefresh(e.target.checked)}
                         />
-                        자동 새로고침
+                        {t('autoRefresh', { ns: 'dataExplorer' })}
                     </label>
                     {autoRefresh && (
                         <select
@@ -82,10 +85,10 @@ const ExplorerHeader: React.FC<ExplorerHeaderProps> = ({
                             onChange={(e) => setRefreshInterval(Number(e.target.value))}
                             className="refresh-interval"
                         >
-                            <option value={5}>5초</option>
-                            <option value={10}>10초</option>
-                            <option value={30}>30초</option>
-                            <option value={60}>1분</option>
+                            <option value={5}>5{t('sec', { ns: 'dataExplorer' })}</option>
+                            <option value={10}>10{t('sec', { ns: 'dataExplorer' })}</option>
+                            <option value={30}>30{t('sec', { ns: 'dataExplorer' })}</option>
+                            <option value={60}>1{t('min', { ns: 'dataExplorer' })}</option>
                         </select>
                     )}
                 </div>
@@ -96,7 +99,7 @@ const ExplorerHeader: React.FC<ExplorerHeaderProps> = ({
                     className="btn btn-outline"
                 >
                     <span style={{ transform: isLoading ? 'rotate(360deg)' : 'none', transition: 'transform 1s linear' }}>🔄</span>
-                    새로고침
+                    {t('refresh', { ns: 'common' })}
                 </button>
 
                 <button
@@ -104,7 +107,7 @@ const ExplorerHeader: React.FC<ExplorerHeaderProps> = ({
                     disabled={exportDisabled}
                     className="btn btn-primary"
                 >
-                    📥 데이터 내보내기
+                    📥 {t('exportData', { ns: 'dataExplorer' })}
                 </button>
             </div>
         </div>

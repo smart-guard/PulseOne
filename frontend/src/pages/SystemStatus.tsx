@@ -33,7 +33,7 @@ const SystemStatus: React.FC = () => {
         setUnassignedCollectors(overviewRes.data.unassigned_collectors || []);
         setLastUpdate(new Date());
       } else {
-        setError(overviewRes.message || '데이터를 불러오는데 실패했습니다.');
+        setError(overviewRes.message || 'Failed to load data.');
       }
 
       let mergedServices: ServiceInfo[] = [];
@@ -61,7 +61,7 @@ const SystemStatus: React.FC = () => {
           status: 'running',
           icon: 'fas fa-share-square',
           controllable: false,
-          description: '산업용 데이터 외부 송출 및 연동 서비스',
+          description: 'Industrial data export and integration service',
           serviceType: 'core',
         } as ServiceInfo;
         mergedServices.push(exportGatewayParent);
@@ -105,7 +105,7 @@ const SystemStatus: React.FC = () => {
 
     } catch (err) {
       console.error('Failed to fetch system status:', err);
-      setError('서버와 통신하는 중 오류가 발생했습니다.');
+      setError('Error while communicating with the server.');
     } finally {
       setLoading(false);
     }
@@ -121,7 +121,7 @@ const SystemStatus: React.FC = () => {
   // 개별 서비스 제어
   const handleServiceControl = async (service: ServiceInfo, action: 'start' | 'stop' | 'restart') => {
     if (!service.controllable) {
-      alert(`${service.displayName}는 필수 서비스로 제어할 수 없습니다.`);
+      alert(`${service.displayName} is a required service and cannot be controlled.`);
       return;
     }
 
@@ -141,14 +141,14 @@ const SystemStatus: React.FC = () => {
 
       if (response && response.success) {
         console.log(`${service.displayName} ${action} 완료`);
-        await fetchStatus(); // 상태 새로고침
+        await fetchStatus(); // 상태 Refresh
       } else {
-        const msg = response?.message || '알 수 없는 오류';
-        alert(`${service.displayName} ${action} 실패: ${msg}`);
+        const msg = response?.message || 'Unknown error';
+        alert(`${service.displayName} ${action} failed: ${msg}`);
       }
     } catch (error) {
       console.error(`서비스 제어 실패:`, error);
-      alert(`${service.displayName} ${action} 중 오류가 발생했습니다.`);
+      alert(`Error during ${service.displayName} ${action}.`);
     } finally {
       setIsProcessing(false);
     }
@@ -164,11 +164,11 @@ const SystemStatus: React.FC = () => {
         console.log(`Device ${device.name} ${action} 완료`);
         await fetchStatus();
       } else {
-        alert(`${device.name} ${action} 실패: ${response.message}`);
+        alert(`${device.name} ${action} failed: ${response.message}`);
       }
     } catch (err) {
       console.error(`디바이스 제어 실패:`, err);
-      alert(`${device.name} ${action} 중 오류가 발생했습니다.`);
+      alert(`Error during ${device.name} ${action}.`);
     } finally {
       setIsProcessing(false);
     }
@@ -181,14 +181,14 @@ const SystemStatus: React.FC = () => {
       const response = await DashboardApiService.controlPoint(device.id, pointId, type, value);
 
       if (response.success) {
-        alert(`${type === 'digital' ? 'DO' : 'AO'} 제어 명령이 성공적으로 전송되었습니다.`);
+        alert(`${type === 'digital' ? 'DO' : 'AO'} control command sent successfully.`);
         await fetchStatus();
       } else {
-        alert(`${type === 'digital' ? 'DO' : 'AO'} 제어 실패: ${response.message}`);
+        alert(`${type === 'digital' ? 'DO' : 'AO'} control failed: ${response.message}`);
       }
     } catch (err) {
       console.error(`포인트 제어 실패:`, err);
-      alert(`제어 명령 전송 중 오류가 발생했습니다.`);
+      alert(`제어 명령 전송 중 Error가 발생했습니다.`);
     } finally {
       setIsProcessing(false);
     }
@@ -215,14 +215,14 @@ const SystemStatus: React.FC = () => {
     const controllableServices = services.filter(s => s.controllable);
 
     if (controllableServices.length === 0) {
-      alert('제어 가능한 서비스가 없습니다.');
+      alert('No controllable services available.');
       return;
     }
 
     const confirmation = confirm(
-      `${controllableServices.length}개의 서비스를 ${action === 'start' ? '시작' :
-        action === 'stop' ? '정지' : '재시작'
-      }하시겠습니까?`
+      `${controllableServices.length}개의 서비스를 ${action === 'start' ? 'start' :
+        action === 'stop' ? 'stop' : 'restart'
+      }?`
     );
 
     if (!confirmation) return;
@@ -236,10 +236,10 @@ const SystemStatus: React.FC = () => {
       }
 
       await fetchStatus();
-      alert(`${controllableServices.length}개 서비스 ${action} 완료`);
+      alert(`${controllableServices.length} service(s) ${action} complete.`);
     } catch (error) {
       console.error('일괄 서비스 제어 실패:', error);
-      alert('일괄 서비스 제어 중 오류가 발생했습니다.');
+      alert('Error during bulk service control.');
     } finally {
       setIsProcessing(false);
     }
@@ -248,7 +248,7 @@ const SystemStatus: React.FC = () => {
   // 선택된 서비스 제어
   const handleSelectedAction = async (action: 'start' | 'stop' | 'restart') => {
     if (selectedServices.length === 0) {
-      alert('서비스를 선택해주세요.');
+      alert('Please select a service.');
       return;
     }
 
@@ -257,7 +257,7 @@ const SystemStatus: React.FC = () => {
     );
 
     if (selectedServiceObjects.length === 0) {
-      alert('제어 가능한 서비스가 선택되지 않았습니다.');
+      alert('No controllable service is selected.');
       return;
     }
 
@@ -269,11 +269,11 @@ const SystemStatus: React.FC = () => {
       }
 
       await fetchStatus();
-      alert(`${selectedServiceObjects.length}개 서비스 ${action} 완료`);
+      alert(`${selectedServiceObjects.length} service(s) ${action} complete.`);
       setSelectedServices([]);
     } catch (error) {
       console.error('선택된 서비스 제어 실패:', error);
-      alert('선택된 서비스 제어 중 오류가 발생했습니다.');
+      alert('Error during selected service control.');
     } finally {
       setIsProcessing(false);
     }
@@ -292,10 +292,10 @@ const SystemStatus: React.FC = () => {
     const diffMs = now.getTime() - date.getTime();
     const diffSecs = Math.floor(diffMs / 1000);
 
-    if (diffSecs < 60) return '방금 전';
+    if (diffSecs < 60) return 'just now';
     const diffMins = Math.floor(diffSecs / 60);
-    if (diffMins < 60) return `${diffMins}분 전`;
-    return `${Math.floor(diffMins / 60)}시간 전`;
+    if (diffMins < 60) return `${diffMins} min ago`;
+    return `${Math.floor(diffMins / 60)} hr ago`;
   };
 
   const formatUptime = (seconds?: number) => {
@@ -316,7 +316,7 @@ const SystemStatus: React.FC = () => {
     return (
       <div className="loading-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
         <i className="fas fa-spinner fa-spin fa-3x" style={{ color: '#667eea', marginBottom: '16px' }}></i>
-        <div style={{ fontSize: '1.2rem', color: '#4a5568' }}>데이터를 불러오는 중...</div>
+        <div style={{ fontSize: '1.2rem', color: '#4a5568' }}>Loading data...</div>
       </div>
     );
   }
@@ -389,7 +389,7 @@ const SystemStatus: React.FC = () => {
                     </span>
                   )}
                   {isCollector && !service.exists && (
-                    <span style={{ fontSize: '0.7rem', color: '#e53e3e', background: '#fff5f5', padding: '1px 6px', borderRadius: '4px', border: '1px solid #feb2b2' }}>미등록</span>
+                    <span style={{ fontSize: '0.7rem', color: '#e53e3e', background: '#fff5f5', padding: '1px 6px', borderRadius: '4px', border: '1px solid #feb2b2' }}>Unregistered</span>
                   )}
                 </div>
                 <div style={{ fontSize: '0.8rem', color: '#718096', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -442,7 +442,7 @@ const SystemStatus: React.FC = () => {
                       onClick={() => handleServiceControl(service, 'stop')}
                       className="btn-icon"
                       style={{ width: '30px', height: '30px', borderRadius: '6px', border: '1px solid #fed7d7', background: '#fff5f5', color: '#c53030', cursor: 'pointer' }}
-                      title="중지"
+                      title="Stop"
                       disabled={isProcessing}
                     >
                       <i className="fas fa-stop"></i>
@@ -452,7 +452,7 @@ const SystemStatus: React.FC = () => {
                       onClick={() => handleServiceControl(service, 'start')}
                       className="btn-icon"
                       style={{ width: '30px', height: '30px', borderRadius: '6px', border: '1px solid #c6f6d5', background: '#f0fff4', color: '#2f855a', cursor: 'pointer' }}
-                      title="시작"
+                      title="Start"
                       disabled={isProcessing}
                     >
                       <i className="fas fa-play"></i>
@@ -462,7 +462,7 @@ const SystemStatus: React.FC = () => {
                     onClick={() => handleServiceControl(service, 'restart')}
                     className="btn-icon"
                     style={{ width: '30px', height: '30px', borderRadius: '6px', border: '1px solid #e2e8f0', background: 'white', color: '#4a5568', cursor: 'pointer' }}
-                    title="재시작"
+                    title="Restart"
                     disabled={isProcessing}
                   >
                     <i className="fas fa-redo-alt"></i>
@@ -603,21 +603,21 @@ const SystemStatus: React.FC = () => {
                               onClick={() => handleServiceControl(currGateway, 'stop')}
                               style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #fed7d7', background: 'white', color: '#c53030', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
                             >
-                              <i className="fas fa-stop" style={{ marginRight: '6px' }}></i> 정지
+                              <i className="fas fa-stop" style={{ marginRight: '6px' }}></i> Stop
                             </button>
                           ) : (
                             <button
                               onClick={() => handleServiceControl(currGateway, 'start')}
                               style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #c6f6d5', background: 'white', color: '#2f855a', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
                             >
-                              <i className="fas fa-play" style={{ marginRight: '6px' }}></i> 시작
+                              <i className="fas fa-play" style={{ marginRight: '6px' }}></i> Start
                             </button>
                           )}
                           <button
                             onClick={() => handleServiceControl(currGateway, 'restart')}
                             style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', background: 'white', color: '#4a5568', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
                           >
-                            <i className="fas fa-redo" style={{ marginRight: '6px' }}></i> 재시작
+                            <i className="fas fa-redo" style={{ marginRight: '6px' }}></i> 재Start
                           </button>
                         </div>
                       </div>
@@ -633,7 +633,7 @@ const SystemStatus: React.FC = () => {
           <tr style={{ background: '#f8fafc' }}>
             <td colSpan={6} style={{ padding: '16px 24px 24px 60px', color: '#a0aec0', fontSize: '0.85rem' }}>
               <div style={{ borderLeft: '2px solid #cbd5e0', paddingLeft: '20px' }}>
-                할당된 디바이스가 없습니다.
+                No devices assigned.
               </div>
             </td>
           </tr>
@@ -648,14 +648,14 @@ const SystemStatus: React.FC = () => {
       {/* ... (Header section remains) ... */}
       <div className="page-header" style={{ marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '20px 24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
         <div>
-          <h1 className="page-title" style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#1a202c' }}>시스템 상태 및 서비스 관리</h1>
-          <p style={{ margin: '4px 0 0 0', color: '#718096', fontSize: '0.9rem' }}>산업용 데이터 허브의 모든 서비스 상태를 실시간으로 모니터링합니다.</p>
+          <h1 className="page-title" style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#1a202c' }}>System Status & Service Management</h1>
+          <p style={{ margin: '4px 0 0 0', color: '#718096', fontSize: '0.9rem' }}>Monitor all service statuses of the industrial data hub in real time.</p>
         </div>
         <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ textAlign: 'right' }}>
             {error && <div className="text-error-600" style={{ color: '#e53e3e', fontSize: '0.85rem', fontWeight: 500 }}>{error}</div>}
             <span className="text-sm text-neutral-600" style={{ fontSize: '0.85rem', color: '#718096' }}>
-              갱신: {formatTimeAgo(lastUpdate)}
+              Updated: {formatTimeAgo(lastUpdate)}
             </span>
           </div>
           <button
@@ -665,7 +665,7 @@ const SystemStatus: React.FC = () => {
             style={{ padding: '10px 20px', borderRadius: '8px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', color: 'white', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
           >
             <i className={`fas fa-sync-alt ${isProcessing ? 'fa-spin' : ''}`}></i>
-            새로고침
+            Refresh
           </button>
         </div>
       </div>
@@ -674,7 +674,7 @@ const SystemStatus: React.FC = () => {
         {/* Core Infrastructure Section */}
         <div className="status-card" style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <h3 style={{ margin: '0 0 20px 0', fontSize: '1.1rem', fontWeight: 600, color: '#2d3748', borderBottom: '1px solid #edf2f7', paddingBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <i className="fas fa-microchip" style={{ color: '#4a5568' }}></i> 핵심 인프라
+            <i className="fas fa-microchip" style={{ color: '#4a5568' }}></i> Core Infrastructure
           </h3>
           <div className="service-mini-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {coreServices.map(s => (
@@ -706,23 +706,23 @@ const SystemStatus: React.FC = () => {
           <div className="collector-summary" style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
             <div style={{ flex: 1, textAlign: 'center', padding: '12px', background: '#ebf4ff', borderRadius: '8px' }}>
               <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#2b6cb0' }}>{collectorServices.length}</div>
-              <div style={{ fontSize: '0.75rem', color: '#4a5568', textTransform: 'uppercase', fontWeight: 600 }}>총 파티션</div>
+              <div style={{ fontSize: '0.75rem', color: '#4a5568', textTransform: 'uppercase', fontWeight: 600 }}>Total Partitions</div>
             </div>
             <div style={{ flex: 1, textAlign: 'center', padding: '12px', background: '#f0fff4', borderRadius: '8px' }}>
               <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#2f855a' }}>{collectorServices.filter(s => s.status === 'running').length}</div>
-              <div style={{ fontSize: '0.75rem', color: '#4a5568', textTransform: 'uppercase', fontWeight: 600 }}>활성 수집기</div>
+              <div style={{ fontSize: '0.75rem', color: '#4a5568', textTransform: 'uppercase', fontWeight: 600 }}>Active Collectors</div>
             </div>
           </div>
-          <p style={{ fontSize: '0.85rem', color: '#718096', margin: 0 }}>각 엣지 서버별 데이터 수집 엔진이 독립적으로 동작하고 있습니다.</p>
+          <p style={{ fontSize: '0.85rem', color: '#718096', margin: 0 }}>Each edge server's data collection engine operates independently.</p>
         </div>
       </div>
 
       <div className="main-service-panel" style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #edf2f7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>상세 서비스 목록</h3>
+          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>Service List</h3>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button className="btn btn-sm" onClick={() => handleBulkAction('restart')} style={{ padding: '6px 12px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer' }}>
-              <i className="fas fa-redo"></i> 일괄 재시작
+              <i className="fas fa-redo"></i> 일괄 재Start
             </button>
           </div>
         </div>
@@ -731,7 +731,7 @@ const SystemStatus: React.FC = () => {
           {/* Core Infrastructure Group */}
           <div className="service-group">
             <div style={{ background: '#f8fafc', padding: '10px 24px', borderBottom: '1px solid #edf2f7', fontSize: '0.8rem', fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              핵심 인프라 (Core Services)
+              Core Infrastructure (Core Services)
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
@@ -744,7 +744,7 @@ const SystemStatus: React.FC = () => {
           {exportGatewayServices.length > 0 && (
             <div className="service-group" style={{ marginTop: '20px' }}>
               <div style={{ background: '#f8fafc', padding: '10px 24px', borderBottom: '1px solid #edf2f7', fontSize: '0.8rem', fontWeight: 700, color: '#805ad5', textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '2px solid #faf5ff' }}>
-                데이터 외부 연동 (Export Gateways)
+                Data Export Integration (Export Gateways)
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
@@ -757,7 +757,7 @@ const SystemStatus: React.FC = () => {
           {/* Collector Partitions Group (Hierarchical) */}
           <div className="service-group" style={{ marginTop: '20px' }}>
             <div style={{ background: '#f8fafc', padding: '10px 24px', borderBottom: '1px solid #edf2f7', fontSize: '0.8rem', fontWeight: 700, color: '#667eea', textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '2px solid #ebf4ff' }}>
-              수집기 파티션 (Hierarchical Overview)
+              Collector Partitions (Hierarchical Overview)
             </div>
 
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -790,7 +790,7 @@ const SystemStatus: React.FC = () => {
                       ) : (
                         <tr style={{ background: 'white' }}>
                           <td colSpan={6} style={{ padding: '12px 60px', color: '#94a3b8', fontSize: '0.8rem', fontStyle: 'italic' }}>
-                            이 사이트에 할당된 수집기가 없습니다.
+                            No collectors assigned to this site.
                           </td>
                         </tr>
                       )
@@ -836,7 +836,7 @@ const SystemStatus: React.FC = () => {
                   <tr>
                     <td colSpan={6} style={{ padding: '48px', textAlign: 'center', color: '#a0aec0' }}>
                       <i className="fas fa-search fa-2x" style={{ marginBottom: '12px', display: 'block' }}></i>
-                      데이터가 없습니다.
+                      No data available.
                     </td>
                   </tr>
                 )}

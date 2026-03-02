@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ExportLog } from '../../api/services/exportGatewayApi';
 import '../../styles/alarm-settings.css'; // Reusing for modal structure
 import '../../styles/management.css';
@@ -9,6 +10,7 @@ interface LogDetailModalProps {
 }
 
 const LogDetailModal: React.FC<LogDetailModalProps> = ({ log, onClose }) => {
+    const { t } = useTranslation(['auditLog', 'common']);
     if (!log) return null;
 
     const getStatusBadgeClass = (status: string) => {
@@ -39,7 +41,7 @@ const LogDetailModal: React.FC<LogDetailModalProps> = ({ log, onClose }) => {
                 <div className="modal-header">
                     <h2 className="modal-title">
                         <i className="fas fa-history mr-2" style={{ color: 'var(--primary-600)' }}></i>
-                        전송 이력 상세: #{log.id}
+                        Export History Details: #{log.id}
                     </h2>
                     <button className="close-button" onClick={onClose}><i className="fas fa-times"></i></button>
                 </div>
@@ -49,10 +51,10 @@ const LogDetailModal: React.FC<LogDetailModalProps> = ({ log, onClose }) => {
 
                             {/* Left Column: Meta Info */}
                             <div className="form-section">
-                                <div className="section-title">기본 정보</div>
+                                <div className="section-title">{t('labels.basicInfo', {ns: 'auditLog'})}</div>
 
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">상태 / 발생 시간</label>
+                                    <label className="form-label">{t('labels.statusOccurredAt', {ns: 'auditLog'})}</label>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 12px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-100)' }}>
                                         <span className={getStatusBadgeClass(log.status)}>
                                             {(log.status || 'UNKNOWN').toUpperCase()}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Steps, Form, Input, Row, Col, Radio, Select, Checkbox, Button, Divider, Space, InputNumber, Tag } from 'antd';
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
 import { apiClient } from '../../../api/client';
@@ -16,45 +17,45 @@ const extractItems = (data: any): any[] => {
 
 const VARIABLE_CATEGORIES = [
     {
-        name: '매핑 (Target Mapping)',
+        name: 'Mapping (Target Mapping)',
         items: [
-            { label: '매핑 명칭 (TARGET KEY)', value: '{{target_key}}', desc: '프로파일 탭에서 설정한 데이터의 최종 이름' },
-            { label: '데이터 값 (VALUE)', value: '{{measured_value}}', desc: 'Scale/Offset이 반영된 실제 측정값' },
-            { label: '타켓 설명 (DESC)', value: '{{target_description}}', desc: '프로파일에서 설정한 데이터 설명' }
+            { label: 'Mapping Name (TARGET KEY)', value: '{{target_key}}', desc: 'Final name of data configured in the Profile tab' },
+            { label: 'Data Value (VALUE)', value: '{{measured_value}}', desc: 'Actual measured value with Scale/Offset applied' },
+            { label: 'Target Description (DESC)', value: '{{target_description}}', desc: 'Data description set in Profile' }
         ]
     },
     {
-        name: '수집기 원본 (Collector)',
+        name: 'Collector Source (Collector)',
         items: [
-            { label: '건물 ID', value: '{{site_id}}', desc: '원본 건물(Building) ID' },
-            { label: '포인트 ID', value: '{{point_id}}', desc: '원본 포인트(Point) ID' },
-            { label: '원본 이름', value: '{{original_name}}', desc: '수집기 내부 원본 포인트명' },
-            { label: '데이터 타입', value: '{{type}}', desc: 'num:숫자, bit:디지털, str:문자열' }
+            { label: 'Building ID', value: '{{site_id}}', desc: 'Original building ID' },
+            { label: 'Point ID', value: '{{point_id}}', desc: 'Original point ID' },
+            { label: 'Original Name', value: '{{original_name}}', desc: 'Internal original point name in collector' },
+            { label: 'Data Type', value: '{{type}}', desc: 'num:number, bit:digital, str:string' }
         ]
     },
     {
-        name: '상태 및 알람 (Status)',
+        name: 'Status & Alarms (Status)',
         items: [
-            { label: '통신 상태', value: '{{status_code}}', desc: '0:정상, 1:통신끊김' },
-            { label: '알람 등급', value: '{{alarm_level}}', desc: '0:정상, 1:주의, 2:경고' },
-            { label: '알람 상태명', value: '{{alarm_status}}', desc: 'NORMAL, WARNING, CRITICAL 등' }
+            { label: 'Comm Status', value: '{{status_code}}', desc: '0:normal, 1:disconnected' },
+            { label: 'Alarm Level', value: '{{alarm_level}}', desc: '0:normal, 1:caution, 2:warning' },
+            { label: 'Alarm State Name', value: '{{alarm_status}}', desc: 'NORMAL, WARNING, CRITICAL, etc.' }
         ]
     },
     {
-        name: '범위 및 한계 (Ranges)',
+        name: 'Ranges & Limits (Ranges)',
         items: [
-            { label: '계측 범위(Min)', value: '{{mi}}', desc: '미터링 최소 한계값' },
-            { label: '계측 범위(Max)', value: '{{mx}}', desc: '미터링 최대 한계값' },
-            { label: '정보 한계', value: '{{il}}', desc: '임계치 정보(Information Limit)' },
-            { label: '위험 한계', value: '{{xl}}', desc: '임계치 위험(Extra Limit)' }
+            { label: 'Measure Range (Min)', value: '{{mi}}', desc: 'Metering minimum limit value' },
+            { label: 'Measure Range (Max)', value: '{{mx}}', desc: 'Metering maximum limit value' },
+            { label: 'Info Limit', value: '{{il}}', desc: 'Information threshold limit' },
+            { label: 'Danger Limit', value: '{{xl}}', desc: 'Danger threshold limit' }
         ]
     },
     {
-        name: '시간 (Timestamp)',
+        name: 'Timestamp (Timestamp)',
         items: [
-            { label: '표준 시간', value: '{{timestamp}}', desc: 'YYYY-MM-DD HH:mm:ss.fff' },
-            { label: 'ISO8601', value: '{{timestamp_iso8601}}', desc: '표준 시각 포맷' },
-            { label: 'Unix (ms)', value: '{{timestamp_unix_ms}}', desc: '1970년 기준 밀리초' }
+            { label: 'Standard Timestamp', value: '{{timestamp}}', desc: 'YYYY-MM-DD HH:mm:ss.fff' },
+            { label: 'ISO8601', value: '{{timestamp_iso8601}}', desc: 'Standard datetime format' },
+            { label: 'Unix (ms)', value: '{{timestamp_unix_ms}}', desc: 'Milliseconds since 1970' }
         ]
     }
 ];
@@ -65,7 +66,7 @@ const SAMPLE_DATA: Record<string, any> = {
     mapping_name: "PRO_FILE_TARGET_KEY",
     measured_value: "45.2 (MEASURED_VALUE)",
     point_value: "45.2 (MEASURED_VALUE)",
-    target_description: "프로파일에 정의된 데이터 설명",
+    target_description: "Data description defined in Profile",
     site_id: "280 (SITE_ID)",
     status_code: "0 (NORMAL)",
     alarm_level: "1 (WARNING)",
@@ -76,7 +77,7 @@ const SAMPLE_DATA: Record<string, any> = {
     nm: "PRO_FILE_TARGET_KEY",
     vl: "45.2 (MEASURED_VALUE)",
     tm: new Date().toISOString().replace('T', ' ').split('.')[0],
-    des: "프로파일에 정의된 데이터 설명",
+    des: "Data description defined in Profile",
     bd: "280 (SITE_ID)",
     st: "0 (NORMAL)",
     al: "1 (WARNING)",
@@ -113,6 +114,7 @@ interface ExportGatewayWizardProps {
 
 const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onClose, onSuccess, profiles, targets, templates, allPoints, editingGateway, assignments = [], schedules = [], onDelete, siteId, tenantId }) => {
     const { confirm } = useConfirmContext();
+    const { t: tl } = useTranslation(['dataExport', 'common']);
     const [currentStep, setCurrentStep] = useState(0);
     const [loading, setLoading] = useState(false);
     const [isAdmin, setIsAdmin] = useState(true); // Forced true for dev convenience
@@ -599,40 +601,40 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
 
     const steps = [
-        { title: '게이트웨이', description: '기본 정보' },
-        { title: '프로파일', description: '데이터 포인트' },
-        { title: '템플릿', description: '전송 포맷' },
-        { title: '전송 타겟', description: '프로토콜/매핑' },
-        { title: '스케줄', description: '전송 주기' }
+        { title: 'Gateway', description: 'Basic Info' },
+        { title: 'Profile', description: 'Data Points' },
+        { title: 'Template', description: 'Transmission Format' },
+        { title: 'Target', description: 'Protocol/Mapping' },
+        { title: 'Schedule', description: 'Transmission Interval' }
     ];
 
     const handleNext = () => {
         // Validation logic
         if (currentStep === 0) {
             if (!wizardTenantId && !editingGateway) {
-                confirm({ title: '입력 오류', message: '테넌트를 선택해주세요. 새 게이트웨이 등록 시 테넌트는 필수입니다.', showCancelButton: false, confirmButtonType: 'danger' });
+                confirm({ title: 'Input Error', message: 'Please select a tenant. Tenant is required for new gateway registration.', showCancelButton: false, confirmButtonType: 'danger' });
                 return;
             }
-            if (!gatewayData.name) { confirm({ title: '입력 오류', message: '게이트웨이 명칭을 입력해주세요.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+            if (!gatewayData.name) { confirm({ title: 'Input Error', message: 'Please enter a gateway name.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
         }
         if (currentStep === 1) {
             if (profileMode === 'new') {
-                if (!newProfileData.name) { confirm({ title: '입력 오류', message: '프로파일 명칭을 입력해주세요.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
-                if (newProfileData.data_points.length === 0) { confirm({ title: '입력 오류', message: '최소 1개 이상의 데이터 포인트를 선택해주세요.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+                if (!newProfileData.name) { confirm({ title: 'Input Error', message: 'Please enter a profile name.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+                if (newProfileData.data_points.length === 0) { confirm({ title: 'Input Error', message: 'Please select at least one data point.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
             } else {
-                if (!selectedProfileId) { confirm({ title: '입력 오류', message: '프로파일을 선택해주세요.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+                if (!selectedProfileId) { confirm({ title: 'Input Error', message: 'Please select a profile.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
             }
         }
         if (currentStep === 2) {
-            if (templateMode === 'new' && !newTemplateData.name) { confirm({ title: '입력 오류', message: '템플릿 명칭을 입력해주세요.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
-            if (templateMode === 'existing' && !selectedTemplateId) { confirm({ title: '입력 오류', message: '템플릿을 선택해주세요.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+            if (templateMode === 'new' && !newTemplateData.name) { confirm({ title: 'Input Error', message: 'Please enter a template name.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+            if (templateMode === 'existing' && !selectedTemplateId) { confirm({ title: 'Input Error', message: 'Please select a template.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
         }
         if (currentStep === 3) {
             if (targetMode === 'new') {
-                if (selectedProtocols.length === 0) { confirm({ title: '입력 오류', message: '하나 이상의 전송 프로토콜을 선택해주세요.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+                if (selectedProtocols.length === 0) { confirm({ title: 'Input Error', message: 'Please select at least one transmission protocol.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
                 // Detailed validation for each protocol... omitted for brevity but strictly required in prod
             } else {
-                if (selectedTargetIds.length === 0) { confirm({ title: '입력 오류', message: '전송 타겟을 하나 이상 선택해주세요.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+                if (selectedTargetIds.length === 0) { confirm({ title: 'Input Error', message: 'Please select at least one transmission target.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
             }
         }
 
@@ -650,15 +652,15 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             // 1. Create/Update Gateway (Ensure ID exists first)
             if (!gatewayId) {
                 const res = await exportGatewayApi.registerGateway({ ...gatewayData, site_id: wizardSiteId || undefined, tenant_id: wizardTenantId || undefined }, wizardSiteId, wizardTenantId);
-                if (!res.success) throw new Error(res.message || "게이트웨이 등록 실패");
+                if (!res.success) throw new Error(res.message || "Gateway registration failed");
                 gatewayId = res.data?.id;
             } else {
                 // [NEW] Update metadata for existing gateway
                 const updateRes = await exportGatewayApi.updateGateway(gatewayId, { ...gatewayData, site_id: wizardSiteId || undefined, tenant_id: wizardTenantId || undefined }, wizardSiteId, wizardTenantId);
-                if (!updateRes.success) throw new Error(updateRes.message || "게이트웨이 정보 수정 실패");
+                if (!updateRes.success) throw new Error(updateRes.message || "Gateway update failed");
             }
 
-            if (!gatewayId) throw new Error("게이트웨이 ID 확보 실패");
+            if (!gatewayId) throw new Error("Failed to obtain gateway ID");
 
             // 2. Profile
             let profileId = selectedProfileId;
@@ -669,7 +671,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                     data_points: newProfileData.data_points,
                     is_enabled: true
                 }, wizardTenantId);
-                if (!pRes.success) throw new Error(pRes.message || "프로파일 생성 실패");
+                if (!pRes.success) throw new Error(pRes.message || "Profile creation failed");
                 profileId = pRes.data?.id;
             } else if (profileMode === 'existing' && profileId && mappings.length > 0) {
                 // [CORE FIX] Persist mapping edits (target_field_name, site_id, scale, offset) back to the profile's data_points
@@ -694,7 +696,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                 }
             }
 
-            if (!profileId) throw new Error("프로파일 ID 확보 실패");
+            if (!profileId) throw new Error("Failed to obtain profile ID");
 
             // 2. Profile Assignment (Single-Profile Triage)
             if (profileId) {
@@ -715,13 +717,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
                     if (!currentIsAlreadyAssigned) {
                         const assignRes = await exportGatewayApi.assignProfile(gatewayId, profileId, wizardSiteId, wizardTenantId);
-                        if (!assignRes.success) throw new Error(assignRes.message || "프로파일 할당 실패");
+                        if (!assignRes.success) throw new Error(assignRes.message || "Profile assignment failed");
                     }
                 } catch (err) {
                     console.error("Assignment triage failed", err);
                     // Fallback to blind assign if everything else fails
                     const fbRes = await exportGatewayApi.assignProfile(gatewayId, profileId, wizardSiteId, wizardTenantId);
-                    if (!fbRes.success) throw new Error(fbRes.message || "프로파일 최종 할당 실패");
+                    if (!fbRes.success) throw new Error(fbRes.message || "Final profile assignment failed");
                 }
             }
 
@@ -732,7 +734,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                     ...newTemplateData,
                     is_active: true
                 }, wizardTenantId);
-                if (!tRes.success) throw new Error(tRes.message || "템플릿 생성 실패");
+                if (!tRes.success) throw new Error(tRes.message || "Template creation failed");
                 templateId = tRes.data?.id;
             }
 
@@ -789,7 +791,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                             export_mode: transmissionMode === 'EVENT' ? 'REALTIME' : 'batched'
                         }, wizardTenantId);
 
-                        if (!tRes.success) throw new Error(tRes.message || "전송 타겟 생성 실패");
+                        if (!tRes.success) throw new Error(tRes.message || "Transmission target creation failed");
 
                         if (tRes.data?.id) {
                             finalTargetIds.push(tRes.data.id);
@@ -798,7 +800,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                             // Save Mappings
                             if (mappings.length > 0) {
                                 const mRes = await exportGatewayApi.saveTargetMappings(tRes.data.id, mappings, wizardSiteId, wizardTenantId);
-                                if (!mRes.success) throw new Error(mRes.message || "매핑 저장 실패");
+                                if (!mRes.success) throw new Error(mRes.message || "Mapping save failed");
                             }
                         }
                     }
@@ -848,13 +850,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             // Ensure ID is passed for update
             await exportGatewayApi.updateGateway(gatewayId, finalGatewayData, wizardSiteId, wizardTenantId);
 
-            await confirm({ title: '설정 완료', message: '게이트웨이 및 전송 설정이 완료되었습니다.', showCancelButton: false, confirmButtonType: 'success' });
+            await confirm({ title: 'Setup Complete', message: 'Gateway and transmission settings have been configured.', showCancelButton: false, confirmButtonType: 'success' });
             onSuccess();
         } catch (e: any) {
             console.error("GATEWAY_SAVE_ERROR:", e);
-            const errMsg = e?.response?.data?.message || e?.message || '저장 중 오류가 발생했습니다. 로그를 확인해주세요.';
+            const errMsg = e?.response?.data?.message || e?.message || 'Error during save. Please check the logs.';
             await confirm({
-                title: '설정 실패',
+                title: 'Setup Failed',
                 message: errMsg,
                 showCancelButton: false,
                 confirmButtonType: 'danger'
@@ -867,7 +869,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
     return (
         <Modal
-            title={<><i className={`fas ${editingGateway ? 'fa-edit' : 'fa-magic'} `} style={{ marginRight: '8px' }} />{editingGateway ? '게이트웨이 설정 수정' : '게이트웨이 등록 마법사'}</>}
+            title={<><i className={`fas ${editingGateway ? 'fa-edit' : 'fa-magic'} `} style={{ marginRight: '8px' }} />{editingGateway ? 'Edit Gateway Settings' : 'Gateway Registration Wizard'}</>}
             open={visible}
             onCancel={onClose}
             width={900}
@@ -901,16 +903,16 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                         }}>
                             <div style={{ fontSize: '18px', fontWeight: 800, color: '#1a1a1a', display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
                                 <i className="fas fa-server" style={{ marginRight: '12px', color: '#1890ff' }} />
-                                게이트웨이 기본 정보 설정
+                                Gateway Basic Info Setup
                             </div>
 
                             {isAdmin && (
                                 <Row gutter={16}>
                                     <Col span={12}>
-                                        <div style={{ marginBottom: '8px', fontWeight: 600 }}>테넌트 선택 (Admin)</div>
+                                        <div style={{ marginBottom: '8px', fontWeight: 600 }}>{tl('labels.tenantSelectionAdmin', {ns: 'dataExport'})}</div>
                                         <Select
                                             style={{ width: '100%' }}
-                                            placeholder="테넌트 선택"
+                                            placeholder="Select tenant"
                                             value={wizardTenantId}
                                             onChange={(val) => {
                                                 setWizardTenantId(val);
@@ -924,15 +926,15 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                         </Select>
                                     </Col>
                                     <Col span={12}>
-                                        <div style={{ marginBottom: '8px', fontWeight: 600 }}>사이트 선택 (Admin)</div>
+                                        <div style={{ marginBottom: '8px', fontWeight: 600 }}>{tl('labels.siteSelectionAdmin', {ns: 'dataExport'})}</div>
                                         <Select
                                             style={{ width: '100%' }}
-                                            placeholder="사이트 선택"
+                                            placeholder="Select site"
                                             value={wizardSiteId}
                                             onChange={setWizardSiteId}
                                             disabled={!wizardTenantId}
                                         >
-                                            <Select.Option value={null}>전체 사이트 (Shared)</Select.Option>
+                                            <Select.Option value={null}>{tl('labels.allSitesShared', {ns: 'dataExport'})}</Select.Option>
                                             {sites.map(s => (
                                                 <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
                                             ))}
@@ -942,16 +944,16 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                             )}
 
                             <Form layout="vertical">
-                                <Form.Item label="게이트웨이 명칭 (Unique Name)" required tooltip="시스템 내에서 유일한 식별자입니다.">
+                                <Form.Item label="Gateway Name (Unique)" required tooltip="A unique identifier within the system.">
                                     <Input
                                         size="large"
                                         autoFocus
-                                        placeholder="예: GW_Factory_A_Line1"
+                                        placeholder="e.g. GW_Factory_A_Line1"
                                         value={gatewayData.name}
                                         onChange={e => setGatewayData({ ...gatewayData, name: e.target.value })}
                                     />
                                 </Form.Item>
-                                <Form.Item label="IP 주소 (접속 허용 주소)" required tooltip="데이터를 수신할 허용 IP입니다. Docker 내부 통신시 127.0.0.1 권장">
+                                <Form.Item label="IP Address (Allowed Host)" required tooltip="IP address allowed to receive data. For Docker internal communication, 127.0.0.1 is recommended.">
                                     <Input
                                         size="large"
                                         placeholder="127.0.0.1"
@@ -959,19 +961,19 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                         onChange={e => setGatewayData({ ...gatewayData, ip_address: e.target.value })}
                                     />
                                 </Form.Item>
-                                <Form.Item label="알람 구독 모드 (Alarm Subscription)" required tooltip="데이터 수신 범위를 설정합니다. 'Selective' 선택 시 할당된 디바이스 알람만 처리합니다.">
+                                <Form.Item label="Alarm Subscription Mode" required tooltip="Sets the data reception scope. 'Selective' processes only alarms for assigned devices.">
                                     <Radio.Group
                                         size="large"
                                         value={gatewayData.subscription_mode}
                                         onChange={e => setGatewayData({ ...gatewayData, subscription_mode: e.target.value as 'all' | 'selective' })}
                                     >
-                                        <Radio value="all">전체 수신 (All)</Radio>
-                                        <Radio value="selective">이용 디바이스 한정 (Selective)</Radio>
+                                        <Radio value="all">{tl('labels.receiveAll', {ns: 'dataExport'})}</Radio>
+                                        <Radio value="selective">{tl('labels.assignedDevicesOnlySelective', {ns: 'dataExport'})}</Radio>
                                     </Radio.Group>
                                 </Form.Item>
-                                <Form.Item label="설명 (Description)">
+                                <Form.Item label="Description">
                                     <Input.TextArea
-                                        placeholder="관리용 상세 설명"
+                                        placeholder="Detailed description for management"
                                         rows={4}
                                         value={gatewayData.description}
                                         onChange={e => setGatewayData({ ...gatewayData, description: e.target.value })}
@@ -990,8 +992,8 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                 style={{ marginBottom: '16px', width: '100%' }}
                                 buttonStyle="solid"
                             >
-                                <Radio.Button value="existing" style={{ width: '50%', textAlign: 'center' }}>기존 프로파일 선택</Radio.Button>
-                                <Radio.Button value="new" style={{ width: '50%', textAlign: 'center' }}>새 프로파일 생성</Radio.Button>
+                                <Radio.Button value="existing" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.selectExistingProfile', {ns: 'dataExport'})}</Radio.Button>
+                                <Radio.Button value="new" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.createNewProfile', {ns: 'dataExport'})}</Radio.Button>
                             </Radio.Group>
 
                             {profileMode === 'existing' ? (
@@ -1008,13 +1010,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                 }}>
                                     <div style={{ marginBottom: '12px', fontWeight: 700, fontSize: '15px', color: '#1a1a1a', display: 'flex', alignItems: 'center' }}>
                                         <i className="fas fa-search" style={{ marginRight: '8px', color: '#1890ff' }} />
-                                        사용할 프로파일 선택
+                                        Select Profile
                                     </div>
                                     <Select
                                         showSearch
                                         style={{ width: '100%', marginBottom: '20px' }}
                                         size="large"
-                                        placeholder="설정할 프로파일을 검색하거나 선택하세요"
+                                        placeholder="Search or select a profile"
                                         optionFilterProp="children"
                                         value={selectedProfileId}
                                         onChange={setSelectedProfileId}
@@ -1040,7 +1042,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                         {p.name}
                                                     </div>
                                                     <div style={{ fontSize: '13px', marginTop: '6px', color: '#434343', lineHeight: '1.5' }}>
-                                                        {p.description || '이 프로파일에 대한 상세 설명이 없습니다.'}
+                                                        {p.description || 'No description for this profile.'}
                                                     </div>
                                                 </div>
 
@@ -1060,13 +1062,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #f5f5f5', paddingBottom: '16px' }}>
                                                         <div style={{ fontSize: '16px', fontWeight: 800, color: '#1a1a1a', display: 'flex', alignItems: 'center' }}>
                                                             <i className="fas fa-exchange-alt" style={{ marginRight: '10px', color: '#1890ff' }} />
-                                                            데이터 매핑 및 외부 필드명 설정
+                                                            Data Mapping & External Field Name Settings
                                                         </div>
                                                         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', background: '#f0f5ff', padding: '8px 16px', borderRadius: '10px', border: '1px solid #adc6ff' }}>
-                                                            <span style={{ fontSize: '12px', fontWeight: 700, color: '#1d39c4' }}>SITE ID 일괄 적용:</span>
+                                                            <span style={{ fontSize: '12px', fontWeight: 700, color: '#1d39c4' }}>{tl('labels.bulkApplySiteId', {ns: 'dataExport'})}</span>
                                                             <Input
                                                                 size="small"
-                                                                placeholder="ID 입력"
+                                                                placeholder="Enter ID"
                                                                 style={{ width: '80px', borderRadius: '4px' }}
                                                                 value={bulkSiteId}
                                                                 onChange={e => setBulkSiteId(e.target.value)}
@@ -1080,7 +1082,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                     setMappings(mappings.map(m => ({ ...m, site_id: bid })));
                                                                 }}
                                                             >
-                                                                적용
+                                                                Apply
                                                             </Button>
                                                         </div>
                                                     </div>
@@ -1089,12 +1091,12 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                         <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px', fontSize: '12px' }}>
                                                             <thead>
                                                                 <tr style={{ textAlign: 'left', color: '#8c8c8c' }}>
-                                                                    <th style={{ padding: '8px 12px', width: '20%' }}>내부 포인트명</th>
-                                                                    <th style={{ padding: '8px 12px', width: '35%' }}>매핑 명칭 (TARGET KEY)</th>
-                                                                    <th style={{ padding: '8px 12px', width: '15%' }}>SITE ID</th>
-                                                                    <th style={{ padding: '8px 12px', width: '10%' }}>SCALE</th>
-                                                                    <th style={{ padding: '8px 12px', width: '10%' }}>OFFSET</th>
-                                                                    <th style={{ padding: '8px 12px', width: '10%', textAlign: 'center' }}>삭제</th>
+                                                                    <th style={{ padding: '8px 12px', width: '20%' }}>{tl('labels.internalPointName', {ns: 'dataExport'})}</th>
+                                                                    <th style={{ padding: '8px 12px', width: '35%' }}>{tl('labels.mappingNameTargetKey', {ns: 'dataExport'})}</th>
+                                                                    <th style={{ padding: '8px 12px', width: '15%' }}>{tl('labels.siteId', {ns: 'dataExport'})}</th>
+                                                                    <th style={{ padding: '8px 12px', width: '10%' }}>{tl('labels.scale', {ns: 'dataExport'})}</th>
+                                                                    <th style={{ padding: '8px 12px', width: '10%' }}>{tl('labels.offset', {ns: 'dataExport'})}</th>
+                                                                    <th style={{ padding: '8px 12px', width: '10%', textAlign: 'center' }}>{tl('delete', {ns: 'common'})}</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
@@ -1189,18 +1191,18 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                 <div style={{ display: 'flex', gap: '24px', height: '400px' }}>
                                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                         <Input
-                                            placeholder="프로파일 명칭 (예: Factory A Standard)"
+                                            placeholder="Profile name (e.g. Factory A Standard)"
                                             value={newProfileData.name}
                                             onChange={e => setNewProfileData({ ...newProfileData, name: e.target.value })}
                                         />
                                         <Input.TextArea
-                                            placeholder="설명..."
+                                            placeholder="Description..."
                                             rows={2}
                                             value={newProfileData.description}
                                             onChange={e => setNewProfileData({ ...newProfileData, description: e.target.value })}
                                         />
                                         <div style={{ flex: 1, border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '12px', overflowY: 'auto', background: 'white' }}>
-                                            <div style={{ fontSize: '12px', color: 'var(--neutral-500)', marginBottom: '8px' }}>선택된 포인트 ({newProfileData.data_points.length})</div>
+                                            <div style={{ fontSize: '12px', color: 'var(--neutral-500)', marginBottom: '8px' }}>Selected Points ({newProfileData.data_points.length})</div>
                                             {newProfileData.data_points.map((p, i) => (
                                                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f0f0f0' }}>
                                                     <span style={{ fontSize: '12px' }}>{p.name}</span>
@@ -1230,8 +1232,8 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                     {currentStep === 2 && (
                         <div>
                             <Radio.Group value={templateMode} onChange={e => setTemplateMode(e.target.value)} style={{ marginBottom: '16px', width: '100%' }} buttonStyle="solid">
-                                <Radio.Button value="existing" style={{ width: '50%', textAlign: 'center' }}>기존 템플릿 사용</Radio.Button>
-                                <Radio.Button value="new" style={{ width: '50%', textAlign: 'center' }}>새 템플릿 정의</Radio.Button>
+                                <Radio.Button value="existing" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.useExistingTemplate', {ns: 'dataExport'})}</Radio.Button>
+                                <Radio.Button value="new" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.defineNewTemplate', {ns: 'dataExport'})}</Radio.Button>
                             </Radio.Group>
                             {templateMode === 'existing' ? (
                                 <div style={{
@@ -1247,12 +1249,12 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                 }}>
                                     <div style={{ marginBottom: '12px', fontWeight: 700, fontSize: '15px', color: '#1a1a1a', display: 'flex', alignItems: 'center' }}>
                                         <i className="fas fa-layer-group" style={{ marginRight: '8px', color: '#1890ff' }} />
-                                        사용할 템플릿 선택
+                                        Select Template
                                     </div>
                                     <Select
                                         style={{ width: '100%', marginBottom: '20px' }}
                                         size="large"
-                                        placeholder="템플릿을 선택하여 전송 형식을 결정하세요"
+                                        placeholder="Select a template to define the transmission format"
                                         value={selectedTemplateId}
                                         onChange={setSelectedTemplateId}
                                         options={templates.map(t => ({ value: t.id, label: t.name }))}
@@ -1262,7 +1264,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                         <div style={{ marginTop: '10px', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                                             <div style={{ marginBottom: '8px', fontSize: '12px', fontWeight: 700, color: '#8c8c8c', display: 'flex', alignItems: 'center' }}>
                                                 <i className="fas fa-code" style={{ marginRight: '6px' }} />
-                                                템플릿 JSON 미리보기
+                                                Template JSON Preview
                                             </div>
                                             <div style={{
                                                 flex: 1,
@@ -1284,7 +1286,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                 }}>
                                                     {(() => {
                                                         const raw = templates.find(t => t.id === selectedTemplateId)?.template_json;
-                                                        if (raw === undefined || raw === null) return '선택된 템플릿 정보가 없습니다.';
+                                                        if (raw === undefined || raw === null) return 'No template selected.';
                                                         try {
                                                             const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
                                                             return JSON.stringify(parsed, null, 2);
@@ -1301,19 +1303,19 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '15px' }}>
                                     <div style={{ display: 'flex', gap: '15px' }}>
                                         <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>템플릿 명칭</div>
+                                            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>{tl('labels.templateName', {ns: 'dataExport'})}</div>
                                             <Input
                                                 size="large"
-                                                placeholder="예: 표준 JSON 페이로드"
+                                                placeholder="e.g. Standard JSON Payload"
                                                 value={newTemplateData.name}
                                                 onChange={e => setNewTemplateData({ ...newTemplateData, name: e.target.value })}
                                             />
                                         </div>
                                         <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>시스템 유형</div>
+                                            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>{tl('labels.systemType', {ns: 'dataExport'})}</div>
                                             <Input
                                                 size="large"
-                                                placeholder="예: AWS IoT, MS Azure 등"
+                                                placeholder="e.g. AWS IoT, MS Azure, etc."
                                                 value={newTemplateData.system_type}
                                                 onChange={e => setNewTemplateData({ ...newTemplateData, system_type: e.target.value })}
                                             />
@@ -1322,19 +1324,19 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
                                     <div style={{ padding: '12px', background: '#f0faff', borderRadius: '8px', border: '1px solid #e6f7ff', fontSize: '11px', color: '#0050b3', lineHeight: '1.6' }}>
                                         <i className="fas fa-info-circle" style={{ marginRight: '8px' }} />
-                                        <strong>엔지니어 가이드:</strong> <code>{"{{target_key}}"}</code>를 사용하여 프로파일의 <b>Target Key</b>를 주입하세요. 범용 설계를 위해 사이트별 고정 변수가 아닌 메타데이터 중심의 스키마를 권장합니다.
+                                        <strong>{tl('labels.engineerGuide', {ns: 'dataExport'})}</strong> <code>{"{{target_key}}"}</code>to inject the profile's <b>{tl('labels.targetKey', {ns: 'dataExport'})}</b>. For versatile design, a metadata-centric schema is recommended over site-specific fixed variables.
                                     </div>
 
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                            <span style={{ fontWeight: 700, fontSize: '13px' }}>페이로드 구성</span>
+                                            <span style={{ fontWeight: 700, fontSize: '13px' }}>{tl('labels.payloadStructure', {ns: 'dataExport'})}</span>
                                             <Radio.Group
                                                 size="small"
                                                 value={templateEditMode}
                                                 onChange={e => setTemplateEditMode(e.target.value)}
                                             >
-                                                <Radio.Button value="simple">빌더 (Simple)</Radio.Button>
-                                                <Radio.Button value="advanced">코드 (Advanced)</Radio.Button>
+                                                <Radio.Button value="simple">{tl('labels.builderSimple', {ns: 'dataExport'})}</Radio.Button>
+                                                <Radio.Button value="advanced">{tl('labels.codeAdvanced', {ns: 'dataExport'})}</Radio.Button>
                                             </Radio.Group>
                                         </div>
                                     </div>
@@ -1387,12 +1389,12 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                 />
                                             ) : (
                                                 <div style={{ flex: 1, border: '1px solid #d9d9d9', borderRadius: '6px', background: '#fff', padding: '20px', textAlign: 'center', color: '#999' }}>
-                                                    마법사에서는 'Advanced' 모드만 지원합니다.<br />상세 빌더는 [템플릿 관리] 탭을 이용해주세요.
+                                                    The wizard supports 'Advanced' mode only.<br />For the detailed builder, use the [Template Management] tab.
                                                 </div>
                                             )}
                                         </div>
                                         <div style={{ flex: 1, background: '#1e272e', borderRadius: '8px', padding: '12px', overflowY: 'auto' }}>
-                                            <div style={{ fontSize: '11px', color: '#55efc4', fontWeight: 700, marginBottom: '8px' }}>PREVIEW</div>
+                                            <div style={{ fontSize: '11px', color: '#55efc4', fontWeight: 700, marginBottom: '8px' }}>{tl('labels.preview', {ns: 'dataExport'})}</div>
                                             <pre style={{ margin: 0, fontSize: '11px', color: '#abb2bf', whiteSpace: 'pre-wrap' }}>
                                                 {(() => {
                                                     try {
@@ -1422,17 +1424,17 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                     {currentStep === 3 && (
                         <div style={{ height: '480px', display: 'flex', flexDirection: 'column' }}>
                             <Radio.Group value={targetMode} onChange={e => setTargetMode(e.target.value)} style={{ marginBottom: '16px' }}>
-                                <Radio.Button value="existing">기존 타겟 연결</Radio.Button>
-                                <Radio.Button value="new">새 타겟 생성</Radio.Button>
+                                <Radio.Button value="existing">{tl('labels.connectExistingTarget', {ns: 'dataExport'})}</Radio.Button>
+                                <Radio.Button value="new">{tl('labels.createNewTarget', {ns: 'dataExport'})}</Radio.Button>
                             </Radio.Group>
 
                             {targetMode === 'existing' ? (
                                 <div style={{ padding: '24px', textAlign: 'left', background: 'white', borderRadius: '8px', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-                                    <div style={{ marginBottom: '8px', fontWeight: 600 }}>사용할 타겟 선택 및 수정</div>
+                                    <div style={{ marginBottom: '8px', fontWeight: 600 }}>{tl('labels.selectEditTarget', {ns: 'dataExport'})}</div>
                                     <Select
                                         mode="multiple"
                                         style={{ width: '100%' }}
-                                        placeholder="타겟 선택 (다중 선택 가능)"
+                                        placeholder="Select target (multi-select allowed)"
                                         value={selectedTargetIds}
                                         onChange={setSelectedTargetIds}
                                         options={targets.map(t => ({
@@ -1443,7 +1445,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                     />
                                     {selectedTargetIds.length > 0 && (
                                         <div style={{ marginTop: '16px', flex: 1, overflowY: 'auto', border: '1px solid #f0f0f0', borderRadius: '8px', background: '#fafafa', padding: '12px' }}>
-                                            <div style={{ fontSize: '12px', color: '#888', marginBottom: '8px' }}>선택된 타겟 설정 수정 ({selectedTargetIds.length})</div>
+                                            <div style={{ fontSize: '12px', color: '#888', marginBottom: '8px' }}>Selected Target Settings ({selectedTargetIds.length})</div>
                                             {selectedTargetIds
                                                 .sort((a, b) => {
                                                     const orderA = editingTargets[a]?.[0]?.execution_order || 100;
@@ -1463,7 +1465,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                     <Tag bordered={false} color={t.target_type === 'HTTP' ? 'blue' : t.target_type === 'S3' ? 'orange' : 'default'}>{t.target_type}</Tag>
                                                                 </div>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                    <span style={{ fontSize: '12px', color: '#666' }}>전송 우선순위:</span>
+                                                                    <span style={{ fontSize: '12px', color: '#666' }}>{tl('labels.priority', {ns: 'dataExport'})}</span>
                                                                     <Select
                                                                         size="small"
                                                                         style={{ width: '60px' }}
@@ -1492,8 +1494,8 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                                         setEditingTargets(next);
                                                                                     }}
                                                                                 >
-                                                                                    <option value="POST">POST</option>
-                                                                                    <option value="PUT">PUT</option>
+                                                                                    <option value="POST">{tl('labels.post', {ns: 'dataExport'})}</option>
+                                                                                    <option value="PUT">{tl('labels.put', {ns: 'dataExport'})}</option>
                                                                                 </Select>
                                                                                 <Input
                                                                                     placeholder="Endpoint URL"
@@ -1518,7 +1520,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                                 }}
                                                                             />
                                                                             <Input.Password
-                                                                                placeholder="인증 키 (x-api-key 또는 Token)"
+                                                                                placeholder="Auth key (x-api-key or Token)"
                                                                                 value={c.auth?.apiKey || ''}
                                                                                 onChange={e => {
                                                                                     const next = { ...editingTargets };
@@ -1617,12 +1619,12 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', overflowY: 'auto' }}>
                                     <Input
-                                        placeholder="타겟 명칭 (자동으로 프로토콜 접미사가 붙습니다. 예: TargetA -> TargetA_HTTP)"
+                                        placeholder="Target name (protocol suffix auto-added, e.g. TargetA → TargetA_HTTP)"
                                         value={targetData.name}
                                         onChange={e => setTargetData({ ...targetData, name: e.target.value })}
                                     />
                                     <div className="mgmt-modal-form-group">
-                                        <label>전송 프로토콜 (다중 선택 가능)</label>
+                                        <label>{tl('labels.transmissionProtocolMultiselect', {ns: 'dataExport'})}</label>
                                         <Checkbox.Group
                                             options={['HTTP', 'MQTT', 'S3']}
                                             value={selectedProtocols}
@@ -1633,13 +1635,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                     {/* Config Forms */}
                                     {selectedProtocols.includes('HTTP') && (
                                         <div style={{ padding: '16px', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
-                                            <div style={{ fontWeight: 600, marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>HTTP 연결 설정</div>
+                                            <div style={{ fontWeight: 600, marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>{tl('labels.httpConnectionSettings', {ns: 'dataExport'})}</div>
                                             {targetData.config_http.map((c: any, i: number) => (
                                                 <div key={i} style={{ marginBottom: '16px', padding: '12px', background: '#f9f9f9', borderRadius: '8px' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
                                                         <span style={{ fontWeight: 600, color: '#666', fontSize: '12px' }}>Mirror #{i + 1}</span>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            <span style={{ fontSize: '11px', color: '#999' }}>전송 우선순위:</span>
+                                                            <span style={{ fontSize: '11px', color: '#999' }}>{tl('labels.priority', {ns: 'dataExport'})}</span>
                                                             <Select
                                                                 size="small"
                                                                 style={{ width: '60px' }}
@@ -1664,11 +1666,11 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                 setTargetData({ ...targetData, config_http: next });
                                                             }}
                                                         >
-                                                            <Select.Option value="POST">POST</Select.Option>
-                                                            <Select.Option value="PUT">PUT</Select.Option>
+                                                            <Select.Option value="POST">{tl('labels.post', {ns: 'dataExport'})}</Select.Option>
+                                                            <Select.Option value="PUT">{tl('labels.put', {ns: 'dataExport'})}</Select.Option>
                                                         </Select>
                                                         <Input
-                                                            placeholder="Endpoint URL (예: http://api.server.com/ingest)"
+                                                            placeholder="Endpoint URL (e.g. http://api.server.com/ingest)"
                                                             value={c.url}
                                                             onChange={e => {
                                                                 const next = [...targetData.config_http];
@@ -1695,7 +1697,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                     </div>
                                                     <div style={{ marginBottom: '8px' }}>
                                                         <Input.Password
-                                                            placeholder="인증 키 (x-api-key 또는 Token)"
+                                                            placeholder="Auth key (x-api-key or Token)"
                                                             value={c.auth?.apiKey || ''}
                                                             onChange={e => {
                                                                 const next = [...targetData.config_http];
@@ -1717,25 +1719,25 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                         <Button danger size="small" onClick={() => {
                                                             const next = targetData.config_http.filter((_, idx) => idx !== i);
                                                             setTargetData({ ...targetData, config_http: next });
-                                                        }}>삭제</Button>
+                                                        }}>{tl('delete', {ns: 'common'})}</Button>
                                                     )}
                                                 </div>
                                             ))}
                                             <Button type="dashed" block onClick={() => setTargetData({ ...targetData, config_http: [...targetData.config_http, { url: '', method: 'POST', auth: { type: 'x-api-key', apiKey: '' }, headers: {}, execution_order: totalTargetCount + 1 }] })}>
-                                                + HTTP 타겟/Mirror 추가
+                                                + Add HTTP Target/Mirror
                                             </Button>
                                         </div>
                                     )}
 
                                     {selectedProtocols.includes('MQTT') && (
                                         <div style={{ padding: '16px', border: '1px solid #ddd', borderRadius: '8px', background: 'white', marginTop: '16px' }}>
-                                            <div style={{ fontWeight: 600, marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>MQTT 연결 설정</div>
+                                            <div style={{ fontWeight: 600, marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>{tl('labels.mqttConnectionSettings', {ns: 'dataExport'})}</div>
                                             {targetData.config_mqtt.map((c: any, i: number) => (
                                                 <div key={i} style={{ marginBottom: '16px', padding: '12px', background: '#f9f9f9', borderRadius: '8px' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
-                                                        <span style={{ fontWeight: 600, color: '#666', fontSize: '12px' }}>MQTT 타겟 #{i + 1}</span>
+                                                        <span style={{ fontWeight: 600, color: '#666', fontSize: '12px' }}>MQTT Target #{i + 1}</span>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            <span style={{ fontSize: '11px', color: '#999' }}>전송 우선순위:</span>
+                                                            <span style={{ fontSize: '11px', color: '#999' }}>{tl('labels.priority', {ns: 'dataExport'})}</span>
                                                             <Select
                                                                 size="small"
                                                                 style={{ width: '60px' }}
@@ -1751,7 +1753,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                     </div>
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                         <Input
-                                                            placeholder="Broker URL (예: mqtt://broker.hivemq.com:1883)"
+                                                            placeholder="Broker URL (e.g. mqtt://broker.hivemq.com:1883)"
                                                             value={c.url}
                                                             onChange={e => {
                                                                 const next = [...targetData.config_mqtt];
@@ -1760,7 +1762,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                             }}
                                                         />
                                                         <Input
-                                                            placeholder="Topic (예: pulseone/factory/data)"
+                                                            placeholder="Topic (e.g. pulseone/factory/data)"
                                                             value={c.topic}
                                                             onChange={e => {
                                                                 const next = [...targetData.config_mqtt];
@@ -1773,25 +1775,25 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                         <Button danger size="small" style={{ marginTop: '8px' }} onClick={() => {
                                                             const next = targetData.config_mqtt.filter((_, idx) => idx !== i);
                                                             setTargetData({ ...targetData, config_mqtt: next });
-                                                        }}>삭제</Button>
+                                                        }}>{tl('delete', {ns: 'common'})}</Button>
                                                     )}
                                                 </div>
                                             ))}
                                             <Button type="dashed" block onClick={() => setTargetData({ ...targetData, config_mqtt: [...targetData.config_mqtt, { url: '', topic: 'pulseone/data', execution_order: totalTargetCount + 1 }] })}>
-                                                + MQTT 타겟 추가
+                                                + Add MQTT Target
                                             </Button>
                                         </div>
                                     )}
 
                                     {selectedProtocols.includes('S3') && (
                                         <div style={{ padding: '16px', border: '1px solid #ddd', borderRadius: '8px', background: 'white', marginTop: '16px' }}>
-                                            <div style={{ fontWeight: 600, marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>S3 / MinIO 연결 설정</div>
+                                            <div style={{ fontWeight: 600, marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>S3 / MinIO Connection Settings</div>
                                             {targetData.config_s3.map((c: any, i: number) => (
                                                 <div key={i} style={{ marginBottom: '16px', padding: '12px', background: '#f9f9f9', borderRadius: '8px' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
-                                                        <span style={{ fontWeight: 600, color: '#666', fontSize: '12px' }}>S3 타겟 #{i + 1}</span>
+                                                        <span style={{ fontWeight: 600, color: '#666', fontSize: '12px' }}>S3 Target #{i + 1}</span>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            <span style={{ fontSize: '11px', color: '#999' }}>전송 우선순위:</span>
+                                                            <span style={{ fontSize: '11px', color: '#999' }}>{tl('labels.priority', {ns: 'dataExport'})}</span>
                                                             <Select
                                                                 size="small"
                                                                 style={{ width: '60px' }}
@@ -1807,7 +1809,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                     </div>
                                                     <Input
                                                         style={{ marginBottom: '8px' }}
-                                                        placeholder="S3 Endpoint / Service URL (예: https://s3.ap-northeast-2.amazonaws.com)"
+                                                        placeholder="S3 Endpoint / Service URL (e.g. https://s3.ap-northeast-2.amazonaws.com)"
                                                         value={c.endpoint || c.S3ServiceUrl || ''}
                                                         onChange={e => {
                                                             const next = [...targetData.config_s3];
@@ -1859,12 +1861,12 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                         <Button danger size="small" onClick={() => {
                                                             const next = targetData.config_s3.filter((_, idx) => idx !== i);
                                                             setTargetData({ ...targetData, config_s3: next });
-                                                        }}>삭제</Button>
+                                                        }}>{tl('delete', {ns: 'common'})}</Button>
                                                     )}
                                                 </div>
                                             ))}
                                             <Button type="dashed" block onClick={() => setTargetData({ ...targetData, config_s3: [...targetData.config_s3, { endpoint: '', BucketName: '', Folder: '', AccessKeyID: '', SecretAccessKey: '', execution_order: totalTargetCount + 1 }] })}>
-                                                + S3 스토리지 추가
+                                                + Add S3 Storage
                                             </Button>
                                         </div>
                                     )}
@@ -1881,19 +1883,19 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                             <div style={{ marginBottom: '20px', padding: '16px', background: '#f8faff', borderRadius: '12px', border: '1px solid #e6f7ff' }}>
                                 <div style={{ fontWeight: 700, color: '#0050b3', marginBottom: '4px', fontSize: '14px' }}>
                                     <i className="fas fa-info-circle" style={{ marginRight: '8px' }} />
-                                    전송 모드 가이드
+                                    Transmission Mode Guide
                                 </div>
                                 <div style={{ fontSize: '12.5px', color: '#434343', lineHeight: '1.6' }}>
                                     {transmissionMode === 'INTERVAL' ? (
-                                        <><strong>정기 전송:</strong> 지정된 Cron 스케줄에 맞춰 데이터를 주기적으로 일괄 전송합니다. 트래픽의 예측이 가능하며 리포트 생성에 적합합니다.</>
+                                        <><strong>{tl('labels.scheduled', {ns: 'dataExport'})}</strong> Periodically transmits data in batches according to the Cron schedule. Traffic is predictable and suitable for report generation.</>
                                     ) : (
-                                        <><strong>이벤트 기반:</strong> 수집된 데이터에 변화가 생기거나 특정 임계치를 넘는 이벤트가 발생할 때 즉시 전송합니다. 실시간 알람 및 즉각적인 대응이 필요한 경우에 사용합니다.</>
+                                        <><strong>{tl('labels.eventbased', {ns: 'dataExport'})}</strong> Transmits immediately when collected data changes or an event exceeds a threshold. Used for real-time alarms and immediate response scenarios.</>
                                     )}
                                 </div>
                             </div>
 
                             <Form layout="vertical">
-                                <Form.Item label={<span style={{ fontWeight: 600 }}>전송 모드 선택</span>}>
+                                <Form.Item label={<span style={{ fontWeight: 600 }}>{tl('labels.selectTransmissionMode', {ns: 'dataExport'})}</span>}>
                                     <Radio.Group
                                         value={transmissionMode}
                                         onChange={e => setTransmissionMode(e.target.value)}
@@ -1901,14 +1903,14 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                         buttonStyle="solid"
                                         style={{ width: '100%' }}
                                     >
-                                        <Radio.Button value="INTERVAL" style={{ width: '50%', textAlign: 'center' }}>정기 전송 (Scheduled)</Radio.Button>
-                                        <Radio.Button value="EVENT" style={{ width: '50%', textAlign: 'center' }}>이벤트 기반 (Real-time)</Radio.Button>
+                                        <Radio.Button value="INTERVAL" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.scheduledTransmission', {ns: 'dataExport'})}</Radio.Button>
+                                        <Radio.Button value="EVENT" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.eventbasedRealtime', {ns: 'dataExport'})}</Radio.Button>
                                     </Radio.Group>
                                 </Form.Item>
 
                                 {transmissionMode === 'INTERVAL' ? (
                                     <div style={{ animation: 'fadeIn 0.3s ease-in-out' }}>
-                                        <Form.Item label={<span style={{ fontWeight: 600 }}>스케줄 설정 방식</span>}>
+                                        <Form.Item label={<span style={{ fontWeight: 600 }}>{tl('labels.scheduleConfiguration', {ns: 'dataExport'})}</span>}>
                                             <Radio.Group
                                                 value={scheduleMode}
                                                 onChange={e => {
@@ -1921,24 +1923,24 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                 buttonStyle="solid"
                                                 style={{ width: '100%', marginBottom: '16px' }}
                                             >
-                                                <Radio.Button value="new" style={{ width: '50%', textAlign: 'center' }}>신규 생성</Radio.Button>
-                                                <Radio.Button value="existing" style={{ width: '50%', textAlign: 'center' }}>기존 스케줄 적용</Radio.Button>
+                                                <Radio.Button value="new" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.createNew', {ns: 'dataExport'})}</Radio.Button>
+                                                <Radio.Button value="existing" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.applyExistingSchedule', {ns: 'dataExport'})}</Radio.Button>
                                             </Radio.Group>
                                         </Form.Item>
 
                                         {scheduleMode === 'new' ? (
                                             <>
-                                                <Form.Item label={<span style={{ fontWeight: 600 }}>스케줄 명칭</span>} required>
+                                                <Form.Item label={<span style={{ fontWeight: 600 }}>{tl('labels.scheduleName', {ns: 'dataExport'})}</span>} required>
                                                     <Input
-                                                        placeholder="예: 5분 주기 정기 전송"
+                                                        placeholder="e.g. Every 5 minutes batch"
                                                         value={scheduleData.schedule_name}
                                                         onChange={e => setScheduleData({ ...scheduleData, schedule_name: e.target.value })}
                                                     />
                                                 </Form.Item>
                                                 <Form.Item
-                                                    label={<span style={{ fontWeight: 600 }}>Cron 표현식</span>}
+                                                    label={<span style={{ fontWeight: 600 }}>{tl('labels.cronExpression', {ns: 'dataExport'})}</span>}
                                                     required
-                                                    extra={<span style={{ fontSize: '11px' }}>* 표준 Cron 형식을 지원합니다 (분 시 일 월 요일)</span>}
+                                                    extra={<span style={{ fontSize: '11px' }}>* Standard Cron format supported (min hr day month weekday)</span>}
                                                 >
                                                     <Input
                                                         placeholder="*/5 * * * *"
@@ -1947,17 +1949,17 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                         style={{ fontFamily: 'monospace', fontSize: '15px' }}
                                                     />
                                                     <div style={{ marginTop: '12px' }}>
-                                                        <div style={{ fontSize: '11px', color: '#8c8c8c', marginBottom: '8px', fontWeight: 600 }}>간편 프리셋 선택</div>
+                                                        <div style={{ fontSize: '11px', color: '#8c8c8c', marginBottom: '8px', fontWeight: 600 }}>{tl('labels.quickPreset', {ns: 'dataExport'})}</div>
                                                         <Space wrap>
                                                             {[
-                                                                { label: '1분 주기', value: '*/1 * * * *' },
-                                                                { label: '5분 주기', value: '*/5 * * * *' },
-                                                                { label: '10분 주기', value: '*/10 * * * *' },
-                                                                { label: '30분 주기', value: '*/30 * * * *' },
-                                                                { label: '1시간 주기', value: '0 * * * *' },
-                                                                { label: '12시간 주기', value: '0 */12 * * *' },
-                                                                { label: '매일 자정', value: '0 0 * * *' },
-                                                                { label: '매주 일요일', value: '0 0 * * 0' }
+                                                                { label: 'Every 1 min', value: '*/1 * * * *' },
+                                                                { label: 'Every 5 min', value: '*/5 * * * *' },
+                                                                { label: 'Every 10 min', value: '*/10 * * * *' },
+                                                                { label: 'Every 30 min', value: '*/30 * * * *' },
+                                                                { label: 'Every 1 hour', value: '0 * * * *' },
+                                                                { label: 'Every 12 hours', value: '0 */12 * * *' },
+                                                                { label: 'Daily midnight', value: '0 0 * * *' },
+                                                                { label: 'Every Sunday', value: '0 0 * * 0' }
                                                             ].map(preset => (
                                                                 <Button
                                                                     key={preset.value}
@@ -1978,10 +1980,10 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                 </Form.Item>
                                             </>
                                         ) : (
-                                            <Form.Item label={<span style={{ fontWeight: 600 }}>사전 정의된 스케줄 선택</span>} required>
+                                            <Form.Item label={<span style={{ fontWeight: 600 }}>{tl('labels.selectPredefinedSchedule', {ns: 'dataExport'})}</span>} required>
                                                 {availableSchedules.length > 0 ? (
                                                     <Select
-                                                        placeholder="스케줄을 선택하세요"
+                                                        placeholder="Select a schedule"
                                                         value={selectedScheduleId}
                                                         onChange={v => setSelectedScheduleId(v)}
                                                         style={{ width: '100%' }}
@@ -1998,7 +2000,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                 ) : (
                                                     <div style={{ padding: '16px', background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: '8px', color: '#d48806', fontSize: '13px' }}>
                                                         <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
-                                                        이 테넌트에 등록된 기존 스케줄이 없습니다. <strong>신규 생성</strong> 모드를 이용해 주세요.
+                                                        No existing schedules registered for this tenant. Please use <strong>{tl('labels.createNew', {ns: 'dataExport'})}</strong> mode.
                                                     </div>
                                                 )}
                                                 <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '8px' }}>
@@ -2017,10 +2019,10 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                         animation: 'fadeIn 0.3s ease-in-out'
                                     }}>
                                         <i className="fas fa-bolt" style={{ fontSize: '32px', color: '#faad14', marginBottom: '16px' }} />
-                                        <div style={{ fontWeight: 600, color: '#262626', fontSize: '15px' }}>이벤트 기반 전송 활성</div>
+                                        <div style={{ fontWeight: 600, color: '#262626', fontSize: '15px' }}>Event-Based 전송 활성</div>
                                         <div style={{ color: '#8c8c8c', fontSize: '13px', marginTop: '8px' }}>
-                                            별도의 스케줄링 없이 데이터 수집 및 가공 직후 즉시 전송을 시도합니다.<br />
-                                            (추가 설정 없이 바로 저장이 가능합니다)
+                                            Sends data immediately after collection and processing, without a separate schedule.<br />
+                                            (You can save immediately without additional settings)
                                         </div>
                                     </div>
                                 )}
@@ -2031,13 +2033,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
                 <div className="wizard-footer" style={{ padding: '16px 32px', borderTop: '1px solid var(--neutral-100)', display: 'flex', justifyContent: 'space-between', marginTop: 'auto' }}>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <Button onClick={onClose} disabled={loading}>취소</Button>
+                        <Button onClick={onClose} disabled={loading}>{tl('cancel', {ns: 'common'})}</Button>
                         {editingGateway && onDelete && (
                             <Button
                                 danger
                                 onClick={async () => {
                                     const confirmed = await confirm({
-                                        title: '게이트웨이 삭제',
+                                        title: 'Delete Gateway',
                                         message: `"${editingGateway.name}" 게이트웨이를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
                                         confirmText: '삭제',
                                         confirmButtonType: 'danger'

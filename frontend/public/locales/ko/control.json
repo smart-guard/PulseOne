@@ -1,0 +1,76 @@
+{
+    "title": "제어 스케줄",
+    "description": "포인트 예약 제어 목록. 여기서 직접 등록하거나 실시간 모니터에서 등록할 수 있습니다.",
+    "refresh": "새로고침",
+    "newSchedule": "새 예약 등록",
+    "addScheduleTitle": "새 예약 제어 등록",
+    "summary": {
+        "total": "총 {{count}}개",
+        "active": "활성 {{count}}개",
+        "inactive": "비활성 {{count}}개"
+    },
+    "table": {
+        "id": "ID",
+        "point": "포인트",
+        "device": "디바이스",
+        "value": "전송값",
+        "type": "유형",
+        "schedule": "예정시각/주기",
+        "lastRun": "마지막 실행",
+        "status": "상태",
+        "action": "액션"
+    },
+    "type": {
+        "once": "일회성",
+        "repeat": "반복"
+    },
+    "badge": {
+        "active": "활성",
+        "inactive": "비활성"
+    },
+    "action": {
+        "pause": "일시정지",
+        "activate": "활성화"
+    },
+    "empty": {
+        "title": "등록된 예약 제어 없음",
+        "desc": "위의 새 예약 등록 버튼을 누르거나, 실시간 모니터에서 제어 버튼 → 예약 탭으로 등록하세요.",
+        "firstCta": "첫 번째 예약 등록"
+    },
+    "loading": "불러오는 중...",
+    "modal": {
+        "step1": "포인트 선택",
+        "step2": "제어 설정",
+        "searchPlaceholder": "포인트명, 디바이스명 검색...",
+        "searching": "검색 중...",
+        "noResults": "검색 결과 없음",
+        "nextStep": "다음: 제어 설정 →",
+        "valueLabel": "전송할 값 *",
+        "valuePlaceholder": "예: 1, 100, ON",
+        "onceType": "📅 일회성",
+        "repeatType": "🔁 반복(cron)",
+        "executeTime": "실행 시각 *",
+        "repeatInterval": "반복 주기",
+        "customCronPlaceholder": "커스텀 cron (예: 0 12 * * *)",
+        "memoLabel": "메모 (선택)",
+        "memoPlaeholder": "예: 오전 워밍업",
+        "register": "📅 예약 등록",
+        "registering": "등록 중...",
+        "changePoint": "변경"
+    },
+    "cron": {
+        "everyMin": "매분",
+        "everyHour": "매시간",
+        "every9am": "매일 오전 9시",
+        "every6pm": "매일 오후 6시",
+        "weekday9am": "평일 오전 9시"
+    },
+    "confirm": {
+        "deleteMsg": "이 예약 제어를 삭제하시겠습니까?"
+    },
+    "message": {
+        "registered": "등록 완료!",
+        "registerFail": "등록 실패",
+        "loadFail": "불러오기 실패"
+    }
+}
