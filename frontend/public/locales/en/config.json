@@ -1,0 +1,11 @@
+{
+    "title": "System Configuration",
+    "description": "Manage server environment variables and core configuration components.",
+    "restartWarning": "Backend restart required to apply changes",
+    "searchPlaceholder": "Search config files...",
+    "fileListLabel": "Config Files ({{count}})",
+    "loading": "Loading...",
+    "pathLabel": "Config Path",
+    "emptyTitle": "Select a file to manage",
+    "emptyDesc": "Select a server environment config file from the left to start editing."
+}
