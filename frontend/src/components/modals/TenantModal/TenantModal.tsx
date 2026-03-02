@@ -79,7 +79,7 @@ export const TenantModal: React.FC<TenantModalProps> = ({
         setError(null);
 
         if (!formData.company_name || !formData.company_code) {
-            setError('Company name and code are required.');
+            setError(t('modal.errRequired', { ns: 'tenants' }));
             return;
         }
 
@@ -88,9 +88,9 @@ export const TenantModal: React.FC<TenantModalProps> = ({
 
             if (tenant) {
                 const isConfirmed = await confirm({
-                    title: 'Save Changes',
-                    message: 'Save the changes you have entered?',
-                    confirmText: 'Save',
+                    title: t('modal.confirmSaveTitle', { ns: 'tenants' }),
+                    message: t('modal.confirmSaveMsg', { ns: 'tenants' }),
+                    confirmText: t('modal.confirmSaveBtn', { ns: 'tenants' }),
                     confirmButtonType: 'primary'
                 });
                 if (!isConfirmed) return;
@@ -98,22 +98,22 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                 const res = await TenantApiService.updateTenant(tenant.id, formData);
                 if (res.success) {
                     await confirm({
-                        title: 'Save Complete',
-                        message: 'Tenant information updated successfully.',
-                        confirmText: 'OK',
+                        title: t('modal.confirmSaveCompleteTitle', { ns: 'tenants' }),
+                        message: t('modal.confirmSaveCompleteMsg', { ns: 'tenants' }),
+                        confirmText: t('modal.confirmSaveCompleteBtn', { ns: 'tenants' }),
                         showCancelButton: false,
                         confirmButtonType: 'primary'
                     });
                     onSave();
                     onClose();
                 } else {
-                    setError(res.message || 'Update failed.');
+                    setError(res.message || t('modal.errUpdateFailed', { ns: 'tenants' }));
                 }
             } else {
                 const isConfirmed = await confirm({
-                    title: 'Register Tenant',
-                    message: 'Register a new tenant?',
-                    confirmText: 'Register',
+                    title: t('modal.confirmCreateTitle', { ns: 'tenants' }),
+                    message: t('modal.confirmCreateMsg', { ns: 'tenants' }),
+                    confirmText: t('modal.confirmCreateBtn', { ns: 'tenants' }),
                     confirmButtonType: 'primary'
                 });
                 if (!isConfirmed) return;
@@ -121,20 +121,20 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                 const res = await TenantApiService.createTenant(formData);
                 if (res.success) {
                     await confirm({
-                        title: 'Registration Complete',
-                        message: 'Registered successfully.',
-                        confirmText: 'OK',
+                        title: t('modal.confirmCreateCompleteTitle', { ns: 'tenants' }),
+                        message: t('modal.confirmCreateCompleteMsg', { ns: 'tenants' }),
+                        confirmText: t('modal.confirmCreateCompleteBtn', { ns: 'tenants' }),
                         showCancelButton: false,
                         confirmButtonType: 'primary'
                     });
                     onSave();
                     onClose();
                 } else {
-                    setError(res.message || 'Registration failed.');
+                    setError(res.message || t('modal.errCreateFailed', { ns: 'tenants' }));
                 }
             }
         } catch (err: any) {
-            setError(err.message || 'Error communicating with server.');
+            setError(err.message || t('modal.errServerComm', { ns: 'tenants' }));
         } finally {
             setSaving(false);
         }
@@ -145,7 +145,7 @@ export const TenantModal: React.FC<TenantModalProps> = ({
             <div className="mgmt-modal-container tenant-modal">
                 <div className="mgmt-modal-header">
                     <div className="mgmt-modal-title">
-                        <h2>{tenant ? 'Edit Tenant Info' : 'Register New Tenant'}</h2>
+                        <h2>{tenant ? t('modal.editTitle', { ns: 'tenants' }) : t('modal.createTitle', { ns: 'tenants' })}</h2>
                     </div>
                     <button className="mgmt-close-btn" onClick={onClose}>
                         <i className="fas fa-times"></i>
@@ -165,19 +165,19 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                     {/* Basic Info */}
                                     <div style={sectionStyle}>
-                                        <div style={sectionTitleStyle}><i className="fas fa-building"></i> Basic Info</div>
+                                        <div style={sectionTitleStyle}><i className="fas fa-building"></i> {t('modal.sectionBasic', { ns: 'tenants' })}</div>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                             <div>
-                                                <div style={labelStyle}>Company Name <span style={{ color: 'var(--error-500)' }}>*</span></div>
+                                                <div style={labelStyle}>{t('labels.companyName', { ns: 'tenants' })} <span style={{ color: 'var(--error-500)' }}>*</span></div>
                                                 <input type="text" style={inputStyle} value={formData.company_name} onChange={e => setFormData({ ...formData, company_name: e.target.value })} placeholder="Enter company name" disabled={saving} required />
                                             </div>
                                             <div>
-                                                <div style={labelStyle}>Company Code <span style={{ color: 'var(--error-500)' }}>*</span></div>
+                                                <div style={labelStyle}>{t('labels.companyCode', { ns: 'tenants' })} <span style={{ color: 'var(--error-500)' }}>*</span></div>
                                                 <input type="text" style={{ ...inputStyle, ...(tenant ? { background: 'var(--neutral-50)', color: 'var(--neutral-500)' } : {}) }} value={formData.company_code} onChange={e => setFormData({ ...formData, company_code: e.target.value })} placeholder="ABC" disabled={saving || !!tenant} required />
-                                                {tenant && <span style={{ fontSize: '10px', color: 'var(--neutral-400)', marginTop: '2px' }}>{t('labels.companyCodeCannotBeChanged', {ns: 'tenants'})}</span>}
+                                                {tenant && <span style={{ fontSize: '10px', color: 'var(--neutral-400)', marginTop: '2px' }}>{t('labels.companyCodeCannotBeChanged', { ns: 'tenants' })}</span>}
                                             </div>
                                             <div>
-                                                <div style={labelStyle}>{t('table.domain', {ns: 'tenants'})}</div>
+                                                <div style={labelStyle}>{t('table.domain', { ns: 'tenants' })}</div>
                                                 <input type="text" style={inputStyle} value={formData.domain} onChange={e => setFormData({ ...formData, domain: e.target.value })} placeholder="example.com" disabled={saving} />
                                             </div>
                                         </div>
@@ -185,18 +185,18 @@ export const TenantModal: React.FC<TenantModalProps> = ({
 
                                     {/* Contact Info */}
                                     <div style={sectionStyle}>
-                                        <div style={sectionTitleStyle}><i className="fas fa-user-tie"></i> Contact Info</div>
+                                        <div style={sectionTitleStyle}><i className="fas fa-user-tie"></i> {t('modal.sectionContact', { ns: 'tenants' })}</div>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                             <div>
-                                                <div style={labelStyle}>{t('labels.name', {ns: 'tenants'})}</div>
+                                                <div style={labelStyle}>{t('labels.name', { ns: 'tenants' })}</div>
                                                 <input type="text" style={inputStyle} value={formData.contact_name} onChange={e => setFormData({ ...formData, contact_name: e.target.value })} placeholder="Contact person name" disabled={saving} />
                                             </div>
                                             <div>
-                                                <div style={labelStyle}>{t('labels.email', {ns: 'tenants'})}</div>
+                                                <div style={labelStyle}>{t('labels.email', { ns: 'tenants' })}</div>
                                                 <input type="email" style={inputStyle} value={formData.contact_email} onChange={e => setFormData({ ...formData, contact_email: e.target.value })} placeholder="contact@company.com" disabled={saving} />
                                             </div>
                                             <div>
-                                                <div style={labelStyle}>{t('labels.contact', {ns: 'tenants'})}</div>
+                                                <div style={labelStyle}>{t('labels.contact', { ns: 'tenants' })}</div>
                                                 <input type="text" style={inputStyle} value={formData.contact_phone} onChange={e => setFormData({ ...formData, contact_phone: e.target.value })} placeholder="010-0000-0000" disabled={saving} />
                                             </div>
                                         </div>
@@ -204,42 +204,42 @@ export const TenantModal: React.FC<TenantModalProps> = ({
 
                                     {/* Subscription & Usage */}
                                     <div style={{ ...sectionStyle, gridColumn: '1 / -1' }}>
-                                        <div style={sectionTitleStyle}><i className="fas fa-credit-card"></i> Subscription & Usage</div>
+                                        <div style={sectionTitleStyle}><i className="fas fa-credit-card"></i> {t('modal.sectionSubscription', { ns: 'tenants' })}</div>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                                             <div>
-                                                <div style={labelStyle}>{t('table.subscriptionPlan', {ns: 'tenants'})}</div>
+                                                <div style={labelStyle}>{t('table.subscriptionPlan', { ns: 'tenants' })}</div>
                                                 <select style={inputStyle} value={formData.subscription_plan} onChange={e => setFormData({ ...formData, subscription_plan: e.target.value as any })} disabled={saving}>
-                                                    <option value="starter">{t('labels.starter', {ns: 'tenants'})}</option>
-                                                    <option value="professional">{t('labels.professional', {ns: 'tenants'})}</option>
-                                                    <option value="enterprise">{t('labels.enterprise', {ns: 'tenants'})}</option>
+                                                    <option value="starter">{t('labels.starter', { ns: 'tenants' })}</option>
+                                                    <option value="professional">{t('labels.professional', { ns: 'tenants' })}</option>
+                                                    <option value="enterprise">{t('labels.enterprise', { ns: 'tenants' })}</option>
                                                 </select>
                                             </div>
                                             <div>
-                                                <div style={labelStyle}>{t('labels.subscriptionStatus', {ns: 'tenants'})}</div>
+                                                <div style={labelStyle}>{t('labels.subscriptionStatus', { ns: 'tenants' })}</div>
                                                 <select style={inputStyle} value={formData.subscription_status} onChange={e => setFormData({ ...formData, subscription_status: e.target.value as any })} disabled={saving}>
-                                                    <option value="active">{t('filter.active', {ns: 'tenants'})}</option>
-                                                    <option value="trial">{t('stats.trial', {ns: 'tenants'})}</option>
-                                                    <option value="suspended">{t('labels.suspended', {ns: 'tenants'})}</option>
-                                                    <option value="cancelled">{t('labels.cancelled', {ns: 'tenants'})}</option>
+                                                    <option value="active">{t('filter.active', { ns: 'tenants' })}</option>
+                                                    <option value="trial">{t('stats.trial', { ns: 'tenants' })}</option>
+                                                    <option value="suspended">{t('labels.suspended', { ns: 'tenants' })}</option>
+                                                    <option value="cancelled">{t('labels.cancelled', { ns: 'tenants' })}</option>
                                                 </select>
                                             </div>
                                             <div>
-                                                <div style={labelStyle}>{t('labels.accountStatus', {ns: 'tenants'})}</div>
+                                                <div style={labelStyle}>{t('labels.accountStatus', { ns: 'tenants' })}</div>
                                                 <div style={{ padding: '6px 10px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-200)', height: '32px', display: 'flex', alignItems: 'center' }}>
                                                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', margin: 0 }}>
                                                         <input type="checkbox" checked={formData.is_active} onChange={e => setFormData({ ...formData, is_active: e.target.checked })} disabled={saving} />
-                                                        Account Active
+                                                        {t('labels.accountActive', { ns: 'tenants' })}
                                                     </label>
                                                 </div>
                                             </div>
                                         </div>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '10px' }}>
                                             <div>
-                                                <div style={labelStyle}>Edge Server Limit <span style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>(1 used per site registration)</span></div>
+                                                <div style={labelStyle}>{t('labels.edgeServerLimit', { ns: 'tenants' })} <span style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>{t('labels.edgeServerLimitNote', { ns: 'tenants' })}</span></div>
                                                 <input type="number" style={inputStyle} value={formData.max_edge_servers} onChange={e => setFormData({ ...formData, max_edge_servers: parseInt(e.target.value) })} disabled={saving} min="1" />
                                             </div>
                                             <div>
-                                                <div style={labelStyle}>{t('labels.maxDataPoints', {ns: 'tenants'})}</div>
+                                                <div style={labelStyle}>{t('labels.maxDataPoints', { ns: 'tenants' })}</div>
                                                 <input type="number" style={inputStyle} value={formData.max_data_points} onChange={e => setFormData({ ...formData, max_data_points: parseInt(e.target.value) })} disabled={saving} min="100" />
                                             </div>
                                         </div>
