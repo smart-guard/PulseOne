@@ -48,7 +48,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
 }) => {
     const { confirm } = useConfirmContext();
     const [step, setStep] = useState(1);
-    const { t } = useTranslation(['common', 'common']);
+    const { t } = useTranslation(['alarms', 'common']);
     const [activePreset, setActivePreset] = useState<string | null>(null);
     const tagInputRef = useRef<HTMLInputElement>(null);
 
@@ -137,7 +137,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
 
     const handleSave = async () => {
         if (!formData.name) {
-            confirm({ title: 'Input Error', message: 'Please enter a template name.', confirmButtonType: 'warning', showCancelButton: false });
+            confirm({ title: t('templates.inputError', { defaultValue: '입력 오류' }), message: t('templates.enterTemplateName', { defaultValue: '템플릿 이름을 입력해주세요.' }), confirmButtonType: 'warning', showCancelButton: false });
             setStep(1);
             return;
         }
@@ -169,7 +169,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                 <div className="modal-header" style={{ borderBottom: 'none', paddingBottom: '10px' }}>
                     <h3 className="modal-title">
                         <i className="fas fa-magic" style={{ color: 'var(--blueprint-500)', marginRight: '10px' }}></i>
-                        {mode === 'create' ? 'Create Alarm Template (Wizard)' : 'Edit Template (Wizard)'}
+                        {mode === 'create' ? t('templates.wizardCreateTitle', { defaultValue: '알람 템플릿 생성 (위저드)' }) : t('templates.wizardEditTitle', { defaultValue: '템플릿 편집 (위저드)' })}
                     </h3>
                     <button className="modal-close" onClick={onClose} style={{ fontSize: '24px', opacity: 0.5 }}>&times;</button>
                 </div>
@@ -177,10 +177,10 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                 {/* --- Wizard Step Indicator --- */}
                 <div className="wizard-steps-header">
                     {[
-                        { step: 1, label: 'Basic Info' },
-                        { step: 2, label: 'Trigger Logic' },
-                        { step: 3, label: 'Threshold & Level' },
-                        { step: 4, label: 'Final Review' }
+                        { step: 1, label: t('templates.wizardStep1', { defaultValue: '기본 정보' }) },
+                        { step: 2, label: t('templates.wizardStep2', { defaultValue: '트리거 로직' }) },
+                        { step: 3, label: t('templates.wizardStep3', { defaultValue: '임계값 및 레벨' }) },
+                        { step: 4, label: t('templates.wizardStep4', { defaultValue: '최종 확인' }) }
                     ].map((s) => (
                         <div key={s.step} className={`wizard-step-item ${step === s.step ? 'active' : ''} ${step > s.step ? 'completed' : ''}`}>
                             <div className="step-number">{step > s.step ? <i className="fas fa-check"></i> : s.step}</div>
@@ -195,20 +195,20 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                     {step === 1 && (
                         <div className="wizard-content-fade-in">
                             <div className="form-section" style={{ marginBottom: '32px' }}>
-                                <div className="section-title">Template Identity</div>
+                                <div className="section-title">{t('templates.templateIdentity', { defaultValue: '템플릿 식별 정보' })}</div>
                                 <div className="modal-form-grid" style={{ padding: 0 }}>
                                     <div className="form-group">
-                                        <label className="form-label required">Template Name</label>
-                                        <input type="text" className="form-input" placeholder="Enter a name that is easy for engineers to identify"
+                                        <label className="form-label required">{t('templates.templateName', { defaultValue: '템플릿 이름' })}</label>
+                                        <input type="text" className="form-input" placeholder={t('templates.templateNamePlaceholder', { defaultValue: '엔지니어가 식별하기 쉬운 이름을 입력하세요' })}
                                             value={formData.name} onChange={e => setFormData(p => ({ ...p, name: e.target.value }))} />
                                     </div>
                                     <div className="form-group">
-                                        <label className="form-label">Default Category</label>
+                                        <label className="form-label">{t('templates.defaultCategory', { defaultValue: '다어트 카테고리' })}</label>
                                         <select className="form-select" value={formData.category} onChange={e => setFormData(p => ({ ...p, category: e.target.value }))}>
-                                            <option value="general">General Equipment</option>
-                                            <option value="temperature">Temperature/Thermal</option>
-                                            <option value="pressure">Pressure System</option>
-                                            <option value="electrical">Electrical Signal</option>
+                                            <option value="general">{t('categories.general', { defaultValue: '일반 설비' })}</option>
+                                            <option value="temperature">{t('categories.temperature', { defaultValue: '온도/열' })}</option>
+                                            <option value="pressure">{t('categories.pressure', { defaultValue: '압력 시스템' })}</option>
+                                            <option value="electrical">{t('categories.electrical', { defaultValue: '전기 신호' })}</option>
                                         </select>
                                     </div>
                                 </div>
@@ -216,7 +216,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
 
                             {mode === 'create' && (
                                 <div className="form-section">
-                                    <div className="section-title">Quick Start Presets (Recommended Logic)</div>
+                                    <div className="section-title">{t('templates.quickStartPresets', { defaultValue: '빠른 시작 프리셋 (권장 로직)' })}</div>
                                     <div className="quick-start-row">
                                         {PRESETS.map(preset => (
                                             <div key={preset.id}
@@ -231,7 +231,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         ))}
                                     </div>
                                     <p style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center' }}>
-                                        💡 Selecting a preset auto-fills optimal defaults and advances to the next step.
+                                        💡 {t('templates.presetHint', { defaultValue: '프리셋을 선택하면 최적의 기본값이 자동으로 설정되어 다음 단계로 진행됩니다.' })}
                                     </p>
                                 </div>
                             )}
@@ -242,9 +242,9 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                     {step === 2 && (
                         <div className="wizard-content-fade-in">
                             <div className="form-section">
-                                <div className="section-title">Trigger Logic Settings</div>
+                                <div className="section-title">{t('templates.triggerLogicSettings', { defaultValue: '트리거 로직 설정' })}</div>
                                 <p className="form-desc" style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>
-                                    Define the condition that triggers the alarm. Click the tokens below to build the logic expression.
+                                    {t('templates.triggerLogicDesc', { defaultValue: '알람을 발생시키는 조건을 정의하세요. 아래 토큐을 클릭해 로직 표현식을 만드세요.' })}
                                 </p>
 
                                 <div className="logic-builder-container" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '32px', borderRadius: '16px' }}>
@@ -256,15 +256,16 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                             </button>
                                         ))}
                                         <button type="button" className="token-chip" onClick={() => setFormData(p => ({ ...p, trigger_condition: '' }))} style={{ color: '#ef4444', marginLeft: 'auto', border: '1px dashed #fecaca' }}>
-                                            <i className="fas fa-trash-alt"></i> Clear
+                                            <i className="fas fa-trash-alt"></i> {t('templates.clear', { defaultValue: '지우기' })}
                                         </button>
                                     </div>
                                     <div className="expression-box" style={{ minHeight: '80px', fontSize: '20px' }}>
-                                        {formData.trigger_condition || 'Combine tokens above to complete the logic...'}
+                                        {formData.trigger_condition || t('templates.combineTokensHint', { defaultValue: '위의 토큐을 조합하여 로직을 완성하세요...' })}
                                     </div>
                                     <div className="expression-hint" style={{ marginTop: '16px' }}>
                                         <i className="fas fa-lightbulb" style={{ color: '#f59e0b', marginRight: '6px' }}></i>
-                                        Engineer Tip: <code>THRESHOLD</code> will be replaced with the threshold value set in the next step.
+                                        <i className="fas fa-lightbulb" style={{ color: '#f59e0b', marginRight: '6px' }}></i>
+                                        {t('templates.engineerTip', { defaultValue: '엔지니어 팁' })}: <code>THRESHOLD</code> {t('templates.engineerTipDesc', { defaultValue: '는 다음 단계에서 설정한 임계값으로 대체됩니다.' })}
                                     </div>
                                 </div>
                             </div>
@@ -277,7 +278,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                             <div className="modal-form-grid" style={{ padding: 0, gap: '40px' }}>
                                 <div className="form-column">
                                     <div className="form-section">
-                                        <div className="section-title">Alarm Severity</div>
+                                        <div className="section-title">{t('templates.alarmSeverity', { defaultValue: '알람 심각도' })}</div>
                                         <div className="severity-grid">
                                             {SEVERITY_CARDS.map(s => (
                                                 <div key={s.id}
@@ -292,15 +293,15 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                 </div>
                                 <div className="form-column">
                                     <div className="form-section">
-                                        <div className="section-title">Default Thresholds</div>
+                                        <div className="section-title">{t('templates.defaultThresholds', { defaultValue: '기본 임계값' })}</div>
                                         <div className="form-group">
-                                            <label className="form-label">High Limit</label>
+                                            <label className="form-label">{t('templates.highLimit', { defaultValue: '상한값' })}</label>
                                             <input type="number" className="form-input" placeholder="80"
                                                 value={formData.default_config?.high_limit}
                                                 onChange={e => setFormData(p => ({ ...p, default_config: { ...p.default_config, high_limit: e.target.value } as any }))} />
                                         </div>
                                         <div className="form-group">
-                                            <label className="form-label">Low Limit</label>
+                                            <label className="form-label">{t('templates.lowLimit', { defaultValue: '하한값' })}</label>
                                             <input type="number" className="form-input" placeholder="20"
                                                 value={formData.default_config?.low_limit}
                                                 onChange={e => setFormData(p => ({ ...p, default_config: { ...p.default_config, low_limit: e.target.value } as any }))} />
@@ -315,20 +316,20 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                     {step === 4 && (
                         <div className="wizard-content-fade-in">
                             <div className="form-section" style={{ marginBottom: '32px' }}>
-                                <div className="section-title">Message Template & Notes</div>
+                                <div className="section-title">{t('templates.messageSectionTitle', { defaultValue: '메시지 템플릿 및 설명' })}</div>
                                 <div className="form-group">
-                                    <label className="form-label">Trigger Message</label>
+                                    <label className="form-label">{t('templates.triggerMessage', { defaultValue: '트리거 메시지' })}</label>
                                     <textarea className="form-input" rows={2}
                                         value={formData.message_template} onChange={e => setFormData(p => ({ ...p, message_template: e.target.value }))} />
                                 </div>
                                 <div className="modal-form-grid" style={{ padding: 0, marginTop: '24px' }}>
                                     <div className="form-group">
-                                        <label className="form-label">Template Description</label>
-                                        <textarea className="form-input" rows={3} placeholder="Describe the purpose and notes for this template"
+                                        <label className="form-label">{t('templates.templateDescription', { defaultValue: '템플릿 설명' })}</label>
+                                        <textarea className="form-input" rows={3} placeholder={t('templates.templateDescPlaceholder', { defaultValue: '이 템플릿의 목적과 주의 사항을 설명하세요' })}
                                             value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} />
                                     </div>
                                     <div className="form-group">
-                                        <label className="form-label">Tags</label>
+                                        <label className="form-label">{t('templates.tags', { defaultValue: '태그' })}</label>
                                         <div className="tag-input-container" style={{ minHeight: '100px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px' }}>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
                                                 {formData.tags?.map(tag => (
@@ -337,7 +338,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                                     </span>
                                                 ))}
                                             </div>
-                                            <input ref={tagInputRef} type="text" className="form-input" placeholder="Press Enter to add tag..." onKeyDown={handleAddTag} style={{ background: 'white' }} />
+                                            <input ref={tagInputRef} type="text" className="form-input" placeholder={t('templates.tagsPlaceholder', { defaultValue: 'Enter 를 눌러 태그 추가...' })} onKeyDown={handleAddTag} style={{ background: 'white' }} />
                                         </div>
                                     </div>
                                 </div>

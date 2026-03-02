@@ -190,8 +190,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             const res = await TemplateApiService.getTemplate(template.id);
             if (!res.success || !res.data) {
                 confirm({
-                    title: 'Notice',
-                    message: 'Failed to load template information.',
+                    title: t('bulk.notice', { defaultValue: '알림' }),
+                    message: t('bulk.templateLoadFailed', { defaultValue: '템플릿 정보를 불러오는데 실패했습니다.' }),
                     confirmButtonType: 'danger',
                     showCancelButton: false
                 });
@@ -201,8 +201,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             const fullTemplate = res.data;
             if (!fullTemplate.data_points || fullTemplate.data_points.length === 0) {
                 confirm({
-                    title: 'Notice',
-                    message: 'This template has no defined points.',
+                    title: t('bulk.notice', { defaultValue: '알림' }),
+                    message: t('bulk.templateNoPoints', { defaultValue: '이 템플릿에 정의된 포인트가 없습니다.' }),
                     confirmButtonType: 'warning',
                     showCancelButton: false
                 });
@@ -244,9 +244,9 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             const hasData = points.some(p => p.name || p.address);
             if (hasData) {
                 const isConfirmed = await confirm({
-                    title: 'Confirm Template Apply',
-                    message: 'Existing data will be overwritten. Apply template?',
-                    confirmText: 'Overwrite',
+                    title: t('bulk.templateApplyConfirmTitle', { defaultValue: '템플릿 적용 확인' }),
+                    message: t('bulk.templateApplyConfirmMsg', { defaultValue: '기존 데이터가 덮어쓰여집니다. 템플릿을 적용하시걌습니까?' }),
+                    confirmText: t('bulk.overwrite', { defaultValue: '덮어쓰기' }),
                     confirmButtonType: 'primary'
                 });
                 if (!isConfirmed) {
@@ -260,8 +260,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         } catch (err) {
             console.error('Failed to apply template:', err);
             confirm({
-                title: 'Notice',
-                message: 'Error occurred while applying template.',
+                title: t('bulk.notice', { defaultValue: '알림' }),
+                message: t('bulk.templateApplyError', { defaultValue: '템플릿 적용 중 오류가 발생했습니다.' }),
                 confirmButtonType: 'danger',
                 showCancelButton: false
             });
@@ -320,16 +320,16 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             setJsonInput('');
 
             confirm({
-                title: 'Parse Complete',
-                message: `Found ${flatPoints.length} data fields.\nEnter the corresponding topic (Sub-topic) in the [Address] column.`,
+                title: t('bulk.parseComplete', { defaultValue: '파싱 완료' }),
+                message: `${t('bulk.parseFoundFields', { count: flatPoints.length, defaultValue: `${flatPoints.length}개 데이터 필드를 발견했습니다.` })}\n${t('bulk.parseHint', { defaultValue: '[주소] 컄럼에 해당 토픽(Sub-topic)을 입력해주세요.' })}`,
                 confirmButtonType: 'success',
                 showCancelButton: false
             });
 
         } catch (e) {
             confirm({
-                title: 'Parse Failed',
-                message: 'Invalid JSON format. Please check the format.',
+                title: t('bulk.parseFailed', { defaultValue: '파싱 실패' }),
+                message: t('bulk.parseInvalidJson', { defaultValue: '\uc798못된 JSON 형식입니다. 형식을 확인해주세요.' }),
                 confirmButtonType: 'danger',
                 showCancelButton: false
             });
@@ -422,7 +422,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
     const handleBitSplit = () => {
         const { address, namePrefix, bitStart, bitEnd, accessMode, descPrefix } = bitSplitConfig;
         if (!address.trim()) {
-            confirm({ title: 'Notice', message: 'Please enter a base register address.', confirmButtonType: 'warning', showCancelButton: false });
+            confirm({ title: t('bulk.notice', { defaultValue: '알림' }), message: t('bulk.enterBaseAddress', { defaultValue: '기본 레지스터 주소를 입력해주세요.' }), confirmButtonType: 'warning', showCancelButton: false });
             return;
         }
         const start = Math.max(0, Math.min(15, Number(bitStart)));
@@ -479,9 +479,9 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
 
     const handleReset = async () => {
         const isConfirmed = await confirm({
-            title: 'Confirm Reset',
-            message: 'Clear all entered data and reset?\nThis cannot be undone.',
-            confirmText: 'Reset',
+            title: t('bulk.confirmReset', { defaultValue: '리셋 확인' }),
+            message: t('bulk.confirmResetMsg', { defaultValue: '입력된 모든 데이터를 지우고 리셋하시걌습니까?\n이 작업은 실행 취소할 수 없습니다.' }),
+            confirmText: t('bulk.reset', { defaultValue: '리셋' }),
             confirmButtonType: 'danger'
         });
 
@@ -678,7 +678,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
 
         // 피드백
         const msg = document.createElement('div');
-        msg.textContent = `${dataRows.length} row(s) pasted.`;
+        msg.textContent = `${dataRows.length} ${t('bulk.rowsPasted', { defaultValue: '행이 붙여넣기되었습니다.' })}`;
         msg.style.cssText = 'position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: #3b82f6; color: white; padding: 12px 24px; border-radius: 30px; z-index: 10000; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-weight: 500; animation: fadeOut 2s forwards; animation-delay: 1.5s;';
         document.body.appendChild(msg);
         setTimeout(() => msg.remove(), 4000);
@@ -690,8 +690,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
 
         if (validPoints.length === 0) {
             confirm({
-                title: 'Notice',
-                message: 'No data to save.',
+                title: t('bulk.noData', { defaultValue: '데이터 없음' }),
+                message: t('bulk.noDataToSave', { defaultValue: '저장할 데이터가 없습니다.' }),
                 confirmButtonType: 'warning',
                 showCancelButton: false
             });
@@ -701,8 +701,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         const errors = validPoints.filter(p => !p.isValid);
         if (errors.length > 0) {
             confirm({
-                title: 'Validation Error',
-                message: `${errors.length} item(s) have errors.\nPlease check cells highlighted in red.`,
+                title: t('bulk.validationError', { defaultValue: '유효성 오류' }),
+                message: `${errors.length} ${t('bulk.itemsHaveErrors', { defaultValue: '개 항목에 오류가 있습니다.' })}\n${t('bulk.checkRedCells', { defaultValue: '빨간색으로 표시된 셀을 확인해주세요.' })}`,
                 confirmButtonType: 'danger',
                 showCancelButton: false
             });
@@ -710,9 +710,9 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         }
 
         const isConfirmed = await confirm({
-            title: 'Confirm Bulk Register',
-            message: `Register ${validPoints.length} point(s) to this device?`,
-            confirmText: 'Register',
+            title: t('bulk.confirmBulkRegisterTitle', { defaultValue: '대량 등록 확인' }),
+            message: `${validPoints.length} ${t('bulk.confirmBulkRegisterMsg', { defaultValue: '개 포인트를 이 디바이스에 등록하시걌습니까?' })}`,
+            confirmText: t('bulk.register', { defaultValue: '등록' }),
             confirmButtonType: 'primary'
         });
 
@@ -735,8 +735,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         } catch (e) {
             console.error(e);
             confirm({
-                title: 'Save Error',
-                message: 'An error occurred while saving.',
+                title: t('bulk.saveError', { defaultValue: '저장 오류' }),
+                message: t('bulk.saveOccurredError', { defaultValue: '저장 중 오류가 발생했습니다.' }),
                 confirmButtonType: 'danger',
                 showCancelButton: false
             });

@@ -62,15 +62,15 @@ export const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
 
                         {/* Col 1: Basic Info */}
                         <div className="modal-form-section" style={{ marginBottom: 0, display: 'flex', flexDirection: 'column' }}>
-                            <h3><i className="fas fa-info-circle"></i> Basic Info</h3>
+                            <h3><i className="fas fa-info-circle"></i> {t('roleModal.basicInfo', { ns: 'permissions', defaultValue: '기본 정보' })}</h3>
 
                             <div className="detail-item" style={{ marginBottom: '12px' }}>
-                                <span className="detail-label">{t('roleModal.name', {ns: 'permissions'})}</span>
+                                <span className="detail-label">{t('roleModal.name', { ns: 'permissions' })}</span>
                                 <span className="detail-value highlight fs-15">{role.name}</span>
                             </div>
 
                             <div className="detail-item" style={{ marginBottom: '12px' }}>
-                                <span className="detail-label">{t('table.type', {ns: 'permissions'})}</span>
+                                <span className="detail-label">{t('table.type', { ns: 'permissions' })}</span>
                                 <div style={{ marginTop: '4px' }}>
                                     {role.is_system ? (
                                         <span className="status-badge status-purple">
@@ -85,7 +85,7 @@ export const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
                             </div>
 
                             <div className="detail-item" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                                <span className="detail-label">{t('table.description', {ns: 'permissions'})}</span>
+                                <span className="detail-label">{t('table.description', { ns: 'permissions' })}</span>
                                 <div style={{
                                     background: 'var(--neutral-50)',
                                     padding: '12px',
@@ -96,7 +96,7 @@ export const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
                                     flex: 1,
                                     marginTop: '4px'
                                 }}>
-                                    {role.description || 'No description.'}
+                                    {role.description || t('table.noDescription', { ns: 'permissions', defaultValue: '설명이 없습니다.' })}
                                 </div>
                             </div>
                         </div>
@@ -104,8 +104,8 @@ export const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
                         {/* Col 2: Permissions */}
                         <div className="modal-form-section" style={{ marginBottom: 0, display: 'flex', flexDirection: 'column' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                <h3><i className="fas fa-key"></i> Included Permissions</h3>
-                                <span className="badge neutral" style={{ fontSize: '11px' }}>{role.permissions ? role.permissions.length : 0} items</span>
+                                <h3><i className="fas fa-key"></i> {t('roleModal.includedPermissions', { ns: 'permissions', defaultValue: '포함된 권한' })}</h3>
+                                <span className="badge neutral" style={{ fontSize: '11px' }}>{role.permissions ? role.permissions.length : 0} {t('roleModal.items', { ns: 'permissions', defaultValue: '개' })}</span>
                             </div>
 
                             <div className="permissions-grid" style={{
@@ -140,7 +140,7 @@ export const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
                                     ))
                                 ) : (
                                     <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: '#999' }}>
-                                        No permissions
+                                        {t('roleModal.noPermissions', { ns: 'permissions', defaultValue: '권한이 없습니다.' })}
                                     </div>
                                 )}
                             </div>
@@ -148,11 +148,11 @@ export const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
 
                         {/* Col 3: Meta Info */}
                         <div className="modal-form-section" style={{ marginBottom: 0, display: 'flex', flexDirection: 'column' }}>
-                            <h3><i className="fas fa-clock"></i> Meta Info</h3>
+                            <h3><i className="fas fa-clock"></i> {t('roleModal.metaInfo', { ns: 'permissions', defaultValue: '메타 정보' })}</h3>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
                                 <div className="detail-item">
-                                    <span className="detail-label">{t('table.createdAt', {ns: 'permissions'})}</span>
+                                    <span className="detail-label">{t('table.createdAt', { ns: 'permissions' })}</span>
                                     <span className="detail-value" style={{ fontSize: '13px', fontFamily: 'monospace' }}>
                                         {role.created_at ? new Date(role.created_at).toLocaleDateString() : '-'}
                                         <br />
@@ -165,10 +165,10 @@ export const RoleDetailModal: React.FC<RoleDetailModalProps> = ({
                                 <div style={{ height: '1px', background: 'var(--neutral-100)' }}></div>
 
                                 <div className="detail-item">
-                                    <span className="detail-label">{t('table.assignedUsers', {ns: 'permissions'})}</span>
+                                    <span className="detail-label">{t('table.assignedUsers', { ns: 'permissions' })}</span>
                                     <span className="detail-value" style={{ fontSize: '18px', fontWeight: 700, color: 'var(--primary-600)' }}>
                                         {role.userCount || 0}
-                                        <span style={{ fontSize: '12px', color: '#666', fontWeight: 400, marginLeft: '4px' }}>{t('labels.users', {ns: 'permissions'})}</span>
+                                        <span style={{ fontSize: '12px', color: '#666', fontWeight: 400, marginLeft: '4px' }}>{t('labels.users', { ns: 'permissions' })}</span>
                                     </span>
                                 </div>
 

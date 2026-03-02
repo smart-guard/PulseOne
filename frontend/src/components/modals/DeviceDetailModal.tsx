@@ -521,10 +521,10 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
               // 🔥 핵심 수정: 즉시 성공 처리 후 모달 닫기
               showCustomModal({
                 type: 'success',
-                title: savedDevice.sync_warning ? 'Save Complete (Sync Warning)' : t('devices:msg.saveSuccess', 'Edit Complete'),
+                title: savedDevice.sync_warning ? t('devices:msg.saveCompleteWithWarning', { defaultValue: '저장 완료 (동기화 경고)' }) : t('devices:msg.saveSuccess', 'Edit Complete'),
                 message: savedDevice.sync_warning
-                  ? `✅ Settings saved to database.\n\n⚠️ Warning: Collector sync failed.\n(${savedDevice.sync_warning})\n\nCheck if collector is running.`
-                  : `"${savedDevice.name}" device has been successfully updated.`,
+                  ? `✅ ${t('devices:msg.syncWarningMsg', { defaultValue: 'DB에 저장되었습니다.' })}\n\n⚠️ ${t('devices:msg.syncFailed', { defaultValue: '콜렉터 동기화 실패.' })}\n(${savedDevice.sync_warning})\n\n${t('devices:msg.checkCollector', { defaultValue: '콜렉터가 실행 중인지 확인하세요.' })}`
+                  : t('devices:msg.saveSuccessDetail', { name: savedDevice.name, defaultValue: `"${savedDevice.name}" 디바이스가 성공적하로 수정되었습니다.` }),
                 confirmText: t('devices:modal.ok'),
                 showCancel: false,
                 onConfirm: () => {
@@ -552,7 +552,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           showCustomModal({
             type: 'error',
             title: t('devices:msg.saveFailed'),
-            message: `Failed to save device.\n\n${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease try again.`,
+            message: `${t('devices:msg.saveFailedMsg', { defaultValue: '디바이스 저장에 실패했습니다.' })}\n\n${error instanceof Error ? error.message : t('devices:msg.unknown', { defaultValue: '알 수 없는 오류' })}\n\n${t('devices:msg.tryAgain', { defaultValue: '다시 시도해주세요.' })}`,
             confirmText: t('devices:modal.ok'),
             showCancel: false,
             onConfirm: () => {
@@ -576,7 +576,10 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       return;
     }
 
-    const confirmMessage = `Delete "${device.name}" device?\n\n⚠️ Notes:\n• Data points will also be deleted\n• History data will be preserved\n• This action cannot be undone`;
+    const confirmMessage = t('devices:msg.deleteConfirmMsg', {
+      name: device.name,
+      defaultValue: `"${device.name}" 디바이스를 삭제하시걌습니까?\n\n⚠️ 주의 사항:\n• 데이터 포인트도 함께 삭제됩니다\n• 이력 데이터는 보존됩니다\n• 이 작업은 취소할 수 없습니다`
+    });
 
     showCustomModal({
       type: 'confirm',

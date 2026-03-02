@@ -38,7 +38,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
   loading
 }) => {
   const [localSettings, setLocalSettings] = useState<AlarmRuleSettings>(currentSettings);
-    const { t } = useTranslation(['alarms', 'common']);
+  const { t } = useTranslation(['alarms', 'common']);
   const [activeTab, setActiveTab] = useState<'thresholds' | 'behavior' | 'notifications' | 'schedule'>('thresholds');
 
   useEffect(() => {
@@ -64,7 +64,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
     <div className="modal-overlay">
       <div className="modal-container large">
         <div className="modal-header">
-          <h2 className="modal-title">Alarm Settings: {rule.name}</h2>
+          <h2 className="modal-title">{t('settingsModal.title', { ns: 'alarms', defaultValue: '알람 설정' })}: {rule.name}</h2>
           <button
             className="modal-close-btn"
             onClick={onClose}
@@ -77,36 +77,36 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
         <div className="modal-content">
           {/* 읽기전용 정보 */}
           <div className="form-section readonly-section">
-            <h3>{t('settingsModal.basicInfoReadonly', {ns: 'alarms'})}</h3>
+            <h3>{t('settingsModal.basicInfoReadonly', { ns: 'alarms' })}</h3>
             <div className="readonly-grid">
               <div className="readonly-item">
-                <label>{t('settingsModal.dataSource', {ns: 'alarms'})}</label>
+                <label>{t('settingsModal.dataSource', { ns: 'alarms' })}</label>
                 <span>{rule.data_point_name || `${rule.target_type} ${rule.id}`}</span>
               </div>
               <div className="readonly-item">
-                <label>{t('columns.device', {ns: 'alarms'})}</label>
+                <label>{t('columns.device', { ns: 'alarms' })}</label>
                 <span>{rule.device_name || 'N/A'}</span>
               </div>
               <div className="readonly-item">
-                <label>{t('modals.category', {ns: 'alarms'})}</label>
-                <span>{rule.category || 'General'}</span>
+                <label>{t('modals.category', { ns: 'alarms' })}</label>
+                <span>{rule.category || t('categories.general', { ns: 'alarms', defaultValue: '일반' })}</span>
               </div>
               <div className="readonly-item">
-                <label>{t('settingsModal.conditionType', {ns: 'alarms'})}</label>
+                <label>{t('settingsModal.conditionType', { ns: 'alarms' })}</label>
                 <span>{rule.condition_type}</span>
               </div>
               {statistics && (
                 <>
                   <div className="readonly-item">
-                    <label>{t('settingsModal.occurrenceCount', {ns: 'alarms'})}</label>
+                    <label>{t('settingsModal.occurrenceCount', { ns: 'alarms' })}</label>
                     <span>{statistics.occurrence_summary.total_occurrences} times</span>
                   </div>
                   <div className="readonly-item">
-                    <label>{t('settingsModal.avgResponseTime', {ns: 'alarms'})}</label>
+                    <label>{t('settingsModal.avgResponseTime', { ns: 'alarms' })}</label>
                     <span>{statistics.performance_metrics.avg_response_time_minutes?.toFixed(1) || 'N/A'}min</span>
                   </div>
                   <div className="readonly-item">
-                    <label>{t('settingsModal.lastOccurrence', {ns: 'alarms'})}</label>
+                    <label>{t('settingsModal.lastOccurrence', { ns: 'alarms' })}</label>
                     <span>{statistics.performance_metrics.last_triggered
                       ? new Date(statistics.performance_metrics.last_triggered).toLocaleString()
                       : 'N/A'}</span>
@@ -114,7 +114,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                 </>
               )}
               <div className="readonly-item">
-                <label>{t('templates.lastModified', {ns: 'alarms'})}</label>
+                <label>{t('templates.lastModified', { ns: 'alarms' })}</label>
                 <span>{new Date(rule.updated_at).toLocaleString()}</span>
               </div>
             </div>
@@ -126,25 +126,25 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
               className={`tab-button ${activeTab === 'thresholds' ? 'active' : ''}`}
               onClick={() => setActiveTab('thresholds')}
             >
-              <i className="fas fa-sliders-h"></i> Threshold
+              <i className="fas fa-sliders-h"></i> {t('settingsModal.tabThreshold', { ns: 'alarms', defaultValue: '임계값' })}
             </button>
             <button
               className={`tab-button ${activeTab === 'behavior' ? 'active' : ''}`}
               onClick={() => setActiveTab('behavior')}
             >
-              <i className="fas fa-cogs"></i> Actions
+              <i className="fas fa-cogs"></i> {t('settingsModal.tabActions', { ns: 'alarms', defaultValue: '동작' })}
             </button>
             <button
               className={`tab-button ${activeTab === 'notifications' ? 'active' : ''}`}
               onClick={() => setActiveTab('notifications')}
             >
-              <i className="fas fa-bell"></i> Notifications
+              <i className="fas fa-bell"></i> {t('settingsModal.tabNotifications', { ns: 'alarms', defaultValue: '알림' })}
             </button>
             <button
               className={`tab-button ${activeTab === 'schedule' ? 'active' : ''}`}
               onClick={() => setActiveTab('schedule')}
             >
-              <i className="fas fa-clock"></i> Schedule
+              <i className="fas fa-clock"></i> {t('settingsModal.tabSchedule', { ns: 'alarms', defaultValue: '스케줄' })}
             </button>
           </div>
 
@@ -153,11 +153,11 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
             {/* Threshold Settings 탭 */}
             {activeTab === 'thresholds' && (
               <div className="form-section">
-                <h3>{t('settingsModal.thresholdConfig', {ns: 'alarms'})}</h3>
+                <h3>{t('settingsModal.thresholdConfig', { ns: 'alarms' })}</h3>
                 {(rule.condition_type === 'threshold' || rule.condition_type === 'range') && (
                   <div className="form-row">
                     <div className="form-group">
-                      <label className="form-label">{t('settingsModal.veryHigh', {ns: 'alarms'})}</label>
+                      <label className="form-label">{t('settingsModal.veryHigh', { ns: 'alarms' })}</label>
                       <input
                         type="number"
                         value={localSettings.highHighLimit || ''}
@@ -167,7 +167,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">{t('settingsModal.high', {ns: 'alarms'})}</label>
+                      <label className="form-label">{t('settingsModal.high', { ns: 'alarms' })}</label>
                       <input
                         type="number"
                         value={localSettings.highLimit || ''}
@@ -177,7 +177,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">{t('settingsModal.low', {ns: 'alarms'})}</label>
+                      <label className="form-label">{t('settingsModal.low', { ns: 'alarms' })}</label>
                       <input
                         type="number"
                         value={localSettings.lowLimit || ''}
@@ -187,7 +187,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">{t('settingsModal.veryLow', {ns: 'alarms'})}</label>
+                      <label className="form-label">{t('settingsModal.veryLow', { ns: 'alarms' })}</label>
                       <input
                         type="number"
                         value={localSettings.lowLowLimit || ''}
@@ -200,7 +200,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                 )}
 
                 <div className="form-group">
-                  <label className="form-label">{t('settingsModal.hysteresis', {ns: 'alarms'})}</label>
+                  <label className="form-label">{t('settingsModal.hysteresis', { ns: 'alarms' })}</label>
                   <input
                     type="number"
                     value={localSettings.deadband === 0 ? '0' : (localSettings.deadband || '')}
@@ -211,9 +211,9 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                     className="form-input"
                     step="0.1"
                     min="0"
-                    placeholder="Deadband value"
+                    placeholder={t('settingsModal.deadbandPlaceholder', { ns: 'alarms', defaultValue: '데드밴드 값' })}
                   />
-                  <small className="form-help">Deadband to prevent alarm chattering (0 = no deadband)</small>
+                  <small className="form-help">{t('settingsModal.deadbandHelp', { ns: 'alarms', defaultValue: '알람 채터링 방지 데드밴드 (0 = 데드밴드 없음)' })}</small>
                 </div>
               </div>
             )}
@@ -221,37 +221,37 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
             {/* Actions 설정 탭 */}
             {activeTab === 'behavior' && (
               <div className="form-section">
-                <h3>{t('labels.priorityActions', {ns: 'alarms'})}</h3>
+                <h3>{t('labels.priorityActions', { ns: 'alarms' })}</h3>
                 <div className="form-row">
                   <div className="form-group">
-                    <label className="form-label">{t('bulk.priority', {ns: 'alarms'})}</label>
+                    <label className="form-label">{t('bulk.priority', { ns: 'alarms' })}</label>
                     <select
                       value={localSettings.priority}
                       onChange={(e) => handleSettingChange('priority', e.target.value as any)}
                       className="form-select"
                     >
-                      <option value="low">{t('severity.low', {ns: 'alarms'})}</option>
-                      <option value="medium">{t('severity.medium', {ns: 'alarms'})}</option>
-                      <option value="high">{t('severity.high', {ns: 'alarms'})}</option>
-                      <option value="critical">{t('severity.critical', {ns: 'alarms'})}</option>
+                      <option value="low">{t('severity.low', { ns: 'alarms' })}</option>
+                      <option value="medium">{t('severity.medium', { ns: 'alarms' })}</option>
+                      <option value="high">{t('severity.high', { ns: 'alarms' })}</option>
+                      <option value="critical">{t('severity.critical', { ns: 'alarms' })}</option>
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Severity (1-5)</label>
+                    <label className="form-label">{t('settingsModal.severityLevel', { ns: 'alarms', defaultValue: '심각도 (1-5)' })}</label>
                     <select
                       value={localSettings.severity}
                       onChange={(e) => handleSettingChange('severity', Number(e.target.value) as any)}
                       className="form-select"
                     >
-                      <option value={1}>1 (Lowest)</option>
-                      <option value={2}>2 (Low)</option>
-                      <option value={3}>3 (Normal)</option>
-                      <option value={4}>4 (High)</option>
-                      <option value={5}>5 (Highest)</option>
+                      <option value={1}>1 ({t('settingsModal.lowest', { ns: 'alarms', defaultValue: '최저' })})</option>
+                      <option value={2}>2 ({t('settingsModal.low2', { ns: 'alarms', defaultValue: '낮음' })})</option>
+                      <option value={3}>3 ({t('settingsModal.normal', { ns: 'alarms', defaultValue: '보통' })})</option>
+                      <option value={4}>4 ({t('settingsModal.high2', { ns: 'alarms', defaultValue: '높음' })})</option>
+                      <option value={5}>5 ({t('settingsModal.highest', { ns: 'alarms', defaultValue: '최고' })})</option>
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">{t('bulk.escalationTime', {ns: 'alarms'})}</label>
+                    <label className="form-label">{t('bulk.escalationTime', { ns: 'alarms' })}</label>
                     <input
                       type="number"
                       value={localSettings.escalationTime}
@@ -264,7 +264,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
 
                 <div className="form-row">
                   <div className="form-group">
-                    <label className="form-label">{t('labels.dedupSuppressionTimeS', {ns: 'alarms'})}</label>
+                    <label className="form-label">{t('labels.dedupSuppressionTimeS', { ns: 'alarms' })}</label>
                     <input
                       type="number"
                       value={localSettings.suppressDuration}
@@ -272,10 +272,10 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                       className="form-input"
                       min="0"
                     />
-                    <small className="form-help">{t('settingsModal.suppressHelp', {ns: 'alarms'})}</small>
+                    <small className="form-help">{t('settingsModal.suppressHelp', { ns: 'alarms' })}</small>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">{t('settingsModal.maxOccurrences', {ns: 'alarms'})}</label>
+                    <label className="form-label">{t('settingsModal.maxOccurrences', { ns: 'alarms' })}</label>
                     <input
                       type="number"
                       value={localSettings.maxOccurrences}
@@ -283,7 +283,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                       className="form-input"
                       min="0"
                     />
-                    <small className="form-help">0 = unlimited</small>
+                    <small className="form-help">{t('settingsModal.maxOccurrencesHelp', { ns: 'alarms', defaultValue: '0 = 무제한' })}</small>
                   </div>
                 </div>
 
@@ -295,7 +295,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                       checked={localSettings.autoAcknowledge}
                       onChange={(e) => handleSettingChange('autoAcknowledge', e.target.checked)}
                     />
-                    <label className="checkbox-label">{t('labels.autoApprove', {ns: 'alarms'})}</label>
+                    <label className="checkbox-label">{t('labels.autoApprove', { ns: 'alarms' })}</label>
                   </div>
                   <div className="checkbox-group">
                     <input
@@ -304,7 +304,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                       checked={localSettings.autoReset}
                       onChange={(e) => handleSettingChange('autoReset', e.target.checked)}
                     />
-                    <label className="checkbox-label">{t('bulk.autoReset', {ns: 'alarms'})}</label>
+                    <label className="checkbox-label">{t('bulk.autoReset', { ns: 'alarms' })}</label>
                   </div>
                   <div className="checkbox-group">
                     <input
@@ -313,7 +313,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                       checked={localSettings.isEnabled}
                       onChange={(e) => handleSettingChange('isEnabled', e.target.checked)}
                     />
-                    <label className="checkbox-label">{t('bulk.isEnabled', {ns: 'alarms'})}</label>
+                    <label className="checkbox-label">{t('bulk.isEnabled', { ns: 'alarms' })}</label>
                   </div>
                 </div>
               </div>
@@ -322,7 +322,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
             {/* Notification Settings 탭 */}
             {activeTab === 'notifications' && (
               <div className="form-section">
-                <h3>{t('settingsModal.notificationConfig', {ns: 'alarms'})}</h3>
+                <h3>{t('settingsModal.notificationConfig', { ns: 'alarms' })}</h3>
                 <div className="notification-options">
                   <div className="checkbox-options">
                     <div className="checkbox-group">
@@ -332,7 +332,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                         checked={localSettings.emailEnabled}
                         onChange={(e) => handleSettingChange('emailEnabled', e.target.checked)}
                       />
-                      <label className="checkbox-label">{t('labels.emailNotifications', {ns: 'alarms'})}</label>
+                      <label className="checkbox-label">{t('labels.emailNotifications', { ns: 'alarms' })}</label>
                     </div>
                     <div className="checkbox-group">
                       <input
@@ -341,7 +341,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                         checked={localSettings.smsEnabled}
                         onChange={(e) => handleSettingChange('smsEnabled', e.target.checked)}
                       />
-                      <label className="checkbox-label">{t('bulk.smsEnabled', {ns: 'alarms'})}</label>
+                      <label className="checkbox-label">{t('bulk.smsEnabled', { ns: 'alarms' })}</label>
                     </div>
                     <div className="checkbox-group">
                       <input
@@ -350,7 +350,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                         checked={localSettings.soundEnabled}
                         onChange={(e) => handleSettingChange('soundEnabled', e.target.checked)}
                       />
-                      <label className="checkbox-label">{t('settingsModal.soundEnabled', {ns: 'alarms'})}</label>
+                      <label className="checkbox-label">{t('settingsModal.soundEnabled', { ns: 'alarms' })}</label>
                     </div>
                     <div className="checkbox-group">
                       <input
@@ -359,7 +359,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                         checked={localSettings.popupEnabled}
                         onChange={(e) => handleSettingChange('popupEnabled', e.target.checked)}
                       />
-                      <label className="checkbox-label">{t('settingsModal.popupEnabled', {ns: 'alarms'})}</label>
+                      <label className="checkbox-label">{t('settingsModal.popupEnabled', { ns: 'alarms' })}</label>
                     </div>
                     <div className="checkbox-group">
                       <input
@@ -368,14 +368,14 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                         checked={localSettings.webhookEnabled}
                         onChange={(e) => handleSettingChange('webhookEnabled', e.target.checked)}
                       />
-                      <label className="checkbox-label">{t('settingsModal.webhookEnabled', {ns: 'alarms'})}</label>
+                      <label className="checkbox-label">{t('settingsModal.webhookEnabled', { ns: 'alarms' })}</label>
                     </div>
                   </div>
                 </div>
 
                 {localSettings.emailEnabled && (
                   <div className="form-group">
-                    <label className="form-label">{t('settingsModal.emailRecipients', {ns: 'alarms'})}</label>
+                    <label className="form-label">{t('settingsModal.emailRecipients', { ns: 'alarms' })}</label>
                     <input
                       type="text"
                       value={localSettings.emailRecipients.join(', ')}
@@ -383,14 +383,14 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                         e.target.value.split(',').map(email => email.trim()).filter(email => email)
                       )}
                       className="form-input"
-                      placeholder="Separate email addresses with commas"
+                      placeholder={t('settingsModal.emailPlaceholder', { ns: 'alarms', defaultValue: '이메일 주소를 쉼표로 구분하세요' })}
                     />
                   </div>
                 )}
 
                 {localSettings.smsEnabled && (
                   <div className="form-group">
-                    <label className="form-label">{t('settingsModal.smsRecipients', {ns: 'alarms'})}</label>
+                    <label className="form-label">{t('settingsModal.smsRecipients', { ns: 'alarms' })}</label>
                     <input
                       type="text"
                       value={localSettings.smsRecipients.join(', ')}
@@ -398,14 +398,14 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                         e.target.value.split(',').map(phone => phone.trim()).filter(phone => phone)
                       )}
                       className="form-input"
-                      placeholder="Separate phone numbers with commas"
+                      placeholder={t('settingsModal.smsPlaceholder', { ns: 'alarms', defaultValue: '전화번호를 쉼표로 구분하세요' })}
                     />
                   </div>
                 )}
 
                 {localSettings.webhookEnabled && (
                   <div className="form-group">
-                    <label className="form-label">{t('settingsModal.webhookUrl', {ns: 'alarms'})}</label>
+                    <label className="form-label">{t('settingsModal.webhookUrl', { ns: 'alarms' })}</label>
                     <input
                       type="url"
                       value={localSettings.webhookUrl}
@@ -417,27 +417,27 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                 )}
 
                 <div className="form-group">
-                  <label className="form-label">{t('settingsModal.messageTemplate', {ns: 'alarms'})}</label>
+                  <label className="form-label">{t('settingsModal.messageTemplate', { ns: 'alarms' })}</label>
                   <textarea
                     value={localSettings.messageTemplate}
                     onChange={(e) => handleSettingChange('messageTemplate', e.target.value)}
                     className="form-textarea"
-                    placeholder="Alarm Message Template"
+                    placeholder={t('settingsModal.msgTemplatePlaceholder', { ns: 'alarms', defaultValue: '알람 메시지 템플릿' })}
                     rows={3}
                   />
                   <small className="form-help">
-                    Available variables: {'{sourceName}'}, {'{currentValue}'}, {'{threshold}'}, {'{severity}'}, {'{timestamp}'}
+                    {t('settingsModal.availableVars', { ns: 'alarms', defaultValue: '사용 가능한 변수' })}: {'{sourceName}'}, {'{currentValue}'}, {'{threshold}'}, {'{severity}'}, {'{timestamp}'}
                   </small>
                 </div>
 
                 {localSettings.emailEnabled && (
                   <div className="form-group">
-                    <label className="form-label">{t('settingsModal.emailTemplate', {ns: 'alarms'})}</label>
+                    <label className="form-label">{t('settingsModal.emailTemplate', { ns: 'alarms' })}</label>
                     <textarea
                       value={localSettings.emailTemplate}
                       onChange={(e) => handleSettingChange('emailTemplate', e.target.value)}
                       className="form-textarea"
-                      placeholder="Detailed message template for email"
+                      placeholder={t('settingsModal.emailTemplatePlaceholder', { ns: 'alarms', defaultValue: '이메일 상세 메시지 템플릿' })}
                       rows={5}
                     />
                   </div>
@@ -448,24 +448,24 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
             {/* Schedule Settings 탭 */}
             {activeTab === 'schedule' && (
               <div className="form-section">
-                <h3>{t('settingsModal.scheduleConfig', {ns: 'alarms'})}</h3>
+                <h3>{t('settingsModal.scheduleConfig', { ns: 'alarms' })}</h3>
                 <div className="form-group">
-                  <label className="form-label">{t('labels.executionTime', {ns: 'alarms'})}</label>
+                  <label className="form-label">{t('labels.executionTime', { ns: 'alarms' })}</label>
                   <select
                     value={localSettings.schedule.type}
                     onChange={(e) => handleScheduleChange({ type: e.target.value as any })}
                     className="form-select"
                   >
-                    <option value="always">{t('settingsModal.always', {ns: 'alarms'})}</option>
-                    <option value="business_hours">{t('settingsModal.businessHours', {ns: 'alarms'})}</option>
-                    <option value="custom">{t('settingsModal.custom', {ns: 'alarms'})}</option>
+                    <option value="always">{t('settingsModal.always', { ns: 'alarms' })}</option>
+                    <option value="business_hours">{t('settingsModal.businessHours', { ns: 'alarms' })}</option>
+                    <option value="custom">{t('settingsModal.custom', { ns: 'alarms' })}</option>
                   </select>
                 </div>
 
                 {localSettings.schedule.type === 'business_hours' && (
                   <div className="form-row">
                     <div className="form-group">
-                      <label className="form-label">{t('columns.startTime', {ns: 'alarms'})}</label>
+                      <label className="form-label">{t('columns.startTime', { ns: 'alarms' })}</label>
                       <input
                         type="time"
                         value={localSettings.schedule.startTime || '08:00'}
@@ -474,7 +474,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">{t('settingsModal.endTime', {ns: 'alarms'})}</label>
+                      <label className="form-label">{t('settingsModal.endTime', { ns: 'alarms' })}</label>
                       <input
                         type="time"
                         value={localSettings.schedule.endTime || '18:00'}

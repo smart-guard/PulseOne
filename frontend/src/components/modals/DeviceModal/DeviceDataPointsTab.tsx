@@ -155,7 +155,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           onConfirm: () => { }
         });
       } else {
-        alert('Please fill in required fields.');
+        alert(t('devices:modal.inputErrorMsg', { defaultValue: '필수 항목을 입력해주세요.' }));
       }
       return;
     }
@@ -222,7 +222,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           }
         });
       } else {
-        alert('Saved.');
+        alert(t('devices:modal.savedMsg', { defaultValue: '저장되었습니다.' }));
         setShowCreateForm(false);
         setShowEditForm(false);
         setEditingPoint(null);
@@ -237,7 +237,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           onConfirm: () => { }
         });
       } else {
-        alert('Save failed.');
+        alert(t('devices:modal.saveFailedMsg', { defaultValue: '저장에 실패했습니다.' }));
       }
     } finally {
       setIsProcessing(false);
@@ -265,7 +265,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         if (showModal) {
           showModal({ type: 'error', title: t('devices:dpForm.readFailed'), message: t('devices:dpForm.readFailedMsg'), onConfirm: () => { } });
         } else {
-          alert('Read failed');
+          alert(t('devices:dpForm.readFailedMsg', { defaultValue: '데이터 읽기에 실패했습니다.' }));
         }
       }
     } catch (e) {
@@ -311,11 +311,11 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         }));
       }
 
-      const msg = `Complete: ${successCount} succeeded${failCount > 0 ? `, ${failCount} failed` : ''}\n(Will be saved to server when device is saved)`;
+      const msg = `${t('devices:dpTab.bulkComplete', { defaultValue: '완료' })}: ${successCount}${t('devices:dpTab.bulkSucceeded', { defaultValue: '개 성공' })}${failCount > 0 ? `, ${failCount}${t('devices:dpTab.bulkFailed', { defaultValue: '개 실패' })}` : ''}\n(${t('devices:dpTab.bulkSaveNote', { defaultValue: '디바이스 저장 시 서버에 저장됩니다' })})`;
       if (showModal) {
         showModal({
           type: 'success',
-          title: 'Bulk Register Complete',
+          title: t('devices:dpTab.bulkRegisterComplete', { defaultValue: '대량 등록 완료' }),
           message: msg,
           onConfirm: () => handleBulkModalChange(false)
         });
@@ -326,7 +326,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
     } catch (e) {
       const errMsg = `Bulk save error: ${e instanceof Error ? e.message : 'Unknown'}`;
       if (showModal) {
-        showModal({ type: 'error', title: 'Bulk Register Failed', message: errMsg, onConfirm: () => { } });
+        showModal({ type: 'error', title: t('devices:dpTab.bulkRegisterFailed', { defaultValue: '대량 등록 실패' }), message: errMsg, onConfirm: () => { } });
       } else {
         alert(errMsg);
       }
