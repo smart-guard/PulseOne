@@ -19,7 +19,7 @@
     },
     "status": {
         "pending": "대기",
-        "running": "진행 중",
+        "running": "처리 중",
         "completed": "완료",
         "failed": "실패"
     },
@@ -49,19 +49,54 @@
         "dailyProd": "일일 생산 데이터",
         "weeklyAlarm": "주간 알람 리포트",
         "monthlyStats": "월간 장치 통계",
-        "sysLog": "시스템 운영 로그"
+        "sysLog": "시스템 운영 로그",
+        "dailyProdDesc": "이전 날 핵심 생산 지표 및 장치 상태 데이터를 CSV로 추출합니다.",
+        "weeklyAlarmDesc": "지난 7일간의 모든 알람 및 조치 기록을 PDF로 생성합니다.",
+        "monthlyStatsDesc": "월간 장치 가동 시간 및 주요 상태 변화를 분석 보고서로 내보냅니다.",
+        "sysLogDesc": "시스템 접근 및 장치 제어 로그를 JSON 형식으로 내보냅니다."
     },
     "wizard": {
         "step1": "유형 선택",
         "step2": "대상 장치",
         "step3": "추출 설정",
-        "step4": "최종 검토"
+        "step4": "최종 검토",
+        "selectType": "추출할 데이터 유형을 선택하세요.",
+        "selectDevice": "데이터를 추출할 장치와 포인트를 선택하세요.",
+        "extractionConfig": "추출 조건 및 파일 형식을 설정하세요.",
+        "finalReview": "설정을 확인하고 추출을 시작하세요.",
+        "selectedTypeDetails": "선택한 유형 상세 정보",
+        "deviceList": "장치 목록",
+        "dataPoints": "데이터 포인트",
+        "loading": "로딩 중...",
+        "selectDeviceFirst": "먼저 장치를 선택해 주세요.",
+        "jobName": "작업명",
+        "fileFormat": "파일 형식",
+        "dateRange": "기간",
+        "extractionType": "추출 유형",
+        "targetDevice": "대상 장치",
+        "pointCount": "포인트 수",
+        "period": "기간",
+        "prev": "이전",
+        "next": "다음",
+        "startExport": "추출 시작"
     },
     "type": {
         "historical": "이력 데이터",
         "realtime": "실시간 데이터",
         "alarms": "알람 이력",
-        "logs": "운영 로그"
+        "logs": "운영 로그",
+        "historicalTitle": "이력 데이터",
+        "historicalDesc": "센서 값 및 시계열 데이터",
+        "historicalDetail": "이력 데이터 추출은 지정된 기간 동안 수집된 모든 센서 및 장치 데이터를 시간 순서대로 추출합니다.",
+        "realtimeTitle": "실시간 데이터",
+        "realtimeDesc": "현재 장치 상태",
+        "realtimeDetail": "실시간 데이터 스냅샷은 연결된 장치의 실시간 통신 상태 및 파라미터 값을 즉시 추출합니다.",
+        "alarmsTitle": "알람 이력",
+        "alarmsDesc": "발생 및 조치 이력",
+        "alarmsDetail": "알람 이력 보고서 는 시스템에서 중요 알람, 경고, 사용자 조치 기록을 추출합니다.",
+        "logsTitle": "운영 로그",
+        "logsDesc": "시스템 운영 로그",
+        "logsDetail": "시스템 운영 로그는 사용자 접근, 설정 변경, 제어 명령 실행을 포함한 모든 시스템 활동 로그를 기록합니다."
     },
     "typeDetail": {
         "title": "선택된 유형 상세 정보"
@@ -72,8 +107,11 @@
         "period": "기간 설정"
     },
     "review": {
-        "type": "추출 유형",
-        "points": "포인트 개수"
+        "extractionType": "추출 유형",
+        "targetDevice": "대상 장치",
+        "pointCount": "포인트 수",
+        "fileFormat": "파일 형식",
+        "period": "기간"
     },
     "action": {
         "start": "내보내기 시작"
@@ -252,5 +290,9 @@
         "totalAttempts": "전체 시도",
         "success": "성공",
         "failure": "실패"
-    }
+    },
+    "pageTitle": "데이터 추출",
+    "pageDesc": "수집된 생산 및 장치 데이터를 다양한 형식으로 추출합니다.",
+    "noHistory": "내보내기 이력이 없습니다.",
+    "noHistoryDesc": "새로운 내보내기 작업을 시작해 보세요."
 }

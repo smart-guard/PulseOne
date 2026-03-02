@@ -37,6 +37,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
     protocolType
 }) => {
     const { confirm } = useConfirmContext();
+    const isModbus = protocolType === 'MODBUS_TCP' || protocolType === 'MODBUS_RTU' || protocolType === 'MODBUS';
     // 초기 빈 행 생성
     const createEmptyRow = (): BulkDataPoint => ({
         tempId: Math.random(),
@@ -51,7 +52,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         description: '',
         unit: '',
         scaling_factor: 1,
-        scaling_offset: 0
+        scaling_offset: 0,
+        protocol_params: {}
     });
 
     const STORAGE_KEY = `bulk_draft_device_${deviceId}`;
@@ -69,6 +71,17 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
     // 🔥 NEW: JSON 파서 상태
     const [showJsonParser, setShowJsonParser] = useState(false);
     const [jsonInput, setJsonInput] = useState('');
+
+    // 🔢 Bit Split 상태
+    const [showBitSplitter, setShowBitSplitter] = useState(false);
+    const [bitSplitConfig, setBitSplitConfig] = useState({
+        address: '',
+        namePrefix: '',
+        bitStart: 0,
+        bitEnd: 15,
+        accessMode: 'read',
+        descPrefix: ''
+    });
 
     // 테이블 컨테이너 참조 (스크롤 제어 등)
     const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -341,15 +354,26 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         const validModes = ['read', 'write', 'read_write'];
         if (!validModes.includes(point.access_mode || '')) errors.push('Invalid access mode');
 
-        // DB 내 중복 체크
-        if (point.address && existingAddresses.includes(point.address)) {
+        // DB 내 중복 체크 — bit_index가 설정돼 있으면 허용 (같은 레지스터 비트 분리)
+        const hasBitIndex = !!(point.protocol_params as any)?.bit_index;
+        if (point.address && !hasBitIndex && existingAddresses.includes(point.address)) {
             errors.push('Address already exists (DB)');
         }
 
-        // 현재 입력 목록 내 중복 체크 (allPoints가 제공된 경우)
+        // 현재 입력 목록 내 중복 체크
+        // bit_index가 있으면 (address + bit_index) 조합으로 비교, 없으면 address만 비교
         if (allPoints && point.address) {
-            const sameAddrCount = allPoints.filter(p => (p.name || p.address) && p.address === point.address).length;
-            if (sameAddrCount > 1) {
+            const sameKey = allPoints.filter(p => {
+                if (!(p.name || p.address)) return false;
+                if (p.address !== point.address) return false;
+                const pBit = (p.protocol_params as any)?.bit_index;
+                const thisBit = (point.protocol_params as any)?.bit_index;
+                // 둘 다 bit_index가 있으면 같은 bit만 중복 처리
+                if (pBit !== undefined && thisBit !== undefined) return pBit === thisBit;
+                // 둘 다 없으면 주소만 비교
+                return true;
+            }).length;
+            if (sameKey > 1) {
                 errors.push('Duplicate address in list');
             }
         }
@@ -376,6 +400,63 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
 
         setPoints(revalidated);
         pushHistory(revalidated);
+    };
+
+    // bit_index 업데이트 헬퍼 (protocol_params 내부 중첩)
+    const updateBitIndex = (index: number, value: string) => {
+        const next = [...points];
+        const params = { ...(next[index].protocol_params || {}) };
+        if (value === '' || value === null || value === undefined) {
+            delete params.bit_index;
+        } else {
+            params.bit_index = value;
+        }
+        const updated = { ...next[index], protocol_params: params };
+        next[index] = updated;
+        const revalidated = next.map(p => validatePoint(p, next));
+        setPoints(revalidated);
+        pushHistory(revalidated);
+    };
+
+    // 비트 분할 자동 생성
+    const handleBitSplit = () => {
+        const { address, namePrefix, bitStart, bitEnd, accessMode, descPrefix } = bitSplitConfig;
+        if (!address.trim()) {
+            confirm({ title: 'Notice', message: 'Please enter a base register address.', confirmButtonType: 'warning', showCancelButton: false });
+            return;
+        }
+        const start = Math.max(0, Math.min(15, Number(bitStart)));
+        const end = Math.max(start, Math.min(15, Number(bitEnd)));
+        const prefix = namePrefix.trim() || address.trim();
+
+        const newRows: BulkDataPoint[] = [];
+        for (let bit = start; bit <= end; bit++) {
+            newRows.push(validatePoint({
+                ...createEmptyRow(),
+                name: `${prefix}_Bit${bit}`,
+                address: address.trim(),
+                data_type: 'boolean' as any,
+                access_mode: (accessMode as any) || 'read',
+                description: descPrefix.trim() ? `${descPrefix.trim()} Bit${bit}` : `FC03 ${address.trim()} Bit${bit}`,
+                protocol_params: { bit_index: String(bit) },
+            }));
+        }
+
+        setPoints(prev => {
+            const hasData = prev.some(p => p.name || p.address);
+            const base = hasData ? [...prev] : [];
+            // 빈 trailing 행 제거 후 새 행 추가
+            const trimmed = base.filter(p => p.name || p.address);
+            const next = [...trimmed, ...newRows];
+            // 최소 20행 유지
+            while (next.length < 20) next.push(createEmptyRow());
+            const revalidated = next.map(p => validatePoint(p, next));
+            pushHistory(revalidated);
+            return revalidated;
+        });
+
+        setShowBitSplitter(false);
+        setBitSplitConfig(prev => ({ ...prev, address: '', namePrefix: '' })); // 주소/이름만 초기화
     };
 
     const addRow = () => {
@@ -452,7 +533,9 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
 
         const fields = protocolType === 'MQTT'
             ? ['name', 'address', 'mapping_key', 'data_type', 'access_mode', 'description', 'unit', 'scaling_factor', 'scaling_offset']
-            : ['name', 'address', 'data_type', 'access_mode', 'description', 'unit', 'scaling_factor', 'scaling_offset'];
+            : isModbus
+                ? ['name', 'address', 'bit_index', 'data_type', 'access_mode', 'description', 'unit', 'scaling_factor', 'scaling_offset']
+                : ['name', 'address', 'data_type', 'access_mode', 'description', 'unit', 'scaling_factor', 'scaling_offset'];
         const totalCols = fields.length;
         const totalRows = points.length;
 
@@ -561,18 +644,21 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
 
                 const targetIdx = startRowIdx + i;
                 const isMqtt = protocolType === 'MQTT';
+                const bitIndex = !isMqtt ? (cols[2]?.trim() || '') : '';
+                const typeCol = isMqtt ? 3 : (bitIndex !== '' ? 3 : 2);
 
                 const newPointData: BulkDataPoint = {
                     ...createEmptyRow(), // ID 새로 생성
                     name: cols[0]?.trim() || '',
                     address: cols[1]?.trim() || '',
                     mapping_key: isMqtt ? (cols[2]?.trim() || '') : undefined,
-                    data_type: (cols[isMqtt ? 3 : 2]?.trim().toLowerCase() as any) || 'number',
-                    access_mode: (cols[isMqtt ? 4 : 3]?.trim().toLowerCase() as any) || 'read',
-                    description: cols[isMqtt ? 5 : 4]?.trim() || '',
-                    unit: cols[isMqtt ? 6 : 5]?.trim() || '',
-                    scaling_factor: cols[isMqtt ? 7 : 6] ? parseFloat(cols[isMqtt ? 7 : 6]) : 1,
-                    scaling_offset: cols[isMqtt ? 8 : 7] ? parseFloat(cols[isMqtt ? 8 : 7]) : 0,
+                    data_type: (cols[isMqtt ? 3 : typeCol]?.trim().toLowerCase() as any) || 'number',
+                    access_mode: (cols[isMqtt ? 4 : typeCol + 1]?.trim().toLowerCase() as any) || 'read',
+                    description: cols[isMqtt ? 5 : typeCol + 2]?.trim() || '',
+                    unit: cols[isMqtt ? 6 : typeCol + 3]?.trim() || '',
+                    scaling_factor: cols[isMqtt ? 7 : typeCol + 4] ? parseFloat(cols[isMqtt ? 7 : typeCol + 4]) : 1,
+                    scaling_offset: cols[isMqtt ? 8 : typeCol + 5] ? parseFloat(cols[isMqtt ? 8 : typeCol + 5]) : 0,
+                    protocol_params: (!isMqtt && bitIndex !== '') ? { bit_index: bitIndex } : {},
                 };
 
                 const validated = validatePoint(newPointData, next);
@@ -669,7 +755,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                     <div className="header-content">
                         <div className="title-group">
                             <div className="title-top">
-                                <h2>{t('labels.bulkDataPointRegistration', {ns: 'devices'})}</h2>
+                                <h2>{t('labels.bulkDataPointRegistration', { ns: 'devices' })}</h2>
                                 <div className="history-controls">
                                     <button onClick={undo} disabled={historyIndex <= 0} title="Undo (Ctrl+Z)">
                                         <i className="fas fa-undo"></i>
@@ -684,7 +770,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                 <ul className="usage-guide">
                                     <li>Name* and Address* are required. Addresses must be unique.</li>
                                     <li>Press Enter to move rows; a new row is auto-added at the last row.</li>
-                                    <li>{t('labels.invalidCellsAreHighlightedInRed', {ns: 'devices'})}</li>
+                                    <li>{t('labels.invalidCellsAreHighlightedInRed', { ns: 'devices' })}</li>
                                 </ul>
                             </div>
                         </div>
@@ -705,14 +791,15 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                             <th className="col-idx">#</th>
                                             <th className="col-name">Name *</th>
                                             <th className="col-addr">{protocolType === 'MQTT' ? 'Sub-Topic *' : 'Address *'}</th>
-                                            {protocolType === 'MQTT' && <th className="col-key">{t('labels.jsonKey', {ns: 'devices'})}</th>}
-                                            <th className="col-type">{t('modal.dpDiffType', {ns: 'devices'})}</th>
-                                            <th className="col-mode">{t('modal.dpDiffAccess', {ns: 'devices'})}</th>
-                                            <th className="col-desc">{t('dpTab.description', {ns: 'devices'})}</th>
-                                            <th className="col-unit">{t('dpModal.unit', {ns: 'devices'})}</th>
-                                            <th className="col-scale">{t('dpTab.scale', {ns: 'devices'})}</th>
-                                            <th className="col-offset">{t('modal.dpDiffOffset', {ns: 'devices'})}</th>
-                                            <th className="col-actions">{t('delete', {ns: 'common'})}</th>
+                                            {protocolType === 'MQTT' && <th className="col-key">{t('labels.jsonKey', { ns: 'devices' })}</th>}
+                                            {isModbus && <th className="col-bit" title="Bit extraction index (0–15) for Modbus register bit-split">BIT #</th>}
+                                            <th className="col-type">{t('modal.dpDiffType', { ns: 'devices' })}</th>
+                                            <th className="col-mode">{t('modal.dpDiffAccess', { ns: 'devices' })}</th>
+                                            <th className="col-desc">{t('dpTab.description', { ns: 'devices' })}</th>
+                                            <th className="col-unit">{t('dpModal.unit', { ns: 'devices' })}</th>
+                                            <th className="col-scale">{t('dpTab.scale', { ns: 'devices' })}</th>
+                                            <th className="col-offset">{t('modal.dpDiffOffset', { ns: 'devices' })}</th>
+                                            <th className="col-actions">{t('delete', { ns: 'common' })}</th>
                                         </tr>
                                     </thead>
                                 </table>
@@ -761,12 +848,26 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                     />
                                                 </td>
                                             )}
+                                            {isModbus && (
+                                                <td className="col-bit" title="Bit index 0–15 (Modbus 레지스터 비트 추출)">
+                                                    <input
+                                                        type="number"
+                                                        className="excel-input text-right"
+                                                        min={0}
+                                                        max={15}
+                                                        value={(point.protocol_params as any)?.bit_index ?? ''}
+                                                        onChange={e => updateBitIndex(idx, e.target.value)}
+                                                        onKeyDown={e => handleKeyDown(e, idx, 2)}
+                                                        placeholder="-"
+                                                    />
+                                                </td>
+                                            )}
                                             <td className="col-type">
                                                 <select
                                                     className="excel-select"
                                                     value={point.data_type}
                                                     onChange={e => updatePoint(idx, 'data_type', e.target.value)}
-                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 3 : 2)}
+                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 3 : 3)}
                                                 >
                                                     <option value="number">number</option>
                                                     <option value="boolean">boolean</option>
@@ -778,7 +879,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                     className="excel-select"
                                                     value={point.access_mode}
                                                     onChange={e => updatePoint(idx, 'access_mode', e.target.value)}
-                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 4 : 3)}
+                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 4 : 4)}
                                                 >
                                                     <option value="read">read</option>
                                                     <option value="write">write</option>
@@ -790,7 +891,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                     className="excel-input"
                                                     value={point.description || ''}
                                                     onChange={e => updatePoint(idx, 'description', e.target.value)}
-                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 5 : 4)}
+                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 5 : 5)}
                                                 />
                                             </td>
                                             <td className="col-unit">
@@ -798,7 +899,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                     className="excel-input"
                                                     value={point.unit || ''}
                                                     onChange={e => updatePoint(idx, 'unit', e.target.value)}
-                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 6 : 5)}
+                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 6 : 6)}
                                                 />
                                             </td>
                                             <td className="col-scale">
@@ -807,7 +908,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                     className="excel-input text-right"
                                                     value={point.scaling_factor}
                                                     onChange={e => updatePoint(idx, 'scaling_factor', parseFloat(e.target.value))}
-                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 7 : 6)}
+                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 7 : 7)}
                                                 />
                                             </td>
                                             <td className="col-offset">
@@ -816,7 +917,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                     className="excel-input text-right"
                                                     value={point.scaling_offset}
                                                     onChange={e => updatePoint(idx, 'scaling_offset', parseFloat(e.target.value))}
-                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 8 : 7)}
+                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 8 : 8)}
                                                 />
                                             </td>
                                             <td className="col-actions">
@@ -860,6 +961,23 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                     <i className="fas fa-code"></i> Parse JSON Sample
                                 </button>
                             )}
+                            {isModbus && (
+                                <button
+                                    onClick={() => { setShowBitSplitter(!showBitSplitter); setShowTemplateSelector(false); }}
+                                    style={{
+                                        padding: '8px 16px',
+                                        background: showBitSplitter ? '#eff6ff' : '#fafafa',
+                                        color: '#1d4ed8',
+                                        border: '1px solid #bfdbfe',
+                                        borderRadius: '6px',
+                                        fontWeight: 700,
+                                        fontSize: 13,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <i className="fas fa-layer-group"></i> Bit Split
+                                </button>
+                            )}
                             <button className="reset-btn" onClick={handleReset} title="Reset all input data">
                                 <i className="fas fa-trash-alt"></i> Reset
                             </button>
@@ -867,14 +985,14 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                         {showTemplateSelector && (
                             <div className="template-selector-bubble">
                                 <div className="bubble-header">
-                                    <span>{t('labels.selectATemplate', {ns: 'devices'})}</span>
+                                    <span>{t('labels.selectATemplate', { ns: 'devices' })}</span>
                                     <button onClick={() => setShowTemplateSelector(false)}><i className="fas fa-times"></i></button>
                                 </div>
                                 <div className="bubble-body custom-scrollbar">
                                     {isLoadingTemplates ? (
-                                        <div className="loading-text">{t('loading', {ns: 'common'})}</div>
+                                        <div className="loading-text">{t('loading', { ns: 'common' })}</div>
                                     ) : templates.length === 0 ? (
-                                        <div className="empty-text">{t('labels.noTemplatesRegistered', {ns: 'devices'})}</div>
+                                        <div className="empty-text">{t('labels.noTemplatesRegistered', { ns: 'devices' })}</div>
                                     ) : (
                                         templates.map(t => (
                                             <div key={t.id} className="template-item" onClick={() => applyTemplate(t)}>
@@ -883,6 +1001,103 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                             </div>
                                         ))
                                     )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 🔢 Bit Split 팝업 패널 — Modbus 전용 */}
+                        {showBitSplitter && isModbus && (
+                            <div style={{
+                                position: 'absolute', bottom: '74px', left: '240px', width: '380px',
+                                background: 'white', borderRadius: '12px', border: '1px solid #bfdbfe',
+                                boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)', zIndex: 1000,
+                                display: 'flex', flexDirection: 'column', overflow: 'hidden'
+                            }}>
+                                {/* 헤더 */}
+                                <div style={{ padding: '12px 16px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#1d4ed8' }}>
+                                        <i className="fas fa-layer-group" style={{ marginRight: 6 }}></i>
+                                        비트 분할 자동 생성
+                                    </span>
+                                    <button onClick={() => setShowBitSplitter(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}><i className="fas fa-times"></i></button>
+                                </div>
+                                {/* 본문 */}
+                                <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                    <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>
+                                        Modbus 레지스터 1개를 Bit0~Bit15로 분할하여 행을 자동 생성합니다.<br />
+                                        생성된 각 행에 <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>bit_index</code>가 자동으로 설정됩니다.
+                                    </p>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                        <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
+                                            기준 주소 (Address) *
+                                            <input
+                                                type="text"
+                                                value={bitSplitConfig.address}
+                                                onChange={e => setBitSplitConfig(p => ({ ...p, address: e.target.value }))}
+                                                placeholder="예: 40001"
+                                                style={{ display: 'block', width: '100%', marginTop: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12, fontFamily: 'monospace' }}
+                                            />
+                                        </label>
+                                        <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
+                                            이름 접두사 (Name Prefix)
+                                            <input
+                                                type="text"
+                                                value={bitSplitConfig.namePrefix}
+                                                onChange={e => setBitSplitConfig(p => ({ ...p, namePrefix: e.target.value }))}
+                                                placeholder="비우면 주소 사용"
+                                                style={{ display: 'block', width: '100%', marginTop: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}
+                                            />
+                                        </label>
+                                        <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
+                                            시작 비트 (0~15)
+                                            <input
+                                                type="number" min={0} max={15}
+                                                value={bitSplitConfig.bitStart}
+                                                onChange={e => setBitSplitConfig(p => ({ ...p, bitStart: Number(e.target.value) }))}
+                                                style={{ display: 'block', width: '100%', marginTop: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}
+                                            />
+                                        </label>
+                                        <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
+                                            끝 비트 (0~15)
+                                            <input
+                                                type="number" min={0} max={15}
+                                                value={bitSplitConfig.bitEnd}
+                                                onChange={e => setBitSplitConfig(p => ({ ...p, bitEnd: Number(e.target.value) }))}
+                                                style={{ display: 'block', width: '100%', marginTop: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}
+                                            />
+                                        </label>
+                                        <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
+                                            Access Mode
+                                            <select
+                                                value={bitSplitConfig.accessMode}
+                                                onChange={e => setBitSplitConfig(p => ({ ...p, accessMode: e.target.value }))}
+                                                style={{ display: 'block', width: '100%', marginTop: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}
+                                            >
+                                                <option value="read">read</option>
+                                                <option value="write">write</option>
+                                                <option value="read_write">read_write</option>
+                                            </select>
+                                        </label>
+                                        <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
+                                            설명 접두사
+                                            <input
+                                                type="text"
+                                                value={bitSplitConfig.descPrefix}
+                                                onChange={e => setBitSplitConfig(p => ({ ...p, descPrefix: e.target.value }))}
+                                                placeholder="예: FC03 40001"
+                                                style={{ display: 'block', width: '100%', marginTop: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}
+                                            />
+                                        </label>
+                                    </div>
+                                    <div style={{ fontSize: 11, color: '#64748b', background: '#f8fafc', borderRadius: 6, padding: '6px 10px' }}>
+                                        생성 예시: <code style={{ fontFamily: 'monospace' }}>{(bitSplitConfig.namePrefix || bitSplitConfig.address || 'prefix')}_Bit{bitSplitConfig.bitStart}</code> ~ <code style={{ fontFamily: 'monospace' }}>{(bitSplitConfig.namePrefix || bitSplitConfig.address || 'prefix')}_Bit{bitSplitConfig.bitEnd}</code> ({bitSplitConfig.bitEnd - bitSplitConfig.bitStart + 1}행)
+                                    </div>
+                                    <button
+                                        onClick={handleBitSplit}
+                                        style={{ padding: '9px 0', background: '#1d4ed8', color: 'white', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer', width: '100%', marginTop: 2 }}
+                                    >
+                                        <i className="fas fa-magic" style={{ marginRight: 6 }}></i> 비트 행 자동 생성
+                                    </button>
                                 </div>
                             </div>
                         )}
@@ -896,7 +1111,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                 display: 'flex', flexDirection: 'column', overflow: 'hidden'
                             }}>
                                 <div className="bubble-header" style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#166534' }}>{t('labels.parseJsonSampleData', {ns: 'devices'})}</span>
+                                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#166534' }}>{t('labels.parseJsonSampleData', { ns: 'devices' })}</span>
                                     <button onClick={() => setShowJsonParser(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}><i className="fas fa-times"></i></button>
                                 </div>
                                 <div style={{ padding: '16px' }}>
@@ -933,7 +1148,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                         </span>
                     </div>
                     <div className="footer-right">
-                        <button className="cancel-btn" onClick={onClose}>{t('cancel', {ns: 'common'})}</button>
+                        <button className="cancel-btn" onClick={onClose}>{t('cancel', { ns: 'common' })}</button>
                         <button
                             className={`save-btn ${isProcessing || points.some(p => (p.name || p.address) && !p.isValid) || !points.some(p => p.name || p.address) ? 'disabled' : ''}`}
                             onClick={handleSaveAll}
@@ -1078,6 +1293,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                 .col-mode { width: 110px; }
                 .col-desc { width: 280px; }
                 .col-unit { width: 90px; }
+                .col-bit { width: 65px; text-align: center; }
                 .col-scale { width: 85px; }
                 .col-offset { width: 85px; }
                 .col-actions { width: 50px; text-align: center; border-right: none !important; }

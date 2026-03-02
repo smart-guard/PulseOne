@@ -272,8 +272,8 @@ const ActiveAlarms: React.FC = () => {
   return (
     <ManagementLayout className="page-active-alarms">
       <PageHeader
-        title="Active Alarm Monitoring"
-        description="Monitor and handle currently active alarms in real time."
+        title={t('active.title')}
+        description={t('active.description')}
         icon="fas fa-exclamation-triangle"
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -301,17 +301,17 @@ const ActiveAlarms: React.FC = () => {
             {/* WebSocket status */}
             <span className={`mgmt-status-pill ${connectionStatus.status === 'connected' ? 'active' : connectionStatus.status === 'connecting' ? 'warning' : 'error'}`}>
               <i className={`fas ${connectionStatus.status === 'connected' ? 'fa-check-circle' : connectionStatus.status === 'connecting' ? 'fa-spinner fa-spin' : 'fa-exclamation-circle'}`} style={{ marginRight: '6px' }}></i>
-              {connectionStatus.status === 'connected' ? 'Live Connected' : connectionStatus.status === 'connecting' ? 'Connecting...' : 'Disconnected'}
+              {connectionStatus.status === 'connected' ? t('active.liveConnected') : connectionStatus.status === 'connecting' ? t('active.connecting') : t('active.disconnected')}
             </span>
           </div>
         }
       />
 
       <div className="mgmt-stats-panel" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', alignItems: 'stretch', marginBottom: '8px' }}>
-        <StatCard title="Total Active" value={computedStats.totalActive} icon="fas fa-bell" type="error" />
-        <StatCard title="Pending" value={computedStats.unacknowledged} icon="fas fa-clock" type="error" />
-        <StatCard title="Acknowledged" value={computedStats.acknowledged} icon="fas fa-check-circle" type="warning" />
-        <StatCard title="Critical (Unconfirmed)" value={computedStats.critical} icon="fas fa-skull-crossbones" type="error" />
+        <StatCard title={t('active.totalActive')} value={computedStats.totalActive} icon="fas fa-bell" type="error" />
+        <StatCard title={t('active.pending')} value={computedStats.unacknowledged} icon="fas fa-clock" type="error" />
+        <StatCard title={t('active.acknowledged')} value={computedStats.acknowledged} icon="fas fa-check-circle" type="warning" />
+        <StatCard title={t('active.criticalUnconfirmed')} value={computedStats.critical} icon="fas fa-skull-crossbones" type="error" />
       </div>
 
       {error && (
@@ -361,7 +361,7 @@ const ActiveAlarms: React.FC = () => {
                 title="Acknowledge all currently unacknowledged alarms."
               >
                 <i className="fas fa-check-double" style={{ marginRight: '6px' }}></i>
-                Bulk Acknowledge ({computedStats.unacknowledged})
+                {t('active.bulkAcknowledge', { count: computedStats.unacknowledged })}
               </button>
               <button
                 onClick={handleBulkClear}
@@ -370,7 +370,7 @@ const ActiveAlarms: React.FC = () => {
                 title="Clear all currently acknowledged alarms."
               >
                 <i className="fas fa-broom" style={{ marginRight: '6px' }}></i>
-                Bulk Clear ({computedStats.acknowledged})
+                {t('active.bulkClear', { count: computedStats.acknowledged })}
               </button>
             </div>
           }

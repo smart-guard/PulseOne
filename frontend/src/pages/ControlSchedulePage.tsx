@@ -76,6 +76,7 @@ interface AddModalProps {
 }
 
 function AddScheduleModal({ onClose, onSaved }: AddModalProps) {
+    const { t: tc } = useTranslation('control');
     const [s, setS] = useState<AddModalState>(defaultModal());
     const upd = (patch: Partial<AddModalState>) => setS(prev => ({ ...prev, ...patch }));
 
@@ -146,7 +147,7 @@ function AddScheduleModal({ onClose, onSaved }: AddModalProps) {
                                     color: s.step === step ? '#111' : '#6b7280',
                                     boxShadow: s.step === step ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
                                 }}>
-                                {i + 1}. {step === 'point' ? 'Point Select' : 'Control Settings'}
+                                {i + 1}. {step === 'point' ? tc('modal.stepPoint') : tc('modal.stepControl')}
                             </button>
                         ))}
                     </div>
@@ -156,7 +157,7 @@ function AddScheduleModal({ onClose, onSaved }: AddModalProps) {
                         <div>
                             <input
                                 type="text" autoFocus
-                                placeholder="Translated Text"
+                                placeholder={tc('modal.searchPlaceholder')}
                                 value={s.search}
                                 onChange={e => { upd({ search: e.target.value }); searchPoints(e.target.value); }}
                                 style={{ width: '100%', padding: '9px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box', marginBottom: '12px' }}
@@ -164,10 +165,10 @@ function AddScheduleModal({ onClose, onSaved }: AddModalProps) {
                             <div style={{ maxHeight: '280px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
                                 {s.pointsLoading ? (
                                     <div style={{ padding: '24px', textAlign: 'center', color: '#9ca3af' }}>
-                                        <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }} />Searching...
+                                        <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }} />{tc('modal.searching')}
                                     </div>
                                 ) : s.points.length === 0 ? (
-                                    <div style={{ padding: '24px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>Search Result None</div>
+                                    <div style={{ padding: '24px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>{tc('modal.noResults')}</div>
                                 ) : s.points.map((p: any) => (
                                     <div key={p.id} onClick={() => upd({ selectedPoint: p, step: 'config', value: '' })}
                                         style={{
@@ -185,7 +186,7 @@ function AddScheduleModal({ onClose, onSaved }: AddModalProps) {
                             {s.selectedPoint && (
                                 <button onClick={() => upd({ step: 'config' })}
                                     style={{ marginTop: '14px', width: '100%', padding: '10px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}>
-                                    Next: Control Settings →
+                                    {tc('modal.nextStep')}
                                 </button>
                             )}
                         </div>
@@ -200,41 +201,41 @@ function AddScheduleModal({ onClose, onSaved }: AddModalProps) {
                                     <div style={{ fontWeight: 700, fontSize: '13px', color: '#1d4ed8' }}>{s.selectedPoint.name}</div>
                                     <div style={{ fontSize: '11px', color: '#6b7280' }}>{s.selectedPoint.device_name}</div>
                                 </div>
-                                <button onClick={() => upd({ step: 'point' })} style={{ border: 'none', background: 'none', color: '#2563eb', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}>Change</button>
+                                <button onClick={() => upd({ step: 'point' })} style={{ border: 'none', background: 'none', color: '#2563eb', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}>{tc('modal.change')}</button>
                             </div>
 
                             {/* [translated comment] */}
                             <div style={{ marginBottom: '14px' }}>
-                                <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Send Value *</div>
+                                <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>{tc('modal.sendValue')}</div>
                                 <input type="text" value={s.value} onChange={e => upd({ value: e.target.value })}
-                                    placeholder="Translated Text"
+                                    placeholder={tc('modal.sendValuePlaceholder')}
                                     style={{ width: '100%', padding: '9px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '15px', fontFamily: 'monospace', fontWeight: 700, textAlign: 'right', boxSizing: 'border-box' }} />
                             </div>
 
                             {/* [translated comment] */}
                             <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
-                                {(['once', 'repeat'] as const).map(t => (
-                                    <button key={t} onClick={() => upd({ scheduleType: t })}
+                                {(['once', 'repeat'] as const).map(schedType => (
+                                    <button key={schedType} onClick={() => upd({ scheduleType: schedType })}
                                         style={{
                                             flex: 1, padding: '8px', borderRadius: '6px', fontWeight: 600, fontSize: '12px', cursor: 'pointer',
-                                            border: s.scheduleType === t ? '2px solid #7c3aed' : '1px solid #d1d5db',
-                                            background: s.scheduleType === t ? '#f5f3ff' : 'white',
-                                            color: s.scheduleType === t ? '#7c3aed' : '#374151'
+                                            border: s.scheduleType === schedType ? '2px solid #7c3aed' : '1px solid #d1d5db',
+                                            background: s.scheduleType === schedType ? '#f5f3ff' : 'white',
+                                            color: s.scheduleType === schedType ? '#7c3aed' : '#374151'
                                         }}>
-                                        {t === 'once' ? '📅 One-time' : '🔁 Repeat (cron)'}
+                                        {schedType === 'once' ? `📅 ${tc('type.once')}` : `🔁 ${tc('type.repeat')}`}
                                     </button>
                                 ))}
                             </div>
 
                             {s.scheduleType === 'once' ? (
                                 <div style={{ marginBottom: '14px' }}>
-                                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Execute At *</div>
+                                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>{tc('modal.executeAt')}</div>
                                     <input type="datetime-local" value={s.scheduleAt} onChange={e => upd({ scheduleAt: e.target.value })}
                                         style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px', boxSizing: 'border-box' }} />
                                 </div>
                             ) : (
                                 <div style={{ marginBottom: '14px' }}>
-                                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Repeat Interval</div>
+                                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>{tc('modal.repeatInterval')}</div>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
                                         {CRON_PRESETS.map(p => (
                                             <button key={p.value} onClick={() => upd({ cronExpr: p.value })}
@@ -247,16 +248,16 @@ function AddScheduleModal({ onClose, onSaved }: AddModalProps) {
                                         ))}
                                     </div>
                                     <input type="text" value={s.cronExpr} onChange={e => upd({ cronExpr: e.target.value })}
-                                        placeholder="Translated Text"
+                                        placeholder={tc('modal.cronPlaceholder')}
                                         style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '12px', fontFamily: 'monospace', boxSizing: 'border-box' }} />
                                 </div>
                             )}
 
                             {/* [translated comment] */}
                             <div style={{ marginBottom: '18px' }}>
-                                <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Notes (Select)</div>
+                                <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>{tc('modal.notes')}</div>
                                 <input type="text" value={s.description} onChange={e => upd({ description: e.target.value })}
-                                    placeholder="Translated Text"
+                                    placeholder={tc('modal.notesPlaceholder')}
                                     style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px', boxSizing: 'border-box' }} />
                             </div>
 
@@ -268,7 +269,7 @@ function AddScheduleModal({ onClose, onSaved }: AddModalProps) {
                                     background: s.saveMsg && !s.saveFailed ? '#22c55e' : '#7c3aed', color: 'white',
                                     opacity: (s.saving || !s.value.trim() || (s.scheduleType === 'once' && !s.scheduleAt)) ? 0.5 : 1
                                 }}>
-                                {s.saving ? 'Registering...' : s.saveMsg && !s.saveFailed ? `✓ ${s.saveMsg}` : '📅 Register Schedule'}
+                                {s.saving ? tc('modal.registering') : s.saveMsg && !s.saveFailed ? `✓ ${s.saveMsg}` : `📅 ${tc('modal.registerBtn')}`}
                             </button>
 
                             {s.saveMsg && s.saveFailed && (

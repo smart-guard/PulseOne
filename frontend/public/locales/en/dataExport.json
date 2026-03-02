@@ -49,23 +49,58 @@
         "history": "Export History"
     },
     "template": {
-        "quickStart": "Quick Start Templates",
+        "quickStart": "Quick-Start Templates",
         "dailyProd": "Daily Production Data",
         "weeklyAlarm": "Weekly Alarm Report",
-        "monthlyStats": "Monthly Device Stats",
-        "sysLog": "System Operations Log"
+        "monthlyStats": "Monthly Device Statistics",
+        "sysLog": "System Operation Log",
+        "dailyProdDesc": "Extract previous day core production metrics and device status data to CSV.",
+        "weeklyAlarmDesc": "Generate a PDF of all alarms and actions from the last 7 days.",
+        "monthlyStatsDesc": "Export monthly device uptime and key status changes as an analysis report.",
+        "sysLogDesc": "Export system access and device control logs in JSON format."
     },
     "wizard": {
-        "step1": "Select Type",
+        "step1": "Type Selection",
         "step2": "Target Device",
-        "step3": "Export Settings",
-        "step4": "Review"
+        "step3": "Extraction Settings",
+        "step4": "Final Review",
+        "selectType": "Select the type of data to extract.",
+        "selectDevice": "Select devices and points to extract data from.",
+        "extractionConfig": "Set extraction conditions and file format.",
+        "finalReview": "Review settings and start the export.",
+        "selectedTypeDetails": "Selected Type Details",
+        "deviceList": "Device List",
+        "dataPoints": "Data Points",
+        "loading": "Loading...",
+        "selectDeviceFirst": "Please select a device first.",
+        "jobName": "Job Name",
+        "fileFormat": "File Format",
+        "dateRange": "Date Range",
+        "extractionType": "Extraction Type",
+        "targetDevice": "Target Device",
+        "pointCount": "Point Count",
+        "period": "Period",
+        "prev": "Previous",
+        "next": "Next",
+        "startExport": "Start Export"
     },
     "type": {
         "historical": "Historical Data",
         "realtime": "Real-time Data",
         "alarms": "Alarm History",
-        "logs": "Operation Logs"
+        "logs": "Operation Logs",
+        "historicalTitle": "Historical Data",
+        "historicalDesc": "Sensor values and time-series data",
+        "historicalDetail": "Historical Data Extract extracts all sensor and device data collected during the specified period in chronological order.",
+        "realtimeTitle": "Real-time Data",
+        "realtimeDesc": "Current device status",
+        "realtimeDetail": "Real-time Data Snapshot instantly extracts real-time communication status and parameter values of connected devices.",
+        "alarmsTitle": "Alarm History",
+        "alarmsDesc": "Occurrence and action history",
+        "alarmsDetail": "Alarm History Report extracts critical alarms, warnings, and user action records from the system.",
+        "logsTitle": "Operation Log",
+        "logsDesc": "System operation log",
+        "logsDetail": "System Operation Log records all system activity logs including user access, configuration changes, and control command execution."
     },
     "typeDetail": {
         "title": "Selected Type Details"
@@ -76,8 +111,11 @@
         "period": "Period"
     },
     "review": {
-        "type": "Export Type",
-        "points": "Point Count"
+        "extractionType": "Extraction Type",
+        "targetDevice": "Target Device",
+        "pointCount": "Point Count",
+        "fileFormat": "File Format",
+        "period": "Period"
     },
     "action": {
         "start": "Start Export"
@@ -251,5 +289,14 @@
         "alarmStateValueOverride": "Alarm State Value (Override)",
         "editable": "EDITABLE"
     },
-    "pageDescription": "View the success/failure history of data sent to external systems."
+    "pageDescription": "View the success/failure history of data sent to external systems.",
+    "pageTitle": "Data Export",
+    "pageDesc": "Extract collected production and device data in various formats.",
+    "status": {
+        "completed": "Completed",
+        "running": "Processing",
+        "failed": "Failed"
+    },
+    "noHistory": "No export history.",
+    "noHistoryDesc": "Start a new export job."
 }

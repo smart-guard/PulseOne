@@ -4,6 +4,7 @@ import { AlarmApiService, AlarmRule } from '../api/services/alarmApi';
 import { DataApiService } from '../api/services/dataApi';
 import { DeviceApiService } from '../api/services/deviceApi';
 import { useConfirmContext } from '../components/common/ConfirmProvider';
+import { useTranslation } from 'react-i18next';
 import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { StatCard } from '../components/common/StatCard';
@@ -36,6 +37,7 @@ interface Device {
 
 const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
   const { confirm } = useConfirmContext();
+  const { t } = useTranslation('alarms');
   const [alarmRules, setAlarmRules] = useState<AlarmRule[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -201,21 +203,21 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
   return (
     <ManagementLayout className="page-alarm-settings">
       <PageHeader
-        title="Alarm Settings"
-        description="Configure and manage alarm trigger rules for the entire system."
+        title={t('settings.title')}
+        description={t('settings.description')}
         icon="fas fa-bell"
         actions={
           <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreateRule}>
-            <i className="fas fa-plus"></i> Add New Alarm Rule
+            <i className="fas fa-plus"></i> {t('settings.addRule')}
           </button>
         }
       />
 
       <div className="mgmt-stats-panel">
-        <StatCard label="Total Rules" value={totalCount} icon="fas fa-list-ul" type="primary" />
-        <StatCard label="Active Rules" value={alarmRules.filter(r => r.is_enabled).length} icon="fas fa-check-circle" type="success" />
-        <StatCard label="Inactive Rules" value={alarmRules.filter(r => !r.is_enabled).length} icon="fas fa-pause-circle" type="warning" />
-        <StatCard label="Search Results" value={alarmRules.length} icon="fas fa-search-dollar" type="neutral" />
+        <StatCard label={t('settings.totalRules')} value={totalCount} icon="fas fa-list-ul" type="primary" />
+        <StatCard label={t('settings.activeRules')} value={alarmRules.filter(r => r.is_enabled).length} icon="fas fa-check-circle" type="success" />
+        <StatCard label={t('settings.inactiveRules')} value={alarmRules.filter(r => !r.is_enabled).length} icon="fas fa-pause-circle" type="warning" />
+        <StatCard label={t('settings.searchResults')} value={alarmRules.length} icon="fas fa-search-dollar" type="neutral" />
       </div>
 
       <FilterBar
@@ -228,11 +230,11 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
         activeFilterCount={(filters.search ? 1 : 0) + (filters.severity !== 'all' ? 1 : 0) + (filters.status !== 'all' ? 1 : 0) + (filters.category !== 'all' ? 1 : 0) + (filters.deleted ? 1 : 0)}
         filters={[
           {
-            label: 'Severity',
+            label: t('filter.severity'),
             value: filters.severity,
             onChange: (val) => { setFilters(prev => ({ ...prev, severity: val })); setCurrentPage(1); },
             options: [
-              { value: 'all', label: 'All' },
+              { value: 'all', label: t('filter.all') },
               { value: 'critical', label: 'CRITICAL' },
               { value: 'high', label: 'HIGH' },
               { value: 'medium', label: 'MEDIUM' },
@@ -240,13 +242,13 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
             ]
           },
           {
-            label: 'Status',
+            label: t('filter.status'),
             value: filters.status,
             onChange: (val) => { setFilters(prev => ({ ...prev, status: val })); setCurrentPage(1); },
             options: [
-              { value: 'all', label: 'All' },
-              { value: 'enabled', label: 'Active' },
-              { value: 'disabled', label: 'Inactive' }
+              { value: 'all', label: t('filter.all') },
+              { value: 'enabled', label: t('settings.statusActive') },
+              { value: 'disabled', label: t('settings.inactiveRules') }
             ]
           }
         ]}
@@ -261,7 +263,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                     setCurrentPage(1);
                   }}
                 />
-                View Deleted Rules
+                {t('settings.viewDeleted')}
               </label>
             </div>
             <div className="mgmt-view-toggle">
@@ -335,11 +337,11 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
             <table className="mgmt-table">
               <thead>
                 <tr>
-                  <th>Rule Name</th>
-                  <th>Device/Point</th>
-                  <th>Category</th>
-                  <th>Severity</th>
-                  <th>Status</th>
+                  <th>{t('settings.colRuleName')}</th>
+                  <th>{t('settings.colDevicePoint')}</th>
+                  <th>{t('settings.colCategory')}</th>
+                  <th>{t('settings.colSeverity')}</th>
+                  <th>{t('settings.colStatus')}</th>
                   {/* Removed Management Column */}
                 </tr>
               </thead>
@@ -377,7 +379,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                           }}
                         >
                           <span className={`status-dot ${rule.is_enabled ? 'active' : 'inactive'}`} style={{ width: '6px', height: '6px' }}></span>
-                          {rule.is_enabled ? 'Active' : 'Pasue'}
+                          {rule.is_enabled ? t('settings.statusActive') : t('settings.statusPaused')}
                           {toggleLoading.has(rule.id) && <i className="fas fa-spinner fa-spin ms-1"></i>}
                         </button>
                       </div>

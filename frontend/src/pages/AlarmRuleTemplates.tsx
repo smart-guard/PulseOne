@@ -5,6 +5,7 @@ import alarmTemplatesApi, {
   CreatedAlarmRule
 } from '../api/services/alarmTemplatesApi';
 import { useConfirmContext } from '../components/common/ConfirmProvider';
+import { useTranslation } from 'react-i18next';
 import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { StatCard } from '../components/common/StatCard';
@@ -18,6 +19,7 @@ import '../styles/alarm-rule-templates.css';
 
 const AlarmRuleTemplates: React.FC = () => {
   const { confirm } = useConfirmContext();
+  const { t } = useTranslation('alarms');
 
   // Data States
   const [templates, setTemplates] = useState<AlarmTemplate[]>([]);
@@ -246,29 +248,29 @@ const AlarmRuleTemplates: React.FC = () => {
   return (
     <ManagementLayout>
       <PageHeader
-        title="Alarm Template Management"
-        description="Create and manage professional alarm templates, apply to devices with one click."
+        title={t('templates.title')}
+        description={t('templates.description')}
         icon="fas fa-magic"
         actions={
           <div className="mgmt-page-actions" style={{ display: 'flex', flexDirection: 'row', gap: '8px' }}>
-            <button className="mgmt-btn mgmt-btn-outline" onClick={handleExportTemplates} title="Export template list as JSON file.">
-              <i className="fas fa-file-export"></i> Export
+            <button className="mgmt-btn mgmt-btn-outline" onClick={handleExportTemplates}>
+              <i className="fas fa-file-export"></i> {t('templates.export')}
             </button>
-            <button className="mgmt-btn mgmt-btn-outline" onClick={handleImportTemplates} title="Import template list from JSON file.">
-              <i className="fas fa-file-import"></i> Import
+            <button className="mgmt-btn mgmt-btn-outline" onClick={handleImportTemplates}>
+              <i className="fas fa-file-import"></i> {t('templates.import')}
             </button>
             <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreateTemplate}>
-              <i className="fas fa-plus"></i> Create New Template
+              <i className="fas fa-plus"></i> {t('templates.createNew')}
             </button>
           </div>
         }
       />
 
       <div className="mgmt-stats-panel">
-        <StatCard label="Total Templates" value={activeTab === 'browse' ? totalCount : templates.length} icon="fas fa-layer-group" type="blueprint" />
-        <StatCard label="Applied Rules" value={createdRules.length} icon="fas fa-check-double" type="success" />
-        <StatCard label="Most Used" value="High Temp Alert" icon="fas fa-star" type="warning" />
-        <StatCard label="Active Status" value="Excellent" icon="fas fa-heartbeat" type="neutral" />
+        <StatCard label={t('templates.totalTemplates')} value={activeTab === 'browse' ? totalCount : templates.length} icon="fas fa-layer-group" type="blueprint" />
+        <StatCard label={t('templates.appliedRules')} value={createdRules.length} icon="fas fa-check-double" type="success" />
+        <StatCard label={t('templates.mostUsed')} value="High Temp Alert" icon="fas fa-star" type="warning" />
+        <StatCard label={t('templates.activeStatus')} value="Excellent" icon="fas fa-heartbeat" type="neutral" />
       </div>
 
       <div className="tab-navigation">
@@ -276,14 +278,14 @@ const AlarmRuleTemplates: React.FC = () => {
           className={`tab-button ${activeTab === 'browse' ? 'active' : ''}`}
           onClick={() => setActiveTab('browse')}
         >
-          <i className="fas fa-search"></i> Template Library
+          <i className="fas fa-search"></i> {t('templates.tabLibrary')}
           <span className="tab-badge">{totalCount}</span>
         </button>
         <button
           className={`tab-button ${activeTab === 'created' ? 'active' : ''}`}
           onClick={() => setActiveTab('created')}
         >
-          <i className="fas fa-clipboard-list"></i> Applied Rules List
+          <i className="fas fa-clipboard-list"></i> {t('templates.tabApplied')}
           <span className="tab-badge">{createdRules.length}</span>
         </button>
       </div>
@@ -298,22 +300,22 @@ const AlarmRuleTemplates: React.FC = () => {
         activeFilterCount={(filters.search ? 1 : 0) + (filters.type !== 'all' ? 1 : 0) + (filters.category !== 'all' ? 1 : 0)}
         filters={activeTab === 'browse' ? [
           {
-            label: 'Template Type',
+            label: t('templates.filterType'),
             value: filters.type,
             onChange: (val) => { setFilters(prev => ({ ...prev, type: val })); setCurrentPage(1); },
             options: [
-              { value: 'all', label: 'All Types' },
+              { value: 'all', label: t('templates.allTypes') },
               { value: 'simple', label: 'Simple' },
               { value: 'advanced', label: 'Advanced' },
               { value: 'script', label: 'Script' }
             ]
           },
           {
-            label: 'Category',
+            label: t('templates.filterCategory'),
             value: filters.category,
             onChange: (val) => { setFilters(prev => ({ ...prev, category: val })); setCurrentPage(1); },
             options: [
-              { value: 'all', label: 'All' },
+              { value: 'all', label: t('templates.allCategories') },
               { value: 'temperature', label: 'Temperature' },
               { value: 'pressure', label: 'Pressure' },
               { value: 'flow', label: 'Flow Rate' },
@@ -362,18 +364,18 @@ const AlarmRuleTemplates: React.FC = () => {
                     </div>
                     <div className="mgmt-card-meta">
                       <span><i className="fas fa-code-branch"></i> {template.template_type}</span>
-                      <span><i className="fas fa-history"></i> Applied {template.usage_count || 0} time(s)</span>
+                      <span><i className="fas fa-history"></i> {t('templates.usedTimes', { count: template.usage_count || 0 })}</span>
                     </div>
                   </div>
                   <div className="mgmt-card-footer">
                     <div className="mgmt-card-actions">
-                      <button className="mgmt-btn mgmt-btn-primary mgmt-btn-sm" onClick={() => handleApplyTemplate(template)}>Apply</button>
+                      <button className="mgmt-btn mgmt-btn-primary mgmt-btn-sm" onClick={() => handleApplyTemplate(template)}>{t('templates.applyBtn')}</button>
                       {template.is_system_template ? (
-                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} title="System templates cannot be modified.">
-                          <i className="fas fa-lock" style={{ marginRight: '4px' }}></i>시스템
+                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+                          <i className="fas fa-lock" style={{ marginRight: '4px' }}></i>SYSTEM
                         </button>
                       ) : (
-                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => handleEditTemplate(template)}>Edit</button>
+                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => handleEditTemplate(template)}>{t('templates.editBtn')}</button>
                       )}
                     </div>
                   </div>
@@ -385,12 +387,12 @@ const AlarmRuleTemplates: React.FC = () => {
               <table className="mgmt-table">
                 <thead>
                   <tr>
-                    <th>Template Name</th>
-                    <th>Type</th>
-                    <th>Category</th>
-                    <th>Logic Settings</th>
-                    <th>Severity</th>
-                    <th>사용 횟수</th>
+                    <th>{t('templates.colName')}</th>
+                    <th>{t('templates.colType')}</th>
+                    <th>{t('templates.colCategory')}</th>
+                    <th>{t('templates.colLogic')}</th>
+                    <th>{t('templates.colSeverity')}</th>
+                    <th>{t('templates.colUsage')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -417,11 +419,11 @@ const AlarmRuleTemplates: React.FC = () => {
             <table className="mgmt-table">
               <thead>
                 <tr>
-                  <th>규칙명</th>
-                  <th>사용 템플릿</th>
-                  <th>대상 장비/태그</th>
-                  <th>Severity</th>
-                  <th>상태</th>
+                  <th>{t('templates.colRuleName')}</th>
+                  <th>{t('templates.colTemplate')}</th>
+                  <th>{t('templates.colTarget')}</th>
+                  <th>{t('templates.colSeverity')}</th>
+                  <th>{t('templates.colStatus')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -437,7 +439,7 @@ const AlarmRuleTemplates: React.FC = () => {
                     </td>
                     <td>
                       <span className={`status-pill ${rule.enabled || rule.is_enabled ? 'success' : 'neutral'}`}>
-                        {rule.enabled || rule.is_enabled ? 'Active' : 'Paused'}
+                        {rule.enabled || rule.is_enabled ? t('templates.statusActive') : t('templates.statusPaused')}
                       </span>
                     </td>
                   </tr>

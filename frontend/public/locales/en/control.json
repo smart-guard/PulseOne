@@ -45,5 +45,23 @@
         "registered": "Registered!",
         "registerFail": "Registration failed",
         "loadFail": "Load failed"
+    },
+    "modal": {
+        "stepPoint": "Point Select",
+        "stepControl": "Control Settings",
+        "searchPlaceholder": "Search points...",
+        "searching": "Searching...",
+        "noResults": "No results",
+        "nextStep": "Next: Control Settings →",
+        "change": "Change",
+        "sendValue": "Send Value *",
+        "sendValuePlaceholder": "Enter value",
+        "executeAt": "Execute At *",
+        "repeatInterval": "Repeat Interval",
+        "cronPlaceholder": "cron expression (e.g., 0 * * * *)",
+        "notes": "Notes",
+        "notesPlaceholder": "Enter notes",
+        "registering": "Registering...",
+        "registerBtn": "Register Schedule"
     }
 }

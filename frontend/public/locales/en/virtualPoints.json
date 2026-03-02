@@ -58,5 +58,24 @@
         "executeFail": "Execution failed",
         "bulkDeleteFail": "An error occurred during bulk deletion.",
         "bulkToggleFail": "An error occurred during bulk status change."
+    },
+    "table": {
+        "name": "Name",
+        "category": "Category",
+        "formula": "Formula",
+        "currentValue": "Value",
+        "active": "Active",
+        "calcStatus": "Calc Status",
+        "scope": "Scope",
+        "execType": "Exec Type",
+        "lastCalc": "Updated",
+        "statusNormal": "Normal",
+        "statusError": "Error",
+        "statusStopped": "Stopped",
+        "execPeriodic": "Periodic",
+        "execEvent": "Event",
+        "scopeGlobal": "Global",
+        "scopeSite": "Site",
+        "scopeDevice": "Device"
     }
 }

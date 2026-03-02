@@ -41,7 +41,7 @@ export interface ControlSchedulePagination {
 }
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<{ success: boolean; data?: T; pagination?: ControlSchedulePagination; message?: string }> {
-    const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || '';
     const res = await fetch(`${BASE}${path}`, {
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         ...options,

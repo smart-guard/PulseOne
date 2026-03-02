@@ -43,20 +43,20 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
   const headerRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [scrollbarWidth, setScrollbarWidth] = useState(0);
-    const { t } = useTranslation(['virtualPoints', 'common']);
+  const { t } = useTranslation(['virtualPoints', 'common']);
 
   // 반응형 그리드 컬럼 (이름/수식 위주)
   const gridColumns = `
-    40px                         /* 체크박스 */
-    minmax(220px, 1.2fr)         /* 이름 */
-    80px                         /* 분류 */
-    minmax(200px, 2fr)           /* 수식 */
-    100px                        /* 현재값 */
-    90px                         /* 활성상태 */
-    110px                        /* 계산상태 */
-    70px                         /* 범위 */
-    70px                         /* 실행 */
-    100px                        /* 마지막 */
+    36px                      /* 체크박스 */
+    minmax(160px, 1.5fr)      /* 이름 */
+    70px                      /* 분류 */
+    minmax(140px, 1.8fr)      /* 수식 */
+    80px                      /* 현재값 */
+    70px                      /* 활성상태 */
+    90px                      /* 계산상태 */
+    60px                      /* 범위 */
+    70px                      /* 실행 */
+    90px                      /* 마지막 */
   `;
 
   const calculateScrollbarWidth = useCallback(() => {
@@ -143,17 +143,15 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
     <div style={{
       background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb',
       overflow: 'hidden', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-      width: '100%', display: 'flex', flexDirection: 'column', height: 'clamp(500px, 70vh, 800px)'
+      width: '100%', display: 'flex', flexDirection: 'column'
     }}>
       <div
         ref={headerRef}
         style={{
           display: 'grid', gridTemplateColumns: gridColumns,
-          gap: 'clamp(3px, 0.4vw, 6px)', background: '#f8fafc',
-          borderBottom: '2px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 10,
-          paddingLeft: 'clamp(4px, 0.5vw, 8px)',
-          paddingRight: `calc(clamp(4px, 0.5vw, 8px) + ${scrollbarWidth}px)`,
-          paddingTop: '10px', paddingBottom: '10px', flexShrink: 0
+          gap: '0', background: '#f8fafc',
+          borderBottom: '2px solid #e5e7eb',
+          padding: '10px 0', flexShrink: 0
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -168,15 +166,15 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
           />
         </div>
         {[
-          { key: 'name', label: 'Name', sortable: true },
-          { key: 'category', label: 'Category', sortable: true },
-          { key: 'expression', label: 'Formula', sortable: false },
-          { key: 'current_value', label: 'Current Value', sortable: false },
-          { key: 'is_enabled', label: 'Active', sortable: true },
-          { key: 'status', label: 'Calc Status', sortable: true },
-          { key: 'scope', label: 'Scope', sortable: true },
-          { key: 'execution_type', label: 'Exec Type', sortable: true },
-          { key: 'last_calculated', label: 'Last Calc', sortable: true }
+          { key: 'name', label: t('table.name'), sortable: true },
+          { key: 'category', label: t('table.category'), sortable: true },
+          { key: 'expression', label: t('table.formula'), sortable: false },
+          { key: 'current_value', label: t('table.currentValue'), sortable: false },
+          { key: 'is_enabled', label: t('table.active'), sortable: true },
+          { key: 'status', label: t('table.calcStatus'), sortable: true },
+          { key: 'scope', label: t('table.scope'), sortable: true },
+          { key: 'execution_type', label: t('table.execType'), sortable: true },
+          { key: 'last_calculated', label: t('table.lastCalc'), sortable: true }
         ].map((header, index) => (
           <div
             key={header.key}
@@ -201,11 +199,11 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
 
       <div
         ref={bodyRef}
-        style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }}
+        style={{ overflowX: 'auto', minHeight: 0 }}
       >
         <div style={{
           display: 'grid', gridTemplateColumns: gridColumns,
-          gap: 'clamp(3px, 0.4vw, 6px)', padding: '0 clamp(4px, 0.5vw, 8px) 12px'
+          gap: '0', padding: '0'
         }}>
           {loading ? (
             <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: '#6b7280' }}>
@@ -222,7 +220,7 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
                 <React.Fragment key={point.id}>
                   {/* 체크박스 */}
                   <div style={{
-                    padding: '12px 8px', borderBottom: '1px solid #f1f5f9',
+                    padding: '8px 6px', borderBottom: '1px solid #f1f5f9',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     backgroundColor: isSelected ? '#eff6ff' : 'transparent'
                   }}>
@@ -244,7 +242,7 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
                   <div
                     onClick={() => onRowClick?.(point)}
                     style={{
-                      padding: '12px 8px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
+                      padding: '8px 6px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
                       display: 'flex', flexDirection: 'column', gap: '2px', justifyContent: 'center',
                       opacity: point.is_deleted ? 0.6 : 1,
                       filter: point.is_deleted ? 'grayscale(0.5)' : 'none',
@@ -265,7 +263,7 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
                   </div>
 
                   {/* 분류 */}
-                  <div style={{ padding: '12px 8px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ padding: '8px 6px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <span style={{
                       padding: '2px 6px', background: getCategoryColor(point.category || 'Custom'),
                       color: 'white', borderRadius: '4px', fontSize: '10px', fontWeight: 500
@@ -275,19 +273,19 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
                   </div>
 
                   {/* 수식 */}
-                  <div style={{ padding: '12px 8px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center' }}>
+                  <div style={{ padding: '8px 6px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center' }}>
                     <code style={{ fontSize: '12px', background: '#f3f4f6', padding: '2px 6px', borderRadius: '4px', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {point.expression || point.formula}
                     </code>
                   </div>
 
                   {/* 현재값 */}
-                  <div style={{ padding: '12px 8px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ padding: '8px 6px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '13px' }}>{formatValue(point.current_value, point.unit)}</span>
                   </div>
 
                   {/* 활성상태 */}
-                  <div style={{ padding: '12px 8px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ padding: '8px 6px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <span style={{
                       padding: '2px 8px',
                       borderRadius: '12px',
@@ -302,25 +300,25 @@ export const VirtualPointTable: React.FC<VirtualPointTableProps> = ({
                   </div>
 
                   {/* 계산상태 */}
-                  <div style={{ padding: '12px 8px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ padding: '8px 6px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: getStatusColor(point.calculation_status || 'disabled'), fontSize: '12px', fontWeight: 600 }}>
                       <i className={getStatusIcon(point.calculation_status || 'disabled')}></i>
-                      {point.calculation_status === 'active' ? 'Normal' : point.calculation_status === 'error' ? 'Error' : 'Stopped'}
+                      {point.calculation_status === 'active' ? t('table.statusNormal') : point.calculation_status === 'error' ? t('table.statusError') : t('table.statusStopped')}
                     </div>
                   </div>
 
                   {/* 범위 */}
-                  <div style={{ padding: '12px 8px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ fontSize: '12px', color: '#6b7280' }}>{point.scope_type === 'global' ? 'Global' : point.scope_type === 'site' ? 'Site' : 'Device'}</span>
+                  <div style={{ padding: '8px 6px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '12px', color: '#6b7280' }}>{point.scope_type === 'global' ? t('table.scopeGlobal') : point.scope_type === 'site' ? t('table.scopeSite') : t('table.scopeDevice')}</span>
                   </div>
 
                   {/* 실행 */}
-                  <div style={{ padding: '12px 8px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ fontSize: '12px', color: '#6b7280' }}>{point.execution_type === 'periodic' ? 'Periodic' : 'Event'}</span>
+                  <div style={{ padding: '8px 6px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '12px', color: '#6b7280' }}>{point.execution_type === 'periodic' ? t('table.execPeriodic') : t('table.execEvent')}</span>
                   </div>
 
                   {/* 마지막 계산 */}
-                  <div style={{ padding: '12px 8px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: point.is_deleted ? 0.6 : 1 }}>
+                  <div style={{ padding: '8px 6px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: point.is_deleted ? 0.6 : 1 }}>
                     <span style={{ fontSize: '10px', color: '#94a3b8' }}>
                       {point.last_calculated ? new Date(point.last_calculated).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-'}
                     </span>

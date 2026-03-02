@@ -29,7 +29,7 @@ const templates = [
 
 const DataExport: React.FC = () => {
   const { confirm } = useConfirmContext();
-    const { t } = useTranslation(['dataExport', 'common']);
+  const { t } = useTranslation(['dataExport', 'common']);
 
   // 상태 관리
   const [step, setStep] = useState(1);
@@ -210,15 +210,15 @@ const DataExport: React.FC = () => {
     <div className="data-export-container">
       <div className="page-header">
         <div className="header-left">
-          <h1 className="page-title">Data Export</h1>
-          <p className="page-subtitle">Extract collected production and device data in various formats.</p>
+          <h1 className="page-title">{t('pageTitle')}</h1>
+          <p className="page-subtitle">{t('pageDesc')}</p>
         </div>
         <div className="tab-navigation">
           <button className={`tab-button ${activeTab === 'create' ? 'active' : ''}`} onClick={() => setActiveTab('create')}>
-            <i className="fas fa-plus-circle"></i> New Job
+            <i className="fas fa-plus-circle"></i> {t('tab.new')}
           </button>
           <button className={`tab-button ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
-            <i className="fas fa-history"></i> Export History
+            <i className="fas fa-history"></i> {t('tab.history')}
           </button>
         </div>
       </div>
@@ -228,34 +228,34 @@ const DataExport: React.FC = () => {
           {/* 퀵 템플릿 */}
           {step === 1 && (
             <div className="templates-section">
-              <h3 className="section-title"><i className="fas fa-bolt"></i> Quick-Start Templates</h3>
+              <h3 className="section-title"><i className="fas fa-bolt"></i> {t('template.quickStart')}</h3>
               <div className="templates-grid">
                 <div className="template-card" onClick={() => applyTemplate('historical', 'Daily_Production')}>
                   <div className="template-icon"><i className="fas fa-chart-line"></i></div>
                   <div className="template-info">
-                    <h4>Daily Production Data</h4>
-                    <p>Extract previous day core production metrics and device status data to CSV.</p>
+                    <h4>{t('template.dailyProd')}</h4>
+                    <p>{t('template.dailyProdDesc')}</p>
                   </div>
                 </div>
                 <div className="template-card" onClick={() => applyTemplate('alarms', 'Alarm_History')}>
                   <div className="template-icon"><i className="fas fa-exclamation-triangle"></i></div>
                   <div className="template-info">
-                    <h4>Weekly Alarm Report</h4>
-                    <p>Generate a PDF of all alarms and actions from the last 7 days.</p>
+                    <h4>{t('template.weeklyAlarm')}</h4>
+                    <p>{t('template.weeklyAlarmDesc')}</p>
                   </div>
                 </div>
                 <div className="template-card" onClick={() => applyTemplate('realtime', 'Monthly_Device_Stats')}>
                   <div className="template-icon"><i className="fas fa-microchip"></i></div>
                   <div className="template-info">
-                    <h4>Monthly Device Statistics</h4>
-                    <p>Export monthly device uptime and key status changes as an analysis report.</p>
+                    <h4>{t('template.monthlyStats')}</h4>
+                    <p>{t('template.monthlyStatsDesc')}</p>
                   </div>
                 </div>
                 <div className="template-card" onClick={() => applyTemplate('logs', 'System_Log')}>
                   <div className="template-icon"><i className="fas fa-clipboard-list"></i></div>
                   <div className="template-info">
-                    <h4>System Operation Log</h4>
-                    <p>Export system access and device control logs in JSON format.</p>
+                    <h4>{t('template.sysLog')}</h4>
+                    <p>{t('template.sysLogDesc')}</p>
                   </div>
                 </div>
               </div>
@@ -267,19 +267,19 @@ const DataExport: React.FC = () => {
             <div className="wizard-stepper">
               <div className={`step-item ${step >= 1 ? 'active' : ''} ${step > 1 ? 'completed' : ''}`}>
                 <div className="step-number">{step > 1 ? <i className="fas fa-check"></i> : 1}</div>
-                <span className="step-label">Type Selection</span>
+                <span className="step-label">{t('wizard.step1')}</span>
               </div>
               <div className={`step-item ${step >= 2 ? 'active' : ''} ${step > 2 ? 'completed' : ''}`}>
                 <div className="step-number">{step > 2 ? <i className="fas fa-check"></i> : 2}</div>
-                <span className="step-label">Target Device</span>
+                <span className="step-label">{t('wizard.step2')}</span>
               </div>
               <div className={`step-item ${step >= 3 ? 'active' : ''} ${step > 3 ? 'completed' : ''}`}>
                 <div className="step-number">{step > 3 ? <i className="fas fa-check"></i> : 3}</div>
-                <span className="step-label">Extraction Settings</span>
+                <span className="step-label">{t('wizard.step3')}</span>
               </div>
               <div className={`step-item ${step >= 4 ? 'active' : ''} ${step > 4 ? 'completed' : ''}`}>
                 <div className="step-number">{step > 4 ? <i className="fas fa-check"></i> : 4}</div>
-                <span className="step-label">Final Review</span>
+                <span className="step-label">{t('wizard.step4')}</span>
               </div>
             </div>
 
@@ -287,48 +287,40 @@ const DataExport: React.FC = () => {
               {/* Step 1: Data Type */}
               {step === 1 && (
                 <div className="step-container">
-                  <h3 className="step-title">Select the type of data to extract.</h3>
+                  <h3 className="step-title">{t('wizard.selectType')}</h3>
                   <div className="type-grid">
                     <div className={`selectable-card ${exportType === 'historical' ? 'selected' : ''}`} onClick={() => setExportType('historical')}>
                       <i className="fas fa-database"></i>
-                      <span className="card-title">Historical Data</span>
-                      <span className="card-desc">Sensor values and time-series data</span>
+                      <span className="card-title">{t('type.historicalTitle')}</span>
+                      <span className="card-desc">{t('type.historicalDesc')}</span>
                     </div>
                     <div className={`selectable-card ${exportType === 'realtime' ? 'selected' : ''}`} onClick={() => setExportType('realtime')}>
                       <i className="fas fa-clock"></i>
-                      <span className="card-title">Real-time Data</span>
-                      <span className="card-desc">Current device status</span>
+                      <span className="card-title">{t('type.realtimeTitle')}</span>
+                      <span className="card-desc">{t('type.realtimeDesc')}</span>
                     </div>
                     <div className={`selectable-card ${exportType === 'alarms' ? 'selected' : ''}`} onClick={() => setExportType('alarms')}>
                       <i className="fas fa-bell"></i>
-                      <span className="card-title">Alarm History</span>
-                      <span className="card-desc">Occurrence and action history</span>
+                      <span className="card-title">{t('type.alarmsTitle')}</span>
+                      <span className="card-desc">{t('type.alarmsDesc')}</span>
                     </div>
                     <div className={`selectable-card ${exportType === 'logs' ? 'selected' : ''}`} onClick={() => setExportType('logs')}>
                       <i className="fas fa-list-ul"></i>
-                      <span className="card-title">Operation Log</span>
-                      <span className="card-desc">System operation log</span>
+                      <span className="card-title">{t('type.logsTitle')}</span>
+                      <span className="card-desc">{t('type.logsDesc')}</span>
                     </div>
                   </div>
 
                   <div className="type-details-box">
                     <div className="details-header">
                       <i className="fas fa-info-circle"></i>
-                      <span>Selected Type Details</span>
+                      <span>{t('wizard.selectedTypeDetails')}</span>
                     </div>
                     <div className="details-content">
-                      {exportType === 'historical' && (
-                        <p><strong>Historical Data Extract</strong> extracts all sensor and device data collected during the specified period in chronological order. Provides datasets suitable for trend analysis and production aggregation.</p>
-                      )}
-                      {exportType === 'realtime' && (
-                        <p><strong>Real-time Data Snapshot</strong> instantly extracts real-time communication status and parameter values of connected devices. Used to quickly check and record current equipment operating status.</p>
-                      )}
-                      {exportType === 'alarms' && (
-                        <p><strong>Alarm History Report</strong> extracts critical alarms, warnings, and user action records from the system. Generates detailed reports for incident analysis and maintenance history management.</p>
-                      )}
-                      {exportType === 'logs' && (
-                        <p><strong>System Operation Log</strong> records all system activity logs including user access, configuration changes, and control command execution. Used for security auditing and operational transparency.</p>
-                      )}
+                      {exportType === 'historical' && (<p>{t('type.historicalDetail')}</p>)}
+                      {exportType === 'realtime' && (<p>{t('type.realtimeDetail')}</p>)}
+                      {exportType === 'alarms' && (<p>{t('type.alarmsDetail')}</p>)}
+                      {exportType === 'logs' && (<p>{t('type.logsDetail')}</p>)}
                       {!exportType && (
                         <p className="placeholder">Select a data type to see a detailed description here.</p>
                       )}
@@ -340,10 +332,10 @@ const DataExport: React.FC = () => {
               {/* Step 2: Target Selection */}
               {step === 2 && (
                 <div className="step-container">
-                  <h3 className="step-title">Select devices and points to extract data from.</h3>
+                  <h3 className="step-title">{t('wizard.selectDevice')}</h3>
                   <div className="filter-split">
                     <div className="list-pane">
-                      <div className="pane-header">Device List ({devices.length})</div>
+                      <div className="pane-header">{t('wizard.deviceList')} ({devices.length})</div>
                       <div className="pane-content">
                         {devices.map(d => (
                           <div
@@ -357,10 +349,10 @@ const DataExport: React.FC = () => {
                       </div>
                     </div>
                     <div className="list-pane">
-                      <div className="pane-header">Data Points ({loading ? 'Loading...' : points.length})</div>
+                      <div className="pane-header">{t('wizard.dataPoints')} ({loading ? t('wizard.loading') : points.length})</div>
                       <div className="pane-content">
                         {loading ? (
-                          <div className="text-center p-8">Loading data...</div>
+                          <div className="text-center p-8">{t('wizard.loading')}</div>
                         ) : points.length > 0 ? (
                           points.map(p => (
                             <label key={p.id} className="list-item">
@@ -376,7 +368,7 @@ const DataExport: React.FC = () => {
                             </label>
                           ))
                         ) : (
-                          <div className="text-center p-8 text-neutral-400">Please select a device first.</div>
+                          <div className="text-center p-8 text-neutral-400">{t('wizard.selectDeviceFirst')}</div>
                         )}
                       </div>
                     </div>
@@ -387,10 +379,10 @@ const DataExport: React.FC = () => {
               {/* Step 3: Config */}
               {step === 3 && (
                 <div className="step-container">
-                  <h3 className="step-title">Set extraction conditions and file format.</h3>
+                  <h3 className="step-title">{t('wizard.extractionConfig')}</h3>
                   <div className="form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                     <div className="form-group">
-                      <label>Job Name</label>
+                      <label>{t('wizard.jobName')}</label>
                       <input
                         type="text"
                         className="form-input"
@@ -400,17 +392,17 @@ const DataExport: React.FC = () => {
                       />
                     </div>
                     <div className="form-group">
-                      <label>File Format</label>
+                      <label>{t('wizard.fileFormat')}</label>
                       <select className="form-select" value={format} onChange={(e) => setFormat(e.target.value as any)}>
-                        <option value="csv">CSV (comma-delimited)</option>
+                        <option value="csv">CSV</option>
                         <option value="xlsx">Excel (XLSX)</option>
                         <option value="json">JSON</option>
-                        <option value="pdf">PDF Report</option>
+                        <option value="pdf">PDF</option>
                       </select>
                     </div>
                     {exportType === 'historical' && (
                       <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                        <label>Date Range</label>
+                        <label>{t('wizard.dateRange')}</label>
                         <div className="date-range-inputs">
                           <input type="datetime-local" className="form-input" value={dateRange.start} onChange={e => setDateRange({ ...dateRange, start: e.target.value })} />
                           <span>~</span>
@@ -425,29 +417,29 @@ const DataExport: React.FC = () => {
               {/* Step 4: Review */}
               {step === 4 && (
                 <div className="step-container">
-                  <h3 className="step-title">Review settings and start the export.</h3>
+                  <h3 className="step-title">{t('wizard.finalReview')}</h3>
                   <div className="review-box" style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '1rem', border: '1px solid #e2e8f0' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <tbody>
                         <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                          <td style={{ padding: '0.75rem 0', color: '#64748b', fontWeight: 500 }}>Extraction Type</td>
+                          <td style={{ padding: '0.75rem 0', color: '#64748b', fontWeight: 500 }}>{t('review.extractionType')}</td>
                           <td style={{ padding: '0.75rem 0', fontWeight: 600 }}>{exportType.toUpperCase()}</td>
                         </tr>
                         <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                          <td style={{ padding: '0.75rem 0', color: '#64748b', fontWeight: 500 }}>Target Device</td>
+                          <td style={{ padding: '0.75rem 0', color: '#64748b', fontWeight: 500 }}>{t('review.targetDevice')}</td>
                           <td style={{ padding: '0.75rem 0', fontWeight: 600 }}>{devices.find(d => d.id === selectedDeviceId)?.name || 'N/A'}</td>
                         </tr>
                         <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                          <td style={{ padding: '0.75rem 0', color: '#64748b', fontWeight: 500 }}>Point Count</td>
-                          <td style={{ padding: '0.75rem 0', fontWeight: 600 }}>{selectedPointIds.length} point(s)</td>
+                          <td style={{ padding: '0.75rem 0', color: '#64748b', fontWeight: 500 }}>{t('review.pointCount')}</td>
+                          <td style={{ padding: '0.75rem 0', fontWeight: 600 }}>{selectedPointIds.length}</td>
                         </tr>
                         <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                          <td style={{ padding: '0.75rem 0', color: '#64748b', fontWeight: 500 }}>File Format</td>
+                          <td style={{ padding: '0.75rem 0', color: '#64748b', fontWeight: 500 }}>{t('review.fileFormat')}</td>
                           <td style={{ padding: '0.75rem 0', fontWeight: 600 }}>{format.toUpperCase()}</td>
                         </tr>
                         {exportType === 'historical' && (
                           <tr>
-                            <td style={{ padding: '0.75rem 0', color: '#64748b', fontWeight: 500 }}>Period</td>
+                            <td style={{ padding: '0.75rem 0', color: '#64748b', fontWeight: 500 }}>{t('review.period')}</td>
                             <td style={{ padding: '0.75rem 0', fontWeight: 600 }}>{dateRange.start} ~ {dateRange.end}</td>
                           </tr>
                         )}
@@ -459,17 +451,17 @@ const DataExport: React.FC = () => {
             </div>
 
             <div className="wizard-footer">
-              <button className="btn btn-outline" onClick={prevStep} disabled={step === 1}>이전</button>
+              <button className="btn btn-outline" onClick={prevStep} disabled={step === 1}>{t('wizard.prev')}</button>
               {step < 4 ? (
                 <button
                   className="btn btn-primary"
                   onClick={nextStep}
                   disabled={(step === 2 && !selectedDeviceId) || (step === 3 && !exportName)}
                 >
-                  다음
+                  {t('wizard.next')}
                 </button>
               ) : (
-                <button className="btn btn-primary" onClick={handleStartExport}>Start Export</button>
+                <button className="btn btn-primary" onClick={handleStartExport}>{t('wizard.startExport')}</button>
               )}
             </div>
           </div>
@@ -493,7 +485,7 @@ const DataExport: React.FC = () => {
                 </div>
                 <div className="export-status-indicator">
                   <span className={`badge-status ${task.status}`}>
-                    {task.status === 'completed' ? '완료' : task.status === 'running' ? `처리 중 (${task.progress}%)` : 'Failed'}
+                    {task.status === 'completed' ? t('status.completed') : task.status === 'running' ? `${t('status.running')} (${task.progress}%)` : t('status.failed')}
                   </span>
                   <span className="time-stamp">{task.createdAt.toLocaleString()}</span>
                 </div>
@@ -506,8 +498,8 @@ const DataExport: React.FC = () => {
           ) : (
             <div className="empty-state">
               <i className="fas fa-folder-open empty-icon"></i>
-              <div className="empty-title">Export History이 없습니다.</div>
-              <p>새로운 내보내기 작업을 시작해 보세요.</p>
+              <div className="empty-title">{t('noHistory')}</div>
+              <p>{t('noHistoryDesc')}</p>
             </div>
           )}
         </div>

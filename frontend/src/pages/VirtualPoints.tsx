@@ -27,7 +27,7 @@ import '../styles/management.css';
 
 const VirtualPoints: React.FC = () => {
   const { confirm } = useConfirmContext();
-    const { t } = useTranslation(['virtualPoints', 'common']);
+  const { t } = useTranslation(['virtualPoints', 'common']);
   const scriptEngine = useScriptEngine({ autoLoadFunctions: false });
 
   // 데이터 상태
@@ -242,29 +242,29 @@ const VirtualPoints: React.FC = () => {
   return (
     <ManagementLayout>
       <PageHeader
-        title="Virtual Point Management"
-        description="Manage virtual points calculated from real-time data. Click a name to view details."
+        title={t('title')}
+        description={t('description')}
         icon="fas fa-function"
         actions={
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button className="btn btn-primary" onClick={openCreateModal}><i className="fas fa-plus"></i> New Virtual Point</button>
+            <button className="btn btn-primary" onClick={openCreateModal}><i className="fas fa-plus"></i> {t('new')}</button>
           </div>
         }
       />
 
       <div className="mgmt-stats-panel">
-        <StatCard label="Total Points" value={virtualPoints.length} type="neutral" icon="fas fa-layer-group" />
-        <StatCard label="Active" value={virtualPoints.filter(p => p.is_enabled).length} type="success" icon="fas fa-check-circle" />
-        <StatCard label="Calc Error" value={virtualPoints.filter(p => p.calculation_status === 'error').length} type="error" icon="fas fa-exclamation-triangle" />
+        <StatCard label={t('stats.totalPoints')} value={virtualPoints.length} type="neutral" icon="fas fa-layer-group" />
+        <StatCard label={t('stats.active')} value={virtualPoints.filter(p => p.is_enabled).length} type="success" icon="fas fa-check-circle" />
+        <StatCard label={t('stats.calcError')} value={virtualPoints.filter(p => p.calculation_status === 'error').length} type="error" icon="fas fa-exclamation-triangle" />
       </div>
 
       <div className="mgmt-tabs-wrapper">
         <div className="tab-navigation">
           <button className={`tab-button ${activeTab === 'list' ? 'active' : ''}`} onClick={() => setActiveTab('list')}>
-            <i className="fas fa-list"></i> Virtual Points List
+            <i className="fas fa-list"></i> {t('tabs.list')}
           </button>
           <button className={`tab-button ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
-            <i className="fas fa-history"></i> Execution History
+            <i className="fas fa-history"></i> {t('tabs.history')}
           </button>
         </div>
       </div>
@@ -279,23 +279,27 @@ const VirtualPoints: React.FC = () => {
               activeFilterCount={(searchFilter ? 1 : 0) + (categoryFilter !== 'all' ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0) + (includeDeleted ? 1 : 0)}
               filters={[
                 {
-                  label: 'Category',
+                  label: t('filter.category'),
                   value: categoryFilter,
                   onChange: setCategoryFilter,
                   options: [
-                    { value: 'all', label: 'All' },
-                    { value: 'temperature', label: 'Temperature' }, { value: 'pressure', label: 'Pressure' },
-                    { value: 'flow', label: 'Flow Rate' }, { value: 'power', label: 'Power' },
-                    { value: 'Custom', label: 'Custom' }
+                    { value: 'all', label: t('filter.all') },
+                    { value: 'temperature', label: t('filter.temperature', '온도') },
+                    { value: 'pressure', label: t('filter.pressure', '압력') },
+                    { value: 'flow', label: t('filter.flow', '유량') },
+                    { value: 'power', label: t('filter.power', '전력') },
+                    { value: 'Custom', label: t('filter.custom', '사용자 정의') }
                   ]
                 },
                 {
-                  label: 'Status',
+                  label: t('filter.status'),
                   value: statusFilter,
                   onChange: setStatusFilter,
                   options: [
-                    { value: 'all', label: 'All' },
-                    { value: 'active', label: 'Active' }, { value: 'error', label: 'Error' }, { value: 'disabled', label: 'Inactive' }
+                    { value: 'all', label: t('filter.all') },
+                    { value: 'active', label: t('filter.active') },
+                    { value: 'error', label: t('filter.error') },
+                    { value: 'disabled', label: t('filter.disabled') }
                   ]
                 }
               ]}
@@ -303,7 +307,7 @@ const VirtualPoints: React.FC = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginRight: '8px' }}>
                   <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', color: '#64748b', whiteSpace: 'nowrap' }}>
                     <input type="checkbox" checked={includeDeleted} onChange={(e) => setIncludeDeleted(e.target.checked)} />
-                    View Deleted
+                    {t('showDeleted')}
                   </label>
                   <div className="view-toggle" style={{ display: 'flex', flexShrink: 0 }}>
                     <button className={`btn-icon ${viewMode === 'card' ? 'active' : ''}`} onClick={() => setViewMode('card')}><i className="fas fa-th-large"></i></button>
@@ -353,7 +357,7 @@ const VirtualPoints: React.FC = () => {
 
             <div className="mgmt-content-area" style={{ flex: 1, overflow: 'auto', padding: '8px 4px' }}>
               {loading ? (
-                <div style={{ padding: '40px', textAlign: 'center' }}><i className="fas fa-spinner fa-spin"></i> Loading...</div>
+                <div style={{ padding: '40px', textAlign: 'center' }}><i className="fas fa-spinner fa-spin"></i> {t('loading')}</div>
               ) : viewMode === 'card' ? (
                 <div className="mgmt-grid">
                   {paginatedPoints.map(point => (
@@ -398,8 +402,8 @@ const VirtualPoints: React.FC = () => {
         ) : (
           <div className="empty-state-notice">
             <i className="fas fa-clock-rotate-left"></i>
-            <h3>Execution History이 없습니다</h3>
-            <p>Recent calculation results and performance metrics for virtual points are displayed here.</p>
+            <h3>{t('history.empty')}</h3>
+            <p>{t('history.emptyDesc')}</p>
           </div>
         )}
       </div>

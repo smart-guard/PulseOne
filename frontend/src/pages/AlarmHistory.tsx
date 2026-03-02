@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlarmApiService, AlarmOccurrence, AlarmListParams, AlarmStatistics } from '../api/services/alarmApi';
 import { Pagination } from '../components/common/Pagination';
 import { ManagementLayout } from '../components/common/ManagementLayout';
@@ -65,6 +66,7 @@ interface FilterOptions {
 
 const AlarmHistory: React.FC = () => {
   const { confirm } = useConfirmContext();
+  const { t } = useTranslation('alarms');
   const { decrementAlarmCount, refreshAlarmCount } = useAlarmContext();
   const isSmallScreen = useMediaQuery('(max-width: 1600px)');
   // 기본 상태들
@@ -507,8 +509,8 @@ const AlarmHistory: React.FC = () => {
   return (
     <ManagementLayout className="page-alarm-history">
       <PageHeader
-        title="Alarm History"
-        description="View and analyze the history of all alarms generated in the system."
+        title={t('tabs.alarm')}
+        description={t('historyDesc')}
         icon="fas fa-history"
         actions={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -547,7 +549,7 @@ const AlarmHistory: React.FC = () => {
               disabled={!Array.isArray(alarmEvents) || alarmEvents.length === 0}
             >
               <i className="fas fa-download"></i>
-              Export CSV
+              CSV Export
             </button>
           </div>
         }
@@ -556,31 +558,31 @@ const AlarmHistory: React.FC = () => {
       {/* 통계 카드 */}
       <div className="mgmt-stats-panel" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', alignItems: 'stretch', marginBottom: '8px' }}>
         <StatCard
-          title="Total Events"
+          title={t('stats.totalEvents')}
           value={computedStats.total}
           icon="fas fa-list-alt"
           type="primary"
         />
         <StatCard
-          title="Active Alarms"
+          title={t('stats.activeAlarms')}
           value={computedStats.active}
           icon="fas fa-exclamation-triangle"
           type="error"
         />
         <StatCard
-          title="Unacknowledged"
+          title={t('stats.unacknowledged')}
           value={computedStats.unacknowledged}
           icon="fas fa-bell"
           type="warning"
         />
         <StatCard
-          title="Acknowledged"
+          title={t('stats.acknowledged')}
           value={computedStats.acknowledged}
           icon="fas fa-check-circle"
           type="warning"
         />
         <StatCard
-          title="Cleared"
+          title={t('stats.cleared')}
           value={computedStats.cleared}
           icon="fas fa-check-double"
           type="success"
@@ -602,11 +604,11 @@ const AlarmHistory: React.FC = () => {
         })}
         filters={[
           {
-            label: 'Severity',
+            label: t('filter.severity'),
             value: filters.severity,
             onChange: (v) => handleFilterChange({ severity: v }),
             options: [
-              { label: 'All', value: 'all' },
+              { label: t('filter.all', { ns: 'virtualPoints' }), value: 'all' },
               { label: 'CRITICAL', value: 'critical' },
               { label: 'HIGH', value: 'high' },
               { label: 'MEDIUM', value: 'medium' },
@@ -614,20 +616,20 @@ const AlarmHistory: React.FC = () => {
             ]
           },
           {
-            label: 'Status',
+            label: t('state.label'),
             value: filters.state,
             onChange: (v) => handleFilterChange({ state: v }),
             options: [
-              { label: 'All', value: 'all' },
-              { label: 'Active', value: 'active' },
-              { label: 'Acknowledged', value: 'acknowledged' },
-              { label: 'Cleared', value: 'cleared' }
+              { label: t('filter.all', { ns: 'virtualPoints' }), value: 'all' },
+              { label: t('state.active'), value: 'active' },
+              { label: t('state.acknowledged'), value: 'acknowledged' },
+              { label: t('state.cleared'), value: 'cleared' }
             ]
           }
         ]}
         leftActions={
           <div className="mgmt-filter-group">
-            <label>Time Range</label>
+            <label>{t('filter.timeRange')}</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input
                 type={isSmallScreen ? 'date' : 'datetime-local'}
@@ -679,7 +681,7 @@ const AlarmHistory: React.FC = () => {
             }}
           >
             <i className="fas fa-bell" />
-            Alarm History ({computedStats.total})
+            알람 이력 ({computedStats.total})
           </button>
           <button
             onClick={() => {
@@ -695,7 +697,7 @@ const AlarmHistory: React.FC = () => {
             }}
           >
             <i className="fas fa-sliders-h" />
-            Control History {controlTotal > 0 ? `(${controlTotal})` : ''}
+            제어 이력 {controlTotal > 0 ? `(${controlTotal})` : ''}
           </button>
         </div>
 
@@ -705,7 +707,7 @@ const AlarmHistory: React.FC = () => {
             <div className="mgmt-header-info">
               <h3 className="mgmt-title" style={{ fontSize: '18px' }}>
                 <i className="fas fa-list-ul" style={{ color: 'var(--primary-500)' }}></i>
-                History ({computedStats.total})
+                이력 ({computedStats.total})
               </h3>
             </div>
             <div className="view-toggle">
@@ -727,10 +729,10 @@ const AlarmHistory: React.FC = () => {
           </div>
         )}
 
-        {isInitialLoading ? (
+        {activeTab === 'alarm' && (isInitialLoading ? (
           <div className="mgmt-loading">
             <i className="fas fa-spinner fa-spin"></i>
-            <p>Loading data...</p>
+            <p>{t('loading')}</p>
           </div>
         ) : (
           <>
@@ -740,13 +742,13 @@ const AlarmHistory: React.FC = () => {
                   <thead>
                     <tr>
                       <th style={{ width: '100px' }}>ID</th>
-                      <th style={{ width: '120px', textAlign: 'center' }}>Severity</th>
-                      <th style={{ width: '180px' }}>Device / Point</th>
-                      <th>Message</th>
-                      <th style={{ width: '120px', textAlign: 'center' }}>Status</th>
-                      <th style={{ width: '200px', whiteSpace: 'nowrap' }}>Occurrence Time</th>
-                      <th style={{ width: '90px' }}>Duration</th>
-                      <th style={{ width: '60px', textAlign: 'center' }}>Action</th>
+                      <th style={{ width: '120px', textAlign: 'center' }}>{t('severity.label')}</th>
+                      <th style={{ width: '180px' }}>{t('columns.devicePoint')}</th>
+                      <th>{t('columns.message')}</th>
+                      <th style={{ width: '120px', textAlign: 'center' }}>{t('columns.status')}</th>
+                      <th style={{ width: '200px', whiteSpace: 'nowrap' }}>{t('columns.occurrenceTime')}</th>
+                      <th style={{ width: '90px' }}>{t('columns.duration')}</th>
+                      <th style={{ width: '60px', textAlign: 'center' }}>{t('columns.action')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -755,7 +757,7 @@ const AlarmHistory: React.FC = () => {
                         <td colSpan={8} className="text-center" style={{ padding: '80px 0' }}>
                           <div className="text-muted">
                             <i className="fas fa-inbox" style={{ fontSize: '48px', marginBottom: '16px', display: 'block', opacity: 0.3 }}></i>
-                            No results found.
+                            검색 결과 없음
                           </div>
                         </td>
                       </tr>
@@ -844,7 +846,7 @@ const AlarmHistory: React.FC = () => {
                 <div style={{ padding: '32px', overflowY: 'auto' }}>
                   <div style={{ position: 'relative', borderLeft: '2px solid var(--neutral-200)', marginLeft: '16px', paddingLeft: '32px' }}>
                     {(!alarmEvents || alarmEvents.length === 0) ? (
-                      <div className="text-center text-muted" style={{ padding: '40px' }}>No results found.</div>
+                      <div className="text-center text-muted" style={{ padding: '40px' }}>{t('noSearchResults')}</div>
                     ) : (
                       alarmEvents.map((event) => {
                         if (!event) return null;
@@ -909,7 +911,7 @@ const AlarmHistory: React.FC = () => {
               />
             </div>
           </>
-        )}
+        ))}
 
         {/* ── 제어이력 탭 ── */}
         {activeTab === 'control' && (
@@ -917,7 +919,7 @@ const AlarmHistory: React.FC = () => {
             {controlLoading ? (
               <div className="mgmt-loading">
                 <i className="fas fa-spinner fa-spin"></i>
-                <p>Loading control history...</p>
+                <p>{t('controlLog.loading')}</p>
               </div>
             ) : (
               <div className="mgmt-table-wrapper" style={{ flex: 1 }}>
@@ -925,15 +927,15 @@ const AlarmHistory: React.FC = () => {
                   <thead>
                     <tr>
                       <th style={{ width: '50px' }}>ID</th>
-                      <th style={{ width: '90px' }}>User</th>
-                      <th style={{ width: '150px' }}>Device / Point</th>
-                      <th style={{ width: '90px', textAlign: 'center' }}>Changed Value</th>
-                      <th style={{ width: '110px', textAlign: 'center' }}>Sent</th>
-                      <th style={{ width: '110px', textAlign: 'center' }}>Executed</th>
-                      <th style={{ width: '110px', textAlign: 'center' }}>Applied</th>
-                      <th style={{ width: '80px', textAlign: 'center' }}>Final</th>
-                      <th style={{ width: '80px', textAlign: 'center' }}>Alarm</th>
-                      <th style={{ width: '150px' }}>Requested At</th>
+                      <th style={{ width: '90px' }}>{t('controlLog.user')}</th>
+                      <th style={{ width: '150px' }}>{t('columns.devicePoint')}</th>
+                      <th style={{ width: '90px', textAlign: 'center' }}>{t('controlLog.changedValue')}</th>
+                      <th style={{ width: '110px', textAlign: 'center' }}>{t('controlLog.delivery')}</th>
+                      <th style={{ width: '110px', textAlign: 'center' }}>{t('controlLog.execution')}</th>
+                      <th style={{ width: '110px', textAlign: 'center' }}>{t('controlLog.verification')}</th>
+                      <th style={{ width: '80px', textAlign: 'center' }}>{t('controlLog.finalStatus')}</th>
+                      <th style={{ width: '80px', textAlign: 'center' }}>{t('controlLog.alarm')}</th>
+                      <th style={{ width: '150px' }}>{t('controlLog.requestTime')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -942,7 +944,7 @@ const AlarmHistory: React.FC = () => {
                         <td colSpan={10} className="text-center" style={{ padding: '80px 0' }}>
                           <div className="text-muted">
                             <i className="fas fa-inbox" style={{ fontSize: '48px', marginBottom: '16px', display: 'block', opacity: 0.3 }}></i>
-                            No control history.
+                            제어 이력 없음
                           </div>
                         </td>
                       </tr>
@@ -950,19 +952,19 @@ const AlarmHistory: React.FC = () => {
                       controlLogs.map((log) => {
                         const deliveryColor = log.delivery_status === 'delivered' ? '#22c55e' : log.delivery_status === 'no_collector' ? '#ef4444' : '#f59e0b';
                         const deliveryIcon = log.delivery_status === 'delivered' ? 'fa-check-circle' : log.delivery_status === 'no_collector' ? 'fa-times-circle' : 'fa-clock';
-                        const deliveryText = log.delivery_status === 'delivered' ? 'Delivered' : log.delivery_status === 'no_collector' ? 'Not Delivered' : 'Pending';
+                        const deliveryText = log.delivery_status === 'delivered' ? t('delivery.delivered') : log.delivery_status === 'no_collector' ? t('delivery.noCollector') : t('delivery.pending');
 
                         const execColor = log.execution_result === 'protocol_success' ? '#22c55e' : log.execution_result === 'protocol_failure' || log.execution_result === 'failure' ? '#ef4444' : log.execution_result === 'protocol_async' ? '#3b82f6' : log.execution_result === 'timeout' ? '#f97316' : '#9ca3af';
                         const execIcon = log.execution_result === 'protocol_success' ? 'fa-check-circle' : log.execution_result === 'protocol_failure' || log.execution_result === 'failure' ? 'fa-times-circle' : log.execution_result === 'protocol_async' ? 'fa-exchange-alt' : log.execution_result === 'timeout' ? 'fa-hourglass-end' : 'fa-clock';
-                        const execText = log.execution_result === 'protocol_success' ? 'Success' : log.execution_result === 'protocol_failure' || log.execution_result === 'failure' ? 'Failure' : log.execution_result === 'protocol_async' ? 'Async' : log.execution_result === 'timeout' ? 'Timeout' : 'Pending';
+                        const execText = log.execution_result === 'protocol_success' ? t('execution.success') : log.execution_result === 'protocol_failure' || log.execution_result === 'failure' ? t('execution.failure') : log.execution_result === 'protocol_async' ? t('execution.async_') : log.execution_result === 'timeout' ? t('execution.timeout') : t('execution.pending');
 
                         const verColor = log.verification_result === 'verified' ? '#22c55e' : log.verification_result === 'unverified' ? '#f59e0b' : log.verification_result === 'skipped' ? '#9ca3af' : '#d1d5db';
                         const verIcon = log.verification_result === 'verified' ? 'fa-check-double' : log.verification_result === 'unverified' ? 'fa-exclamation-triangle' : log.verification_result === 'skipped' ? 'fa-minus-circle' : 'fa-clock';
-                        const verText = log.verification_result === 'verified' ? 'Applied' : log.verification_result === 'unverified' ? 'Not Applied' : log.verification_result === 'skipped' ? 'Skipped' : 'Pending';
+                        const verText = log.verification_result === 'verified' ? '적용됨' : log.verification_result === 'unverified' ? '미적용' : log.verification_result === 'skipped' ? '건너뜀' : '대기중';
 
                         const finalBg = log.final_status === 'success' ? '#dcfce7' : log.final_status === 'failure' || log.final_status === 'timeout' ? '#fee2e2' : log.final_status === 'partial' ? '#fef3c7' : '#f3f4f6';
                         const finalColor = log.final_status === 'success' ? '#16a34a' : log.final_status === 'failure' || log.final_status === 'timeout' ? '#dc2626' : log.final_status === 'partial' ? '#d97706' : '#6b7280';
-                        const finalText = log.final_status === 'success' ? 'Success' : log.final_status === 'failure' ? 'Failure' : log.final_status === 'timeout' ? 'Timeout' : log.final_status === 'partial' ? 'Partial' : 'Pending';
+                        const finalText = log.final_status === 'success' ? t('final.success') : log.final_status === 'failure' ? t('final.failure') : log.final_status === 'timeout' ? t('final.timeout') : log.final_status === 'partial' ? t('final.partial') : t('final.pending');
 
                         return (
                           <tr key={log.id}>

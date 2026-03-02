@@ -58,5 +58,24 @@
         "executeFail": "실행 실패",
         "bulkDeleteFail": "일괄 삭제 중 오류가 발생했습니다.",
         "bulkToggleFail": "일괄 상태 변경 중 오류가 발생했습니다."
+    },
+    "table": {
+        "name": "이름",
+        "category": "카테고리",
+        "formula": "수식",
+        "currentValue": "현재 값",
+        "active": "활성",
+        "calcStatus": "계산 상태",
+        "scope": "범위",
+        "execType": "실행 유형",
+        "lastCalc": "업데이트",
+        "statusNormal": "정상",
+        "statusError": "오류",
+        "statusStopped": "중지",
+        "execPeriodic": "주기적",
+        "execEvent": "이벤트",
+        "scopeGlobal": "전체",
+        "scopeSite": "사이트",
+        "scopeDevice": "디바이스"
     }
 }
