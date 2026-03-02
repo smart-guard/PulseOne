@@ -9,42 +9,43 @@ import '../../styles/limits-grid.css';
 
 // --- Constants ---
 const SCRIPT_PATTERNS = [
-  { id: 'threshold_above', label: 'Simple Upper Limit', icon: '📈', script: 'return value > 100;' },
-  { id: 'threshold_below', label: 'Simple Lower Limit', icon: '📉', script: 'return value < 0;' },
-  { id: 'moving_avg', label: 'Moving Average', icon: '📊', script: '// moving average\nconst avg = (value + prev_value) / 2;\nreturn avg > 80;' },
-  { id: 'hysteresis', label: 'Hysteresis', icon: '➰', script: 'if (!is_active) return value > 90;\nelse return value > 80;' },
-  { id: 'rate_of_change', label: 'Rapid Rate of Change', icon: '⚡', script: 'return Math.abs(value - prev_value) > 10;' }
+  { id: 'threshold_above', labelKey: 'patternUpperLimit', icon: '📈', script: 'return value > 100;' },
+  { id: 'threshold_below', labelKey: 'patternLowerLimit', icon: '📉', script: 'return value < 0;' },
+  { id: 'moving_avg', labelKey: 'patternMovingAvg', icon: '📊', script: '// moving average\nconst avg = (value + prev_value) / 2;\nreturn avg > 80;' },
+  { id: 'hysteresis', labelKey: 'patternHysteresis', icon: '➰', script: 'if (!is_active) return value > 90;\nelse return value > 80;' },
+  { id: 'rate_of_change', labelKey: 'patternRateOfChange', icon: '⚡', script: 'return Math.abs(value - prev_value) > 10;' }
 ];
 
 const ALARM_PRESETS = [
   {
-    id: 'high_temp', icon: '🔥', title: 'High Temperature Alarm', apply: {
+    id: 'high_temp', icon: '🔥', titleKey: 'presetHighTemp', apply: {
       name: 'System High Temp Alarm', category: 'temperature', alarm_type: 'analog' as const, high_limit: '80', high_high_limit: '90', severity: 'high' as const,
       tags: ['#high_temp', '#safety'], description: 'Detects internal temperature rise due to cooling system issues or increased load. May cause hardware damage if sustained.'
     }
   },
   {
-    id: 'comm_loss', icon: '🔌', title: 'Communication Lost', apply: {
+    id: 'comm_loss', icon: '🔌', titleKey: 'presetCommLost', apply: {
       name: 'Connection Loss Detection', category: 'system', target_type: 'device' as const, alarm_type: 'digital' as const, trigger_condition: 'connection_lost', severity: 'critical' as const,
       tags: ['#network', '#critical'], description: 'Device connection has been lost. Check network status or power supply.'
     }
   },
   {
-    id: 'delayed_trigger', icon: '⌛', title: 'Delayed Trigger', apply: {
+    id: 'delayed_trigger', icon: '⌛', titleKey: 'presetDelayedTrigger', apply: {
       name: 'Delay-Based Alarm', category: 'general', alarm_type: 'analog' as const, high_limit: '100', deadband: '5.0', severity: 'medium' as const,
       description: 'An alarm with delay to prevent false triggers from temporary noise or spikes.'
     }
   },
   {
-    id: 'complex_cond', icon: '🔴', title: 'Complex Condition', apply: {
+    id: 'complex_cond', icon: '🔴', titleKey: 'presetComplexCond', apply: {
       name: 'Complex Condition Alarm', category: 'safety', target_type: 'data_point' as const, alarm_type: 'script' as const, condition_script: 'return value > 50 && prev_value < 50;', severity: 'high' as const,
       description: 'Precise alarm using complex logic (e.g., change detection) that cannot be expressed with simple thresholds.'
     }
   }
 ];
 
-const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
-  'temperature': 'Temperature', 'pressure': 'Pressure', 'flow': 'Flow', 'level': 'Level', 'vibration': 'Vibration', 'electrical': 'Electrical', 'safety': 'Safety', 'general': 'General'
+const CATEGORY_KEYS: Record<string, string> = {
+  'temperature': 'categoryTemperature', 'pressure': 'categoryPressure', 'flow': 'categoryFlow', 'level': 'categoryLevel',
+  'vibration': 'categoryVibration', 'electrical': 'categoryElectrical', 'safety': 'categorySafety', 'general': 'categoryGeneral', 'system': 'categorySystem'
 };
 
 // --- Interfaces ---
@@ -96,7 +97,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
 }) => {
   const tagInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
-    const { t } = useTranslation(['alarms', 'common']);
+  const { t } = useTranslation(['alarms', 'common']);
   const [formData, setFormData] = useState<AlarmRuleFormData>({
     name: '', description: '', target_type: 'data_point', target_id: '', selected_device_id: '', target_group: '',
     alarm_type: 'analog', high_high_limit: '', high_limit: '', low_limit: '', low_low_limit: '', deadband: '2.0',
@@ -205,11 +206,11 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
 
   const handleSubmit = async () => {
     if (!formData.name) {
-      await confirm({ title: 'Input Required', message: 'Please enter a rule name.', confirmText: 'OK', showCancelButton: false, confirmButtonType: 'primary' });
+      await confirm({ title: t('ruleModal.inputRequired'), message: t('ruleModal.enterRuleName'), confirmText: 'OK', showCancelButton: false, confirmButtonType: 'primary' });
       return;
     }
     if (!formData.target_id) {
-      await confirm({ title: 'Input Required', message: 'Please select a target.', confirmText: 'OK', showCancelButton: false, confirmButtonType: 'primary' });
+      await confirm({ title: t('ruleModal.inputRequired'), message: t('ruleModal.selectTarget'), confirmText: 'OK', showCancelButton: false, confirmButtonType: 'primary' });
       return;
     }
 
@@ -235,8 +236,8 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
 
       if (response && response.success) {
         await confirm({
-          title: mode === 'create' ? 'Created' : 'Updated',
-          message: mode === 'create' ? 'New alarm rule created.' : 'Alarm rule updated.',
+          title: mode === 'create' ? t('ruleModal.created') : t('ruleModal.updated'),
+          message: mode === 'create' ? t('ruleModal.alarmRuleCreated') : t('ruleModal.alarmRuleUpdated'),
           confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'primary'
@@ -245,8 +246,8 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
         onClose();
       } else {
         await confirm({
-          title: 'Save Failed',
-          message: `Save failed: ${response?.message || 'Unknown error'}`,
+          title: t('ruleModal.saveFailed'),
+          message: t('ruleModal.saveFailedMsg', { msg: response?.message || 'Unknown error' }),
           confirmText: 'OK',
           showCancelButton: false,
           confirmButtonType: 'danger'
@@ -255,8 +256,8 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
     } catch (error: any) {
       console.error(error);
       await confirm({
-        title: 'Error',
-        message: `Error occurred while saving: ${error.message || 'Unknown error'}`,
+        title: t('ruleModal.error'),
+        message: t('ruleModal.saveError', { msg: error.message || 'Unknown error' }),
         confirmText: 'OK',
         showCancelButton: false,
         confirmButtonType: 'danger'
@@ -269,11 +270,11 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
   const generateSentence = () => {
     const targetName = getSelectedTargetName();
     const pills: { text: string; highlight?: boolean }[] = [];
-    pills.push({ text: "If" });
+    pills.push({ text: t('ruleModal.previewIf') });
     pills.push({ text: `[${targetName}]`, highlight: true });
-    pills.push({ text: "of" });
-    pills.push({ text: formData.alarm_type === 'analog' ? 'Analog' : 'Status', highlight: true });
-    pills.push({ text: "value is" });
+    pills.push({ text: t('ruleModal.previewOf') });
+    pills.push({ text: formData.alarm_type === 'analog' ? t('ruleModal.condAnalog') : t('ruleModal.condDigital'), highlight: true });
+    pills.push({ text: t('ruleModal.previewValueIs') });
 
     if (formData.alarm_type === 'analog') {
       const val = formData.high_limit || formData.trigger_condition || "...";
@@ -282,7 +283,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
       pills.push({ text: `[${formData.trigger_condition || '...'}]`, highlight: true });
     }
 
-    pills.push({ text: "then trigger alarm." });
+    pills.push({ text: t('ruleModal.previewThenTrigger') });
     return pills;
   };
 
@@ -305,19 +306,19 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
     <div className="modal-overlay">
       <div className="modal modal-xl">
         <div className="modal-header">
-          <h2 className="modal-title">{mode === 'create' ? 'Create New Alarm Rule:' : `Edit Alarm Rule: ${rule?.name}`}</h2>
+          <h2 className="modal-title">{mode === 'create' ? t('ruleModal.createTitle') : t('ruleModal.editTitle', { name: rule?.name })}</h2>
           <button className="close-button" onClick={onClose}><i className="fas fa-times"></i></button>
         </div>
         <div className="modal-content">
           <div className="form-section-header" style={{ padding: '24px 32px 0 32px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--neutral-600)' }}>
-            <i className="fas fa-pencil-alt"></i> Quick Start (Presets & Templates)
+            <i className="fas fa-pencil-alt"></i> {t('ruleModal.quickStart')}
           </div>
           <div className="preset-horizontal-scroll-container" style={{ padding: '12px 32px 24px 32px' }}>
             <div className="preset-horizontal-list">
               {ALARM_PRESETS.map(p => (
                 <button key={p.id} type="button" className="preset-chip-btn preset-type" onClick={() => handlePresetSelect(p)}>
                   <span className="preset-chip-icon">{p.icon}</span>
-                  <span className="preset-chip-title">{p.title}</span>
+                  <span className="preset-chip-title">{t(`ruleModal.${p.titleKey}`)}</span>
                 </button>
               ))}
             </div>
@@ -330,7 +331,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
               <div className="form-section">
                 <div className="form-group">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <label className="form-label" style={{ marginBottom: 0 }}>Rule Name *</label>
+                    <label className="form-label" style={{ marginBottom: 0 }}>{t('ruleModal.ruleName')}</label>
                     <label className="toggle-switch-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
                       <input
                         type="checkbox"
@@ -339,30 +340,30 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                         style={{ accentColor: 'var(--success-500)', transform: 'scale(1.2)' }}
                       />
                       <span style={{ color: formData.is_enabled ? 'var(--success-600)' : 'var(--neutral-400)' }}>
-                        {formData.is_enabled ? 'Enabled' : 'Disabled'}
+                        {formData.is_enabled ? t('ruleModal.enabled') : t('ruleModal.disabled')}
                       </span>
                     </label>
                   </div>
-                  <input type="text" className="form-input" placeholder="Enter alarm rule name" value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))} />
+                  <input type="text" className="form-input" placeholder={t('ruleModal.ruleNamePlaceholder')} value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Category</label>
+                  <label className="form-label">{t('ruleModal.category')}</label>
                   <select className="form-select" value={formData.category} onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}>
-                    <option value="">Select</option>
-                    {Object.entries(CATEGORY_DISPLAY_NAMES).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+                    <option value="">{t('ruleModal.categorySelect')}</option>
+                    {Object.entries(CATEGORY_KEYS).map(([val, key]) => <option key={val} value={val}>{t(`ruleModal.${key}`)}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Description</label>
-                  <textarea className="form-input" placeholder="Enter a description for this alarm rule" rows={2} value={formData.description} onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))} />
+                  <label className="form-label">{t('ruleModal.description')}</label>
+                  <textarea className="form-input" placeholder={t('ruleModal.descriptionPlaceholder')} rows={2} value={formData.description} onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Tags</label>
+                  <label className="form-label">{t('ruleModal.tags')}</label>
                   <div className="tags-input" onClick={() => tagInputRef.current?.focus()}>
-                    {formData.tags.map(t => (
-                      <span key={t} className="tag-item">
-                        {t}
-                        <button type="button" onClick={(e) => { e.stopPropagation(); removeTag(t); }}>
+                    {formData.tags.map(tag => (
+                      <span key={tag} className="tag-item">
+                        {tag}
+                        <button type="button" onClick={(e) => { e.stopPropagation(); removeTag(tag); }}>
                           <i className="fas fa-times"></i>
                         </button>
                       </span>
@@ -371,7 +372,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                       ref={tagInputRef}
                       type="text"
                       className="tags-input-field"
-                      placeholder="Enter tag then press Enter or comma"
+                      placeholder={t('ruleModal.tagsPlaceholder')}
                       onKeyDown={e => {
                         if (e.key === 'Enter' || e.key === ',') {
                           e.preventDefault();
@@ -387,30 +388,30 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
               {/* --- Section 2: Target Selection --- */}
               <div className="form-section">
                 <div className="form-group">
-                  <label className="form-label">Target Type *</label>
+                  <label className="form-label">{t('ruleModal.targetType')}</label>
                   <div className="logic-pill-container" style={{ display: 'flex', gap: '8px' }}>
-                    {['data_point', 'device', 'virtual_point'].map(t => (
-                      <button key={t} type="button" className={`logic-pill ${formData.target_type === t ? 'active' : ''}`} onClick={() => handleTargetTypeChange(t)}>
-                        {t === 'data_point' ? 'Data Point' : t === 'device' ? 'Device' : 'Virtual Point'}
+                    {(['data_point', 'device', 'virtual_point'] as const).map(tp => (
+                      <button key={tp} type="button" className={`logic-pill ${formData.target_type === tp ? 'active' : ''}`} onClick={() => handleTargetTypeChange(tp)}>
+                        {tp === 'data_point' ? t('ruleModal.targetDataPoint') : tp === 'device' ? t('ruleModal.targetDevice') : t('ruleModal.targetVirtualPoint')}
                       </button>
                     ))}
                   </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Target Group</label>
-                  <input type="text" className="form-input" placeholder="Target group (optional)" value={formData.target_group} onChange={e => setFormData(prev => ({ ...prev, target_group: e.target.value }))} />
+                  <label className="form-label">{t('ruleModal.targetGroup')}</label>
+                  <input type="text" className="form-input" placeholder={t('ruleModal.targetGroupPlaceholder')} value={formData.target_group} onChange={e => setFormData(prev => ({ ...prev, target_group: e.target.value }))} />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Select Device *</label>
+                  <label className="form-label">{t('ruleModal.selectDevice')}</label>
                   <select className="form-select" value={formData.selected_device_id} onChange={e => handleDeviceChange(e.target.value)}>
-                    <option value="">Select a device</option>
+                    <option value="">{t('ruleModal.selectDevicePlaceholder')}</option>
                     {getDeviceOptions().map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Select Data Point *</label>
+                  <label className="form-label">{t('ruleModal.selectDataPoint')}</label>
                   <select className="form-select" value={formData.target_id} onChange={e => handleTargetChange(e.target.value)} disabled={!formData.selected_device_id}>
-                    <option value="">Select a data point</option>
+                    <option value="">{t('ruleModal.selectDataPointPlaceholder')}</option>
                     {getDataPointOptions().map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
@@ -418,21 +419,21 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
 
               {/* --- Section 3: Condition Settings --- */}
               <div className="form-section">
-                <div className="section-title">Condition Settings</div>
+                <div className="section-title">{t('ruleModal.conditionSettings')}</div>
                 <div className="form-group">
                   <div className="logic-pill-container" style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-                    {['analog', 'digital', 'script'].map(t => (
-                      <button key={t} type="button" className={`logic-pill ${formData.alarm_type === t ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, alarm_type: t as any }))}>
-                        {t === 'analog' ? 'Analog' : t === 'digital' ? 'Digital' : 'Script'}
+                    {(['analog', 'digital', 'script'] as const).map(tp => (
+                      <button key={tp} type="button" className={`logic-pill ${formData.alarm_type === tp ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, alarm_type: tp }))}>
+                        {tp === 'analog' ? t('ruleModal.condAnalog') : tp === 'digital' ? t('ruleModal.condDigital') : t('ruleModal.condScript')}
                       </button>
                     ))}
                   </div>
                 </div>
                 {formData.alarm_type === 'analog' && (
                   <div className="limits-grid">
-                    {['HH', 'H', 'L', 'LL'].map(l => (
+                    {(['HH', 'H', 'L', 'LL'] as const).map(l => (
                       <div key={l} className="form-group">
-                        <label className="form-label">{l} LIMIT</label>
+                        <label className="form-label">{l === 'HH' ? t('ruleModal.hhLimit') : l === 'H' ? t('ruleModal.hLimit') : l === 'L' ? t('ruleModal.lLimit') : t('ruleModal.llLimit')}</label>
                         <input type="number" className="form-input"
                           value={(formData as any)[l === 'HH' ? 'high_high_limit' : l === 'H' ? 'high_limit' : l === 'L' ? 'low_limit' : 'low_low_limit']}
                           onChange={e => setFormData(prev => ({ ...prev, [l === 'HH' ? 'high_high_limit' : l === 'H' ? 'high_limit' : l === 'L' ? 'low_limit' : 'low_low_limit']: e.target.value }))} />
@@ -440,24 +441,24 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                     ))}
                     <div className="form-group">
                       <label className="form-label" title="Alarm clear hysteresis. Value must drop this amount below threshold before alarm clears. Required to prevent chattering.">
-                        DEADBAND &nbsp;<i className="fas fa-info-circle" style={{ color: 'var(--primary-400)', fontSize: '11px' }} title="Chattering prevention: Alarm will not trigger if value fluctuates within threshold ± Deadband range."></i>
+                        {t('ruleModal.deadband')} &nbsp;<i className="fas fa-info-circle" style={{ color: 'var(--primary-400)', fontSize: '11px' }} title="Chattering prevention: Alarm will not trigger if value fluctuates within threshold ± Deadband range."></i>
                       </label>
                       <input type="number" className="form-input" placeholder="e.g. 5.0" value={formData.deadband} onChange={e => setFormData(prev => ({ ...prev, deadband: e.target.value }))} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">ROC LIMIT</label>
+                      <label className="form-label">{t('ruleModal.rocLimit')}</label>
                       <input type="number" className="form-input" value={formData.rate_of_change} onChange={e => setFormData(prev => ({ ...prev, rate_of_change: e.target.value }))} />
                     </div>
                   </div>
                 )}
                 {formData.alarm_type === 'digital' && (
                   <div className="form-group">
-                    <label className="form-label">Trigger Condition</label>
+                    <label className="form-label">{t('ruleModal.triggerCondition')}</label>
                     <select className="form-select" value={formData.trigger_condition} onChange={e => setFormData(prev => ({ ...prev, trigger_condition: e.target.value }))}>
-                      <option value="on_true">When value is True (1)</option>
-                      <option value="on_false">When value is False (0)</option>
-                      <option value="on_change">On State Change</option>
-                      <option value="connection_lost">Connection Lost</option>
+                      <option value="on_true">{t('ruleModal.condOnTrue')}</option>
+                      <option value="on_false">{t('ruleModal.condOnFalse')}</option>
+                      <option value="on_change">{t('ruleModal.condOnChange')}</option>
+                      <option value="connection_lost">{t('ruleModal.condConnLost')}</option>
                     </select>
                   </div>
                 )}
@@ -466,7 +467,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                     <div className="script-patterns-grid" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
                       {SCRIPT_PATTERNS.map(p => (
                         <button key={p.id} type="button" className={`pattern-chip ${formData.condition_script === p.script ? 'active' : ''}`} onClick={() => handlePatternSelect(p)}>
-                          {p.icon} {p.label}
+                          {p.icon} {t(`ruleModal.${p.labelKey}`)}
                         </button>
                       ))}
                     </div>
@@ -477,7 +478,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
 
               {/* --- Section 4: Notifications & Actions --- */}
               <div className="form-section">
-                <div className="section-title">Notifications & Actions</div>
+                <div className="section-title">{t('ruleModal.notificationsActions')}</div>
 
                 {/* Latching - 가장 중요하므로 최상단 강조 박스 */}
                 <div style={{
@@ -495,12 +496,11 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                     />
                     <div>
                       <div style={{ fontWeight: 600, fontSize: '13px', color: formData.is_latched ? 'var(--warning-700, #b45309)' : 'var(--neutral-700)' }}>
-                        Latching
-                        {formData.is_latched && <span style={{ marginLeft: '8px', fontSize: '11px', background: 'var(--warning-200)', color: 'var(--warning-800)', padding: '1px 6px', borderRadius: '10px' }}>Enabled</span>}
+                        {t('ruleModal.latching')}
+                        {formData.is_latched && <span style={{ marginLeft: '8px', fontSize: '11px', background: 'var(--warning-200)', color: 'var(--warning-800)', padding: '1px 6px', borderRadius: '10px' }}>{t('ruleModal.latchingEnabled')}</span>}
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginTop: '2px', lineHeight: 1.4 }}>
-                        Even after the state returns to normal, the operator must press <strong>the Acknowledge button</strong> to clear the alarm.
-                        Recommended for Critical alarms.
+                        {t('ruleModal.latchingDesc')}
                       </div>
                     </div>
                   </label>
@@ -508,9 +508,9 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
 
                 <div className="notification-grid">
                   <div className="checkbox-group">
-                    <label className="checkbox-label" title="Automatically acknowledges alarm on trigger. Disabling is generally recommended.">
+                    <label className="checkbox-label" title={t('ruleModal.autoAcknowledgeTitle')}>
                       <input type="checkbox" checked={formData.auto_acknowledge} onChange={e => setFormData(prev => ({ ...prev, auto_acknowledge: e.target.checked }))} />
-                      Auto Acknowledge
+                      {t('ruleModal.autoAcknowledge')}
                     </label>
                   </div>
                   <div className="checkbox-group">
@@ -521,13 +521,13 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                         onChange={e => setFormData(prev => ({ ...prev, auto_clear: e.target.checked }))}
                         disabled={formData.is_latched}
                       />
-                      <span>자동 해제 (Auto Clear)
-                        {formData.is_latched && <span style={{ fontSize: '10px', color: 'var(--neutral-400)', marginLeft: '4px' }}>— Latching 시 무시됨</span>}
+                      <span>{t('ruleModal.autoClear')}
+                        {formData.is_latched && <span style={{ fontSize: '10px', color: 'var(--neutral-400)', marginLeft: '4px' }}>{t('ruleModal.autoClearIgnored')}</span>}
                       </span>
                     </label>
                   </div>
                   <div className="priority-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <label className="form-label" style={{ whiteSpace: 'nowrap', marginBottom: 0 }}>우선순위 (1-1000)</label>
+                    <label className="form-label" style={{ whiteSpace: 'nowrap', marginBottom: 0 }}>{t('ruleModal.priority')}</label>
                     <input type="number" className="form-input" style={{ width: '80px' }} value={formData.priority} onChange={e => setFormData(prev => ({ ...prev, priority: parseInt(e.target.value) || 100 }))} />
                   </div>
                 </div>
@@ -536,7 +536,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
 
             <div className="sentence-builder-bar" style={{ marginTop: '32px', marginBottom: '12px', borderRadius: '8px' }}>
               <i className="fas fa-robot"></i>
-              <div className="sentence-label" style={{ marginLeft: '12px' }}>Live Preview:</div>
+              <div className="sentence-label" style={{ marginLeft: '12px' }}>{t('ruleModal.livePreview')}</div>
               {renderSentencePills(generateSentence())}
             </div>
           </form>
@@ -562,7 +562,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                 If delete button is here, it stays on the left. */}
           </div>
           <div className="footer-right" style={{ display: 'flex', gap: '12px' }}>
-            <button type="button" className="btn btn-secondary" style={{ minWidth: '100px' }} onClick={onClose}>{t('cancel', {ns: 'common'})}</button>
+            <button type="button" className="btn btn-secondary" style={{ minWidth: '100px' }} onClick={onClose}>{t('cancel', { ns: 'common' })}</button>
             <button type="button" className="btn btn-primary" style={{ minWidth: '100px' }} onClick={handleSubmit}>
               {mode === 'create' ? '생성' : '수정'}
             </button>
