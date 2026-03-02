@@ -162,6 +162,7 @@ export const RoleModal: React.FC<RoleModalProps> = ({
                                     <input
                                         type="text"
                                         className="mgmt-input"
+                                        style={{ height: '44px' }}
                                         value={formData.name}
                                         onChange={(e) => handleInputChange('name', e.target.value)}
                                         placeholder={t('roleModal.namePlaceholder', { ns: 'permissions' })}
@@ -177,6 +178,7 @@ export const RoleModal: React.FC<RoleModalProps> = ({
                                     <input
                                         type="text"
                                         className="mgmt-input"
+                                        style={{ height: '44px' }}
                                         value={formData.description || ''}
                                         onChange={(e) => handleInputChange('description', e.target.value)}
                                         placeholder={t('roleModal.descPlaceholder', { ns: 'permissions' })}
