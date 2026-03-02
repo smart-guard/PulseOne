@@ -550,7 +550,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
 
                 <div className="mgmt-modal-header">
                     <h3 className="mgmt-modal-title">
-                        <i className="fas fa-magic text-primary"></i> Add Device from Master Model
+                        <i className="fas fa-magic text-primary"></i> {t('labels.addDeviceFromMaster', { ns: 'deviceTemplates' })}
                     </h3>
                     <button className="mgmt-close-btn" onClick={onClose}><i className="fas fa-times"></i></button>
                 </div>
@@ -558,22 +558,22 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                 <div className="wizard-steps-container">
                     <div className={`wizard-step ${step === 1 ? 'active' : step > 1 ? 'completed' : ''}`}>
                         <div className="step-num">{step > 1 ? <i className="fas fa-check"></i> : '1'}</div>
-                        <div className="step-label">{t('labels.selectMasterModel', {ns: 'deviceTemplates'})}</div>
+                        <div className="step-label">{t('labels.selectMasterModel', { ns: 'deviceTemplates' })}</div>
                     </div>
                     <div className="step-line"></div>
                     <div className={`wizard-step ${step === 2 ? 'active' : step > 2 ? 'completed' : ''}`}>
                         <div className="step-num">{step > 2 ? <i className="fas fa-check"></i> : '2'}</div>
-                        <div className="step-label">{t('labels.connectionSetup', {ns: 'deviceTemplates'})}</div>
+                        <div className="step-label">{t('labels.connectionSetup', { ns: 'deviceTemplates' })}</div>
                     </div>
                     <div className="step-line"></div>
                     <div className={`wizard-step ${step === 3 ? 'active' : step > 3 ? 'completed' : ''}`}>
                         <div className="step-num">{step > 3 ? <i className="fas fa-check"></i> : '3'}</div>
-                        <div className="step-label">{t('labels.dataPoints', {ns: 'deviceTemplates'})}</div>
+                        <div className="step-label">{t('labels.dataPoints', { ns: 'deviceTemplates' })}</div>
                     </div>
                     <div className="step-line"></div>
                     <div className={`wizard-step ${step === 4 ? 'active' : ''}`}>
                         <div className="step-num">4</div>
-                        <div className="step-label">{t('labels.operationReliability', {ns: 'deviceTemplates'})}</div>
+                        <div className="step-label">{t('labels.operationReliability', { ns: 'deviceTemplates' })}</div>
                     </div>
                 </div>
 
@@ -587,28 +587,28 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
 
                     {step === 1 && (
                         <div className="wizard-content">
-                            <h4 className="wizard-title">1. Select the master model (template) to clone.</h4>
+                            <h4 className="wizard-title">{t('labels.selectMasterToClone', { ns: 'deviceTemplates' })}</h4>
                             <div className="mgmt-modal-form-grid" style={{ marginTop: '20px' }}>
                                 <div className="mgmt-modal-form-group">
-                                    <label>{t('filter.manufacturer', {ns: 'deviceTemplates'})}</label>
+                                    <label>{t('filter.manufacturer', { ns: 'deviceTemplates' })}</label>
                                     <select
                                         className="mgmt-select"
                                         value={selectedManufacturer || ''}
                                         onChange={(e) => handleManufacturerSelect(Number(e.target.value))}
                                     >
-                                        <option value="">{t('labels.selectManufacturer', {ns: 'deviceTemplates'})}</option>
+                                        <option value="">{t('labels.selectManufacturer', { ns: 'deviceTemplates' })}</option>
                                         {manufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                     </select>
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>{t('labels.hardwareModel', {ns: 'deviceTemplates'})}</label>
+                                    <label>{t('labels.hardwareModel', { ns: 'deviceTemplates' })}</label>
                                     <select
                                         className="mgmt-select"
                                         value={selectedModel || ''}
                                         disabled={!selectedManufacturer}
                                         onChange={(e) => handleModelSelect(Number(e.target.value))}
                                     >
-                                        <option value="">{t('labels.selectModel', {ns: 'deviceTemplates'})}</option>
+                                        <option value="">{t('labels.selectModel', { ns: 'deviceTemplates' })}</option>
                                         {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                     </select>
                                 </div>
@@ -617,7 +617,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                             {selectedModel && (
                                 <div style={{ marginTop: '24px' }}>
                                     <label style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '12px', display: 'block' }}>
-                                        Available Master Models (Templates)
+                                        {t('labels.availableMasterModels', { ns: 'deviceTemplates' })}
                                     </label>
                                     {templates.length > 0 ? (
                                         <div className="mgmt-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
@@ -644,7 +644,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                     ) : (
                                         <div className="info-box" style={{ background: '#f8fafc' }}>
                                             <i className="fas fa-info-circle"></i>
-                                            <span>{t('labels.noMasterModelsRegisteredForTheSelectedModel', {ns: 'deviceTemplates'})}</span>
+                                            <span>{t('labels.noMasterModelsRegisteredForTheSelectedModel', { ns: 'deviceTemplates' })}</span>
                                         </div>
                                     )}
                                 </div>
@@ -655,39 +655,42 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
 
                     {step === 2 && selectedTemplate && (
                         <div className="wizard-content">
-                            <h4 className="wizard-title">2. Set device identity and connection info.</h4>
+                            <h4 className="wizard-title">{t('labels.setDeviceIdentity', { ns: 'deviceTemplates' })}</h4>
 
                             <div className="wizard-section">
-                                <h5 className="wizard-section-title"><i className="fas fa-id-card"></i> Basic Identity</h5>
+                                <h5 className="wizard-section-title"><i className="fas fa-id-card"></i> {t('labels.basicIdentity', { ns: 'deviceTemplates' })}</h5>
                                 <div className="mgmt-modal-form-grid">
                                     <div className="mgmt-modal-form-group mgmt-span-full">
-                                        <label>Device Name *</label>
+                                        <label>{t('labels.deviceName', { ns: 'deviceTemplates' })}</label>
                                         <input
                                             className="mgmt-input"
                                             value={deviceName}
                                             onChange={e => setDeviceName(e.target.value)}
-                                            placeholder="e.g. Factory1 Inverter #1"
+                                            placeholder={t('labels.deviceNamePlaceholder', { ns: 'deviceTemplates' })}
+                                            style={{ height: '44px' }}
                                         />
                                     </div>
                                     <div className="mgmt-modal-form-group">
-                                        <label>Installation Site *</label>
+                                        <label>{t('labels.installationSite', { ns: 'deviceTemplates' })}</label>
                                         <select
                                             className="mgmt-select"
                                             value={selectedSite || ''}
                                             onChange={e => setSelectedSite(Number(e.target.value))}
+                                            style={{ height: '44px' }}
                                         >
-                                            <option value="">{t('labels.selectSite', {ns: 'deviceTemplates'})}</option>
+                                            <option value="">{t('labels.selectSite', { ns: 'deviceTemplates' })}</option>
                                             {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                         </select>
                                     </div>
                                     <div className="mgmt-modal-form-group">
-                                        <label>Assigned Collector (Edge Server) *</label>
+                                        <label>{t('labels.assignedCollector', { ns: 'deviceTemplates' })}</label>
                                         <select
                                             className="mgmt-select"
                                             value={selectedCollector || 0}
                                             onChange={e => setSelectedCollector(Number(e.target.value))}
+                                            style={{ height: '44px' }}
                                         >
-                                            <option value={0}>{t('labels.selectCollector', {ns: 'deviceTemplates'})}</option>
+                                            <option value={0}>{t('labels.selectCollector', { ns: 'deviceTemplates' })}</option>
                                             {availableCollectors.map(c => (
                                                 <option key={c.id} value={c.id}>{c.name} (ID: {c.id})</option>
                                             ))}
@@ -697,14 +700,14 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                             </div>
 
                             <div className="wizard-section" style={{ marginTop: '20px' }}>
-                                <h5 className="wizard-section-title"><i className="fas fa-network-wired"></i> Communication & Technical Spec Settings</h5>
+                                <h5 className="wizard-section-title"><i className="fas fa-network-wired"></i> {t('labels.commTechnicalSpec', { ns: 'deviceTemplates' })}</h5>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', alignItems: 'start' }}>
                                     {/* Left Column: Connection Path & Main ID */}
                                     <div className="setup-column-left">
                                         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: '15px', marginBottom: portConflicts.length > 0 ? '15px' : '0' }}>
                                             {!selectedProtocol?.uses_serial ? (
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>IP Address & Port *</label>
+                                                    <label>{t('labels.ipAddressPort', { ns: 'deviceTemplates' })}</label>
                                                     <div className="ip-port-input-group">
                                                         <input
                                                             type="text"
@@ -725,7 +728,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                                 </div>
                                             ) : (
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>Serial Port Path *</label>
+                                                    <label>{t('labels.serialPortPath', { ns: 'deviceTemplates' })}</label>
                                                     <input
                                                         className="mgmt-input"
                                                         value={endpoint}
@@ -770,7 +773,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                         <div style={{ marginTop: '20px' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
                                                 <i className="fas fa-network-wired text-primary"></i>
-                                                <span style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>{t('labels.portUsageNetworkMap', {ns: 'deviceTemplates'})}</span>
+                                                <span style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>{t('labels.portUsageNetworkMap', { ns: 'deviceTemplates' })}</span>
                                             </div>
 
                                             {portConflicts.length > 0 ? (
@@ -792,7 +795,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                                                     </div>
                                                                     <div style={{ flex: 1 }}>
                                                                         <div style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>{d.name}</div>
-                                                                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>{isMaster ? 'Master Device' : `Slave #${sid}`}</div>
+                                                                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>{isMaster ? t('labels.masterDevice', { ns: 'deviceTemplates' }) : t('labels.slaveNum', { ns: 'deviceTemplates', id: sid })}</div>
                                                                     </div>
                                                                     <span className={`badge badge-${isMaster ? 'primary' : 'success'}`} style={{ fontSize: '10px' }}>{isMaster ? 'MASTER' : 'SLAVE'}</span>
                                                                 </div>
@@ -804,7 +807,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                                         <div className="info-box success" style={{ marginTop: '15px', borderStyle: 'dashed' }}>
                                                             <i className="fas fa-magic"></i>
                                                             <div style={{ fontSize: '12px' }}>
-                                                                Next available Slave ID is <strong>{suggestedId}</strong>번 입니다. (자동 적용됨)
+                                                                Next available Slave ID: <strong>{suggestedId}</strong> {t('labels.nextAvailableSlaveId', { ns: 'deviceTemplates', id: suggestedId })}
                                                             </div>
                                                         </div>
                                                     )}
@@ -812,7 +815,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                             ) : (
                                                 <div style={{ textAlign: 'center', padding: '30px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #f1f5f9', color: '#94a3b8' }}>
                                                     <i className="fas fa-plug" style={{ fontSize: '24px', marginBottom: '10px', display: 'block', opacity: 0.3 }}></i>
-                                                    <span style={{ fontSize: '12px' }}>{t('labels.noDevicesConnectedToThisPort', {ns: 'deviceTemplates'})}</span>
+                                                    <span style={{ fontSize: '12px' }}>{t('labels.noDevicesConnectedToThisPort', { ns: 'deviceTemplates' })}</span>
                                                 </div>
                                             )}
                                         </div>
@@ -885,7 +888,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                             <div className="wizard-main-content" style={{ padding: '30px' }}>
                                 <div className="data-points-column" style={{ display: 'flex', flexDirection: 'column' }}>
                                     <section className="wizard-section" style={{ flex: 1, display: 'flex', flexDirection: 'column', margin: 0 }}>
-                                        <h4 className="wizard-title">3. Data Point Mapping & Config ({templateDataPoints.length} Points)</h4>
+                                        <h4 className="wizard-title">{t('labels.dataPointMappingConfig', { ns: 'deviceTemplates' })} ({templateDataPoints.length} Points)</h4>
                                         <div style={{ flex: 1, minHeight: '500px', border: '1px solid #e2e8f0', borderRadius: '12px', background: 'white' }}>
                                             <DeviceDataPointsTab
                                                 deviceId={0}
@@ -909,26 +912,26 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                     {step === 4 && selectedTemplate && (
                         <div className="wizard-layout full-width" style={{ display: 'block' }}>
                             <div className="wizard-main-content" style={{ padding: '30px' }}>
-                                <h4 className="wizard-title">4. Complete detailed operational & reliability settings.</h4>
+                                <h4 className="wizard-title">{t('labels.completeOperationSettings', { ns: 'deviceTemplates' })}</h4>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '30px' }}>
                                     {/* Column 1: Core Parameters */}
                                     <section className="wizard-section">
-                                        <h5 className="wizard-section-title"><i className="fas fa-cog"></i> Basic Operation Parameters</h5>
+                                        <h5 className="wizard-section-title"><i className="fas fa-cog"></i> {t('labels.basicOperationParam', { ns: 'deviceTemplates' })}</h5>
                                         <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
                                             <div className="mgmt-modal-form-group">
-                                                <label>Polling Interval (ms) *</label>
-                                                <input type="number" className="mgmt-input" value={pollingInterval} onChange={e => setPollingInterval(Math.max(10, Number(e.target.value)))} />
+                                                <label>{t('labels.pollingIntervalMs', { ns: 'deviceTemplates' })}</label>
+                                                <input type="number" className="mgmt-input" value={pollingInterval} onChange={e => setPollingInterval(Math.max(10, Number(e.target.value)))} style={{ height: '44px' }} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>Response Timeout (ms) *</label>
-                                                <input type="number" className="mgmt-input" value={timeout} onChange={e => setTimeoutVal(Math.max(100, Number(e.target.value)))} />
+                                                <label>{t('labels.responseTimeoutMs', { ns: 'deviceTemplates' })}</label>
+                                                <input type="number" className="mgmt-input" value={timeout} onChange={e => setTimeoutVal(Math.max(100, Number(e.target.value)))} style={{ height: '44px' }} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>Max Retry (Count) *</label>
-                                                <input type="number" className="mgmt-input" value={retryCount} onChange={e => setRetryCount(Math.max(0, Number(e.target.value)))} />
+                                                <label>{t('labels.maxRetryCount', { ns: 'deviceTemplates' })}</label>
+                                                <input type="number" className="mgmt-input" value={retryCount} onChange={e => setRetryCount(Math.max(0, Number(e.target.value)))} style={{ height: '44px' }} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>{t('labels.retryIntervalMs', {ns: 'deviceTemplates'})}</label>
+                                                <label>{t('labels.retryIntervalMs', { ns: 'deviceTemplates' })}</label>
                                                 <input type="number" className="mgmt-input" value={retryInterval} onChange={e => setRetryInterval(Number(e.target.value))} />
                                             </div>
                                         </div>
@@ -936,7 +939,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                         <div className="mgmt-modal-form-group" style={{ marginTop: '20px' }}>
                                             <div className="st-field-toggle">
                                                 <div className="toggle-header" style={{ marginBottom: '10px' }}>
-                                                    <label>{t('labels.keepaliveSession', {ns: 'deviceTemplates'})}</label>
+                                                    <label>{t('labels.keepaliveSession', { ns: 'deviceTemplates' })}</label>
                                                     <label className="switch">
                                                         <input type="checkbox" checked={isKeepAlive} onChange={e => setIsKeepAlive(e.target.checked)} />
                                                         <span className="slider"></span>
@@ -944,7 +947,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                                 </div>
                                                 {isKeepAlive && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                        <span style={{ fontSize: '13px', color: '#64748b' }}>{t('labels.intervaltimeouts', {ns: 'deviceTemplates'})}</span>
+                                                        <span style={{ fontSize: '13px', color: '#64748b' }}>{t('labels.intervaltimeouts', { ns: 'deviceTemplates' })}</span>
                                                         <input type="number" className="mgmt-input" style={{ width: '70px' }} value={kaInterval} onChange={e => setKaInterval(Number(e.target.value))} />
                                                         <input type="number" className="mgmt-input" style={{ width: '70px' }} value={kaTimeout} onChange={e => setKaTimeout(Number(e.target.value))} />
                                                     </div>
@@ -955,18 +958,18 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
 
                                     {/* Column 2: Error & Backoff */}
                                     <section className="wizard-section">
-                                        <h5 className="wizard-section-title"><i className="fas fa-undo"></i> Error Control & Exponential Backoff</h5>
+                                        <h5 className="wizard-section-title"><i className="fas fa-undo"></i> {t('labels.errorControlBackoff', { ns: 'deviceTemplates' })}</h5>
                                         <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr' }}>
                                             <div className="mgmt-modal-form-group">
-                                                <label>{t('labels.initialBackoffTimeMs', {ns: 'deviceTemplates'})}</label>
+                                                <label>{t('labels.initialBackoffTimeMs', { ns: 'deviceTemplates' })}</label>
                                                 <input type="number" className="mgmt-input" value={backoffTime} onChange={e => setBackoffTime(Number(e.target.value))} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>{t('labels.maxBackoffTimeMs', {ns: 'deviceTemplates'})}</label>
+                                                <label>{t('labels.maxBackoffTimeMs', { ns: 'deviceTemplates' })}</label>
                                                 <input type="number" className="mgmt-input" value={maxBackoffTime} onChange={e => setMaxBackoffTime(Number(e.target.value))} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>{t('labels.exponentialMultiplier', {ns: 'deviceTemplates'})}</label>
+                                                <label>{t('labels.exponentialMultiplier', { ns: 'deviceTemplates' })}</label>
                                                 <input type="number" step="0.1" className="mgmt-input" value={backoffMultiplier} onChange={e => setBackoffMultiplier(Number(e.target.value))} />
                                             </div>
                                         </div>
@@ -974,18 +977,18 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
 
                                     {/* Column 3: Advanced Buffer & Safety */}
                                     <section className="wizard-section">
-                                        <h5 className="wizard-section-title"><i className="fas fa-microchip"></i> Resources & Data Safety</h5>
+                                        <h5 className="wizard-section-title"><i className="fas fa-microchip"></i> {t('labels.resourcesDataSafety', { ns: 'deviceTemplates' })}</h5>
                                         <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
                                             <div className="mgmt-modal-form-group">
-                                                <label>{t('labels.readBufferSize', {ns: 'deviceTemplates'})}</label>
+                                                <label>{t('labels.readBufferSize', { ns: 'deviceTemplates' })}</label>
                                                 <input type="number" className="mgmt-input" value={readBufferSize} onChange={e => setReadBufferSize(Number(e.target.value))} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>{t('labels.writeBufferSize', {ns: 'deviceTemplates'})}</label>
+                                                <label>{t('labels.writeBufferSize', { ns: 'deviceTemplates' })}</label>
                                                 <input type="number" className="mgmt-input" value={writeBufferSize} onChange={e => setWriteBufferSize(Number(e.target.value))} />
                                             </div>
                                             <div className="mgmt-modal-form-group">
-                                                <label>{t('labels.queueSize', {ns: 'deviceTemplates'})}</label>
+                                                <label>{t('labels.queueSize', { ns: 'deviceTemplates' })}</label>
                                                 <input type="number" className="mgmt-input" value={queueSize} onChange={e => setQueueSize(Number(e.target.value))} />
                                             </div>
                                         </div>
@@ -1009,7 +1012,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                             <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr' }}>
                                                 <div className="st-field-toggle">
                                                     <div className="toggle-header">
-                                                        <label>{t('labels.enablePerformanceMonitoring', {ns: 'deviceTemplates'})}</label>
+                                                        <label>{t('labels.enablePerformanceMonitoring', { ns: 'deviceTemplates' })}</label>
                                                         <label className="switch">
                                                             <input type="checkbox" checked={isPerformanceMonitoring} onChange={e => setIsPerformanceMonitoring(e.target.checked)} />
                                                             <span className="slider"></span>
@@ -1018,7 +1021,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                                 </div>
                                                 <div className="st-field-toggle">
                                                     <div className="toggle-header">
-                                                        <label>{t('labels.enableCommunicationPacketLogging', {ns: 'deviceTemplates'})}</label>
+                                                        <label>{t('labels.enableCommunicationPacketLogging', { ns: 'deviceTemplates' })}</label>
                                                         <label className="switch">
                                                             <input type="checkbox" checked={isCommLogging} onChange={e => setIsCommLogging(e.target.checked)} />
                                                             <span className="slider"></span>
@@ -1027,7 +1030,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                                 </div>
                                                 <div className="st-field-toggle">
                                                     <div className="toggle-header">
-                                                        <label>{t('labels.precisionDebuggingMode', {ns: 'deviceTemplates'})}</label>
+                                                        <label>{t('labels.precisionDebuggingMode', { ns: 'deviceTemplates' })}</label>
                                                         <label className="switch">
                                                             <input type="checkbox" checked={isDiagnosticMode} onChange={e => setIsDiagnosticMode(e.target.checked)} />
                                                             <span className="slider"></span>
@@ -1041,16 +1044,16 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                             <h5 className="wizard-section-title"><i className="fas fa-tags"></i> Classification Tags & System Metadata</h5>
                                             <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr' }}>
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>{t('labels.tagsCommaseparated', {ns: 'deviceTemplates'})}</label>
+                                                    <label>{t('labels.tagsCommaseparated', { ns: 'deviceTemplates' })}</label>
                                                     <input type="text" className="mgmt-input" placeholder="Line1, Inverter, critical" value={deviceTags.join(', ')} onChange={e => setDeviceTags(e.target.value.split(',').map(s => s.trim()).filter(s => s))} />
                                                 </div>
                                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                                                     <div className="mgmt-modal-form-group">
-                                                        <label>{t('labels.metadataJson', {ns: 'deviceTemplates'})}</label>
+                                                        <label>{t('labels.metadataJson', { ns: 'deviceTemplates' })}</label>
                                                         <textarea className="mgmt-input" style={{ height: '80px', fontSize: '12px', fontFamily: 'monospace' }} value={JSON.stringify(deviceMetadata, null, 2)} onChange={e => { try { setDeviceMetadata(JSON.parse(e.target.value)); } catch (err) { } }} />
                                                     </div>
                                                     <div className="mgmt-modal-form-group">
-                                                        <label>{t('labels.customFieldsJson', {ns: 'deviceTemplates'})}</label>
+                                                        <label>{t('labels.customFieldsJson', { ns: 'deviceTemplates' })}</label>
                                                         <textarea className="mgmt-input" style={{ height: '80px', fontSize: '12px', fontFamily: 'monospace' }} value={JSON.stringify(customFields, null, 2)} onChange={e => { try { setCustomFields(JSON.parse(e.target.value)); } catch (err) { } }} />
                                                     </div>
                                                 </div>

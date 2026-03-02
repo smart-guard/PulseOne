@@ -143,7 +143,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
             <div className="mgmt-modal-container network-scan-modal" style={{ width: '480px', maxWidth: '480px' }}>
                 <div className="mgmt-modal-header" style={{ padding: '20px 24px', borderBottom: '1px solid #edf2f7' }}>
                     <div className="mgmt-modal-title">
-                        <h3 style={{ margin: 0, color: '#1a202c', fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-0.02em' }}>{t('labels.networkDeviceScan', {ns: 'protocols'})}</h3>
+                        <h3 style={{ margin: 0, color: '#1a202c', fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-0.02em' }}>{t('labels.networkDeviceScan', { ns: 'protocols' })}</h3>
                     </div>
                     <button className="mgmt-close-btn" onClick={onClose} disabled={isScanning}>
                         <i className="fas fa-times"></i>
@@ -168,7 +168,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                         }}>
                             <i className="fas fa-exclamation-circle" style={{ marginTop: '3px' }}></i>
                             <div style={{ lineHeight: '1.5' }}>
-                                <div style={{ fontWeight: 700, marginBottom: '2px' }}>{t('labels.scanErrorOccurred', {ns: 'protocols'})}</div>
+                                <div style={{ fontWeight: 700, marginBottom: '2px' }}>{t('labels.scanErrorOccurred', { ns: 'protocols' })}</div>
                                 <div style={{ opacity: 0.9 }}>{error}</div>
                             </div>
                         </div>
@@ -178,11 +178,11 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                     <div style={{ marginBottom: '32px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
                             <div style={{ width: '4px', height: '16px', background: '#667eea', borderRadius: '2px' }}></div>
-                            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#2d3748' }}>{t('labels.scanSettings', {ns: 'protocols'})}</h4>
+                            <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#2d3748' }}>{t('labels.scanSettings', { ns: 'protocols' })}</h4>
                         </div>
 
                         <div className="mgmt-modal-form-group" style={{ marginBottom: '20px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 700, color: '#718096', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>{t('labels.selectProtocol', {ns: 'protocols'})}</label>
+                            <label style={{ fontSize: '12px', fontWeight: 700, color: '#718096', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>{t('labels.selectProtocol', { ns: 'protocols' })}</label>
                             <select
                                 className="mgmt-select"
                                 value={protocol}
@@ -190,21 +190,21 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                                 disabled={isScanning}
                                 style={{ height: '42px', borderRadius: '10px', fontSize: '14px' }}
                             >
-                                <option value="BACNET">{t('labels.bacnetipRecommended', {ns: 'protocols'})}</option>
-                                <option value="MQTT">{t('labels.mqttDiscoverySmartSearch', {ns: 'protocols'})}</option>
-                                <option value="MODBUS_TCP">{t('labels.modbusTcpTest', {ns: 'protocols'})}</option>
-                                <option value="MODBUS_RTU">{t('labels.modbusRtuSerial', {ns: 'protocols'})}</option>
+                                <option value="BACNET">{t('labels.bacnetipRecommended', { ns: 'protocols' })}</option>
+                                <option value="MQTT">{t('labels.mqttDiscoverySmartSearch', { ns: 'protocols' })}</option>
+                                <option value="MODBUS_TCP">{t('labels.modbusTcpTest', { ns: 'protocols' })}</option>
+                                <option value="MODBUS_RTU">{t('labels.modbusRtuSerial', { ns: 'protocols' })}</option>
                             </select>
                             {protocol.startsWith('MODBUS') && (
                                 <div style={{ marginTop: '8px', color: '#dd6b20', fontSize: '11px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <i className="fas fa-flask"></i> <span>This is an experimental feature. Manual registration is recommended.</span>
+                                    <i className="fas fa-flask"></i> <span>{t('labels.experimentalFeatureHint', { ns: 'protocols' })}</span>
                                 </div>
                             )}
                         </div>
 
                         <div className="mgmt-modal-form-group">
                             <label style={{ fontSize: '12px', fontWeight: 700, color: '#718096', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                                {protocol === 'MQTT' ? 'Broker URL' : (protocol === 'MODBUS_RTU' ? 'Serial Port Path' : 'Network Range (CIDR)')}
+                                {protocol === 'MQTT' ? t('labels.brokerUrl', { ns: 'protocols' }) : (protocol === 'MODBUS_RTU' ? t('labels.serialPortPath', { ns: 'protocols' }) : t('labels.networkRangeCidr', { ns: 'protocols' }))}
                             </label>
                             <input
                                 type="text"
@@ -213,16 +213,16 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                                 value={range}
                                 onChange={(e) => setRange(e.target.value)}
                                 disabled={isScanning}
-                                style={{ height: '42px', borderRadius: '10px', fontSize: '14px' }}
+                                style={{ height: '46px', borderRadius: '10px', fontSize: '14px' }}
                             />
                             {protocol !== 'MODBUS_RTU' && protocol !== 'MQTT' && (
                                 <div style={{ marginTop: '8px', color: '#a0aec0', fontSize: '11px' }}>
-                                    If left empty, local network broadcast is used.
+                                    {t('labels.broadcastHint', { ns: 'protocols' })}
                                 </div>
                             )}
                             {protocol === 'MQTT' && (
                                 <div style={{ marginTop: '8px', color: '#a0aec0', fontSize: '11px' }}>
-                                    Connects to the broker and auto-discovers devices based on active topics.
+                                    {t('labels.mqttBrokerHint', { ns: 'protocols' })}
                                 </div>
                             )}
                         </div>
@@ -233,7 +233,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <div style={{ width: '4px', height: '16px', background: '#667eea', borderRadius: '2px' }}></div>
-                                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#2d3748' }}>{t('labels.searchResults', {ns: 'protocols'})}</h4>
+                                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#2d3748' }}>{t('labels.searchResults', { ns: 'protocols' })}</h4>
                                 {discoveredDevices.length > 0 && (
                                     <span style={{
                                         padding: '2px 8px',
@@ -247,7 +247,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                             </div>
                             {isScanning && (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#667eea', fontSize: '12px', fontWeight: 600 }}>
-                                    <span>{t('labels.searching', {ns: 'protocols'})}</span> <i className="fas fa-circle-notch fa-spin"></i>
+                                    <span>{t('labels.searching', { ns: 'protocols' })}</span> <i className="fas fa-circle-notch fa-spin"></i>
                                 </div>
                             )}
                         </div>
@@ -270,7 +270,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                                     }}></div>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#718096', fontWeight: 500 }}>
-                                    <span>{t('labels.scanningNetwork', {ns: 'protocols'})}</span>
+                                    <span>{t('labels.scanningNetwork', { ns: 'protocols' })}</span>
                                     <span>{Math.round(progress)}%</span>
                                 </div>
                             </div>
@@ -299,8 +299,8 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                                     }}>
                                         <i className="fas fa-satellite-dish" style={{ fontSize: '24px' }}></i>
                                     </div>
-                                    <div style={{ fontWeight: 700, color: '#4a5568', fontSize: '14px', marginBottom: '4px' }}>{t('labels.noDevicesFound', {ns: 'protocols'})}</div>
-                                    <div style={{ color: '#a0aec0', fontSize: '12px' }}>{t('labels.checkTheSettingsAboveAndStartScanning', {ns: 'protocols'})}</div>
+                                    <div style={{ fontWeight: 700, color: '#4a5568', fontSize: '14px', marginBottom: '4px' }}>{t('labels.noDevicesFound', { ns: 'protocols' })}</div>
+                                    <div style={{ color: '#a0aec0', fontSize: '12px' }}>{t('labels.checkTheSettingsAboveAndStartScanning', { ns: 'protocols' })}</div>
                                 </div>
                             ) : discoveredDevices.length === 0 && isScanning ? (
                                 <div style={{ padding: '48px 24px', textAlign: 'center' }}>
@@ -322,16 +322,16 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                                             <i className="fas fa-circle-notch fa-spin" style={{ fontSize: '10px', color: '#667eea' }}></i>
                                         </div>
                                     </div>
-                                    <div style={{ fontWeight: 700, color: '#4a5568', fontSize: '14px', marginBottom: '4px' }}>{t('labels.scanningNetwork', {ns: 'protocols'})}</div>
-                                    <div style={{ color: '#a0aec0', fontSize: '12px' }}>{t('labels.pleaseWaitWhileSearchingForDevices', {ns: 'protocols'})}</div>
+                                    <div style={{ fontWeight: 700, color: '#4a5568', fontSize: '14px', marginBottom: '4px' }}>{t('labels.scanningNetwork', { ns: 'protocols' })}</div>
+                                    <div style={{ color: '#a0aec0', fontSize: '12px' }}>{t('labels.pleaseWaitWhileSearchingForDevices', { ns: 'protocols' })}</div>
                                 </div>
                             ) : (
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                                     <thead style={{ background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
                                         <tr>
-                                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: '#64748b', fontSize: '11px', textTransform: 'uppercase' }}>장치 정보</th>
-                                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: '#64748b', fontSize: '11px', textTransform: 'uppercase' }}>엔드포인트</th>
-                                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: '#64748b', fontSize: '11px', textTransform: 'uppercase' }}>상태</th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: '#64748b', fontSize: '11px', textTransform: 'uppercase' }}>{t('labels.deviceInfo', { ns: 'protocols' })}</th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, color: '#64748b', fontSize: '11px', textTransform: 'uppercase' }}>{t('labels.endpoint', { ns: 'protocols' })}</th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, color: '#64748b', fontSize: '11px', textTransform: 'uppercase' }}>{t('labels.statusCol', { ns: 'protocols' })}</th>
                                         </tr>
                                     </thead>
                                     <tbody style={{ background: 'white' }}>
@@ -353,7 +353,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                                                         fontSize: '11px',
                                                         fontWeight: 800,
                                                         border: '1px solid #c6f6d5'
-                                                    }}>자동 등록됨</span>
+                                                    }}>{t('labels.autoRegistered', { ns: 'protocols' })}</span>
                                                 </td>
                                             </tr>
                                         ))}
@@ -364,7 +364,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                         {discoveredDevices.length > 0 && (
                             <div style={{ marginTop: '12px', padding: '10px 14px', background: '#f7fafc', borderRadius: '10px', fontSize: '11px', color: '#718096', border: '1px dashed #e2e8f0' }}>
                                 <i className="fas fa-check-circle" style={{ color: '#38a169', marginRight: '6px' }}></i>
-                                발견된 장치는 시스템에 자동으로 등록되었습니다. 모달을 닫고 목록에서 확인하세요.
+                                {t('labels.foundDevicesHint', { ns: 'protocols' })}
                             </div>
                         )}
                     </div>
@@ -377,7 +377,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                         disabled={isScanning}
                         style={{ height: '42px', padding: '0 24px', fontSize: '14px', borderRadius: '10px', background: 'white' }}
                     >
-                        {discoveredDevices.length > 0 ? '완료' : '닫기'}
+                        {discoveredDevices.length > 0 ? t('labels.doneBtn', { ns: 'protocols' }) : t('labels.closeBtn', { ns: 'protocols' })}
                     </button>
                     <button
                         className="mgmt-btn mgmt-btn-primary"
@@ -403,12 +403,12 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                         {isScanning ? (
                             <>
                                 <i className="fas fa-circle-notch fa-spin"></i>
-                                <span>스캔 중...</span>
+                                <span>{t('labels.scanningBtn', { ns: 'protocols' })}</span>
                             </>
                         ) : (
                             <>
                                 <i className="fas fa-search"></i>
-                                <span>스캔 시작</span>
+                                <span>{t('labels.startScanBtn', { ns: 'protocols' })}</span>
                             </>
                         )}
                     </button>
