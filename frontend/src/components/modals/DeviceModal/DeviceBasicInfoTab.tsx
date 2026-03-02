@@ -883,7 +883,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
             </div>
 
             <div className="bi-field">
-              <label>Serial No.</label>
+              <label>{t('devices:basicInfo.serialNo')}</label>
               {mode === 'view' ? (
                 <div className="form-val">{displayData?.serial_number || 'N/A'}</div>
               ) : (
@@ -892,7 +892,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   className="bi-input"
                   value={editData?.serial_number || ''}
                   onChange={(e) => onUpdateField('serial_number', e.target.value)}
-                  placeholder="Serial Number"
+                  placeholder={t('devices:basicInfo.serialNoPlaceholder')}
                 />
               )}
             </div>
@@ -931,11 +931,11 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
 
         {/* 3. 운영 설정 */}
         <div className="bi-card">
-          <h3>⚙️ Operational Settings</h3>
+          <h3>⚙️ {t('devices:basicInfo.operationalSettings')}</h3>
           <div className="bi-form-stack">
             <div className="bi-field-row">
               <div className="bi-field flex-1">
-                <label>Polling (ms)</label>
+                <label>{t('devices:basicInfo.pollingMs')}</label>
                 {mode === 'view' ? (
                   <div className="form-val">{displayData?.polling_interval || 'N/A'}</div>
                 ) : (
@@ -953,7 +953,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                 )}
               </div>
               <div className="bi-field flex-1">
-                <label>Timeout</label>
+                <label>{t('devices:basicInfo.timeout')}</label>
                 {mode === 'view' ? (
                   <div className="form-val">{displayData?.timeout || 'N/A'}</div>
                 ) : (
@@ -973,7 +973,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
             </div>
 
             <div className="bi-field">
-              <label>Retry Count</label>
+              <label>{t('devices:basicInfo.retryCount')}</label>
               <div className="flex-row gap-2">
                 {mode === 'view' ? (
                   <div className="form-val">{displayData?.retry_count || 'N/A'}</div>
@@ -995,10 +995,10 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
             </div>
 
             <div className="bi-field">
-              <label>Enabled</label>
+              <label>{t('devices:basicInfo.enabled')}</label>
               {mode === 'view' ? (
                 <span className={`status-badge-left ${displayData?.is_enabled ? 'enabled' : 'disabled'}`}>
-                  {displayData?.is_enabled ? 'Enabled' : 'Disabled'}
+                  {displayData?.is_enabled ? t('devices:basicInfo.enabledStatus') : t('devices:basicInfo.disabledStatus')}
                 </span>
               ) : (
                 <label className="switch">
@@ -1013,7 +1013,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
             </div>
 
             <div className="bi-field">
-              <label>Assigned Collector (Edge Server) *</label>
+              <label>{t('devices:basicInfo.assignedCollector')}</label>
               {mode === 'view' ? (
                 <div className="form-val">
                   {availableCollectors.find(c => c.id === displayData?.edge_server_id)?.name || `ID: ${displayData?.edge_server_id || '0 (Default)'}`}
@@ -1025,7 +1025,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   onChange={(e) => onUpdateField('edge_server_id', parseInt(e.target.value))}
                   required
                 >
-                  <option value={0}>Default Collector (ID: 0)</option>
+                  <option value={0}>{t('devices:basicInfo.defaultCollector')}</option>
                   {availableCollectors.map(collector => (
                     <option key={collector.id} value={collector.id}>
                       {collector.name} ({collector.host})
@@ -1035,7 +1035,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
               )}
               {mode !== 'view' && (
                 <div className="hint-text">
-                  이 장치의 데이터를 수집할 물리적 서버를 선택하세요.
+                  {t('devices:basicInfo.collectorHint')}
                 </div>
               )}
             </div>
@@ -1069,7 +1069,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                       </option>
                     ))
                   ) : (
-                    <option>No protocols</option>
+                    <option>{t('devices:basicInfo.noProtocols')}</option>
                   )}
                 </select>
               )}
@@ -1119,7 +1119,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
             )}
 
             <div className="bi-field">
-              <label>{isRtuDevice ? 'Port *' : t('devices:basicInfo.ipAddress')}</label>
+              <label>{isRtuDevice ? t('devices:basicInfo.portLabel') : t('devices:basicInfo.ipAddress')}</label>
               {mode === 'view' ? (
                 <div className="form-val text-break">{displayData?.endpoint || 'N/A'}</div>
               ) : (
@@ -1134,7 +1134,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
               )}
               {mode !== 'view' && (
                 <div className="hint-text">
-                  예시: {getEndpointPlaceholder(editData?.protocol_type)}
+                  {t('devices:basicInfo.endpointHint')} {getEndpointPlaceholder(editData?.protocol_type)}
                 </div>
               )}
             </div>
@@ -1144,7 +1144,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div className="bi-field">
                   <label style={{ color: 'var(--primary-600)', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span><i className="fas fa-satellite-dish"></i> MQTT Base Topic(s) *</span>
+                    <span><i className="fas fa-satellite-dish"></i> {t('devices:basicInfo.mqttBaseTopic')}</span>
                     {mode !== 'view' && (
                       <button
                         type="button"
@@ -1153,7 +1153,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                         style={{ fontSize: '12px', fontWeight: 500 }}
                       >
                         <i className="fas fa-expand-alt" style={{ marginRight: '4px' }}></i>
-                        크게 보기 (Editor)
+                        {t('devices:basicInfo.mqttLargeView')}
                       </button>
                     )}
                   </label>
@@ -1179,7 +1179,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                         required
                       />
                       <div className="hint-text">
-                        The <strong>top-level topic</strong> for receiving data and files. Separate multiple topics with commas (,).
+                        {t('devices:basicInfo.mqttBaseTopicHint')}
                       </div>
                     </>
                   )}
@@ -1205,10 +1205,10 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                       onChange={(e) => onUpdateSettings?.('is_auto_registration_enabled', e.target.checked)}
                       style={{ width: '16px', height: '16px', cursor: 'pointer' }}
                     />
-                    <i className="fas fa-magic" style={{ marginRight: '4px' }}></i> MQTT 자동 데이터 등록 (Auto-Discovery)
+                    <i className="fas fa-magic" style={{ marginRight: '4px' }}></i> {t('devices:basicInfo.mqttAutoDiscovery')}
                   </label>
                   <div className="hint-text" style={{ paddingLeft: '24px' }}>
-                    수집 시 등록되지 않은 JSON 키를 데이터 포인트로 자동 등록합니다.
+                    {t('devices:basicInfo.mqttAutoDiscoveryHint')}
                   </div>
                 </div>
               </div>
@@ -1217,7 +1217,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
 
             {mode === 'view' && displayData?.protocol && displayData.protocol.default_port && (
               <div className="bi-field">
-                <label>Default Port</label>
+                <label>{t('devices:basicInfo.defaultPort')}</label>
                 <div className="form-val">{displayData.protocol.default_port}</div>
               </div>
             )}
@@ -1283,7 +1283,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
 
             <div className="bi-form-stack">
               <div className="bi-field">
-                <label>Baud Rate</label>
+                <label>{t('devices:basicInfo.baudRate')}</label>
                 <select
                   className="bi-select"
                   value={rtuConfig.baud_rate || 9600}
@@ -1298,7 +1298,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
 
             <div className="bi-form-stack">
               <div className="bi-field">
-                <label>Data Bits</label>
+                <label>{t('devices:basicInfo.dataBits')}</label>
                 <select
                   className="bi-select"
                   value={rtuConfig.data_bits || 8}
@@ -1312,7 +1312,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
 
             <div className="bi-form-stack">
               <div className="bi-field">
-                <label>Parity / Stop</label>
+                <label>{t('devices:basicInfo.parityStop')}</label>
                 <div className="bi-field-row">
                   <select
                     className="bi-select"
