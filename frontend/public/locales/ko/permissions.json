@@ -80,6 +80,7 @@
         "userCount": "{{count}}명"
     },
     "roleModal": {
+        "name": "역할명",
         "createTitle": "새 역할 생성",
         "editTitle": "역할 수정",
         "sectionBasic": "기본 정보",
@@ -94,6 +95,10 @@
         "cantDeleteSystemBtn": "확인",
         "deleteTitle": "역할 삭제",
         "deleteMsg": "'{{name}}' 역할을 삭제하시겠습니까? 이 역할에 배정된 사용자의 권한이 소멸될 수 있습니다.",
-        "deleteBtn": "삭제"
+        "deleteBtn": "삭제",
+        "deleteRoleBtn": "역할 삭제",
+        "cancelBtn": "취소",
+        "createBtn": "생성 완료",
+        "editBtn": "수정 완료"
     }
 }

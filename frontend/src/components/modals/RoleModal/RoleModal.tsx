@@ -137,53 +137,61 @@ export const RoleModal: React.FC<RoleModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="modal-overlay">
-            <div className="modal-container user-modal">
-                <div className="modal-header">
-                    <div className="modal-title">
+        <div className="mgmt-modal-overlay">
+            <div className="mgmt-modal-container user-modal" style={{ maxWidth: '860px' }}>
+                {/* Header */}
+                <div className="mgmt-modal-header">
+                    <div className="mgmt-modal-title">
                         <h2>{role ? t('roleModal.editTitle', { ns: 'permissions' }) : t('roleModal.createTitle', { ns: 'permissions' })}</h2>
                     </div>
-                    <button className="close-btn" onClick={onClose} disabled={loading}>
+                    <button className="mgmt-close-btn" onClick={onClose} disabled={loading}>
                         <i className="fas fa-times"></i>
                     </button>
                 </div>
 
-                <div className="modal-body">
+                {/* Body */}
+                <div className="mgmt-modal-body">
                     <form id="role-form" onSubmit={handleSubmit}>
-                        <div className="modal-form-grid">
-                            <div className="modal-form-section">
+                        <div className="mgmt-modal-form-grid">
+                            {/* Left: Basic Info */}
+                            <div className="mgmt-modal-form-section">
                                 <h3><i className="fas fa-info-circle"></i> {t('roleModal.sectionBasic', { ns: 'permissions' })}</h3>
-                                <div className="modal-form-group">
+
+                                <div className="mgmt-modal-form-group">
                                     <label className="required">{t('roleModal.name', { ns: 'permissions' })}</label>
                                     <input
                                         type="text"
-                                        className="form-control"
+                                        className="mgmt-modal-input"
                                         value={formData.name}
                                         onChange={(e) => handleInputChange('name', e.target.value)}
                                         placeholder={t('roleModal.namePlaceholder', { ns: 'permissions' })}
                                         required
-                                        disabled={loading || (role?.is_system === 1)} // System role name usually locked? Let's lock it to be safe
+                                        disabled={loading || (role?.is_system === 1)}
                                     />
-                                    {role?.is_system === 1 && <p className="modal-form-hint">{t('roleModal.systemNameLocked', { ns: 'permissions' })}</p>}
+                                    {role?.is_system === 1 && (
+                                        <p className="mgmt-modal-form-hint">{t('roleModal.systemNameLocked', { ns: 'permissions' })}</p>
+                                    )}
                                 </div>
-                                <div className="modal-form-group">
+
+                                <div className="mgmt-modal-form-group">
                                     <label>{t('roleModal.descLabel', { ns: 'permissions' })}</label>
                                     <textarea
-                                        className="form-control"
+                                        className="mgmt-modal-input"
+                                        style={{ height: '100px', paddingTop: '10px', resize: 'vertical' }}
                                         value={formData.description || ''}
                                         onChange={(e) => handleInputChange('description', e.target.value)}
                                         placeholder={t('roleModal.descPlaceholder', { ns: 'permissions' })}
-                                        rows={3}
                                         disabled={loading}
                                     />
                                 </div>
                             </div>
 
-                            <div className="modal-form-section">
+                            {/* Right: Permissions */}
+                            <div className="mgmt-modal-form-section">
                                 <h3><i className="fas fa-key"></i> {t('roleModal.sectionPermissions', { ns: 'permissions' })}</h3>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>{t('roleModal.permCount', { ns: 'permissions', count: formData.permissions?.length || 0 })}</label>
-                                    <div className="permissions-grid" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                                    <div className="permissions-grid" style={{ maxHeight: '260px', overflowY: 'auto' }}>
                                         {availablePermissions.map(perm => (
                                             <label key={perm.id} className="permission-item">
                                                 <input
@@ -192,9 +200,9 @@ export const RoleModal: React.FC<RoleModalProps> = ({
                                                     onChange={() => togglePermission(perm.id)}
                                                     disabled={loading}
                                                 />
-                                                <span style={{ marginLeft: '4px' }}>
-                                                    <strong>{perm.name}</strong>
-                                                    <span style={{ fontSize: '0.85em', color: '#666', display: 'block' }}>{perm.description}</span>
+                                                <span style={{ marginLeft: '6px' }}>
+                                                    <strong style={{ fontSize: '13px' }}>{perm.name}</strong>
+                                                    <span style={{ fontSize: '12px', color: 'var(--neutral-500)', display: 'block', marginTop: '2px' }}>{perm.description}</span>
                                                 </span>
                                             </label>
                                         ))}
@@ -205,30 +213,34 @@ export const RoleModal: React.FC<RoleModalProps> = ({
                     </form>
                 </div>
 
-                <div className="modal-footer">
-                    <div className="footer-left">
-                        {role && !role.is_system && (
-                            <button
-                                type="button"
-                                className="btn btn-outline btn-error"
-                                onClick={handleDelete}
-                                disabled={loading}
-                            >
-                                <i className="fas fa-trash"></i> 역할 삭제
+                {/* Footer */}
+                <div className="mgmt-modal-footer">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                        <div>
+                            {role && !role.is_system && (
+                                <button
+                                    type="button"
+                                    className="mgmt-btn mgmt-btn-danger"
+                                    onClick={handleDelete}
+                                    disabled={loading}
+                                >
+                                    <i className="fas fa-trash"></i> {t('roleModal.deleteRoleBtn', { ns: 'permissions' })}
+                                </button>
+                            )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <button type="button" className="mgmt-btn mgmt-btn-outline" onClick={onClose} disabled={loading}>
+                                {t('roleModal.cancelBtn', { ns: 'permissions' })}
                             </button>
-                        )}
-                    </div>
-                    <div className="footer-right">
-                        <button type="button" className="btn btn-outline" onClick={onClose} disabled={loading}>
-                            취소
-                        </button>
-                        <button type="submit" form="role-form" className="btn btn-primary" disabled={loading}>
-                            {loading ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-check"></i>}
-                            {role ? '수정 완료' : '생성 완료'}
-                        </button>
+                            <button type="submit" form="role-form" className="mgmt-btn mgmt-btn-primary" disabled={loading}>
+                                {loading ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-check"></i>}
+                                {' '}{role ? t('roleModal.editBtn', { ns: 'permissions' }) : t('roleModal.createBtn', { ns: 'permissions' })}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     );
 };
+

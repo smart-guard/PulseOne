@@ -80,6 +80,7 @@
         "userCount": "{{count}} users"
     },
     "roleModal": {
+        "name": "Role Name",
         "createTitle": "Create New Role",
         "editTitle": "Edit Role",
         "sectionBasic": "Basic Info",
@@ -94,6 +95,10 @@
         "cantDeleteSystemBtn": "OK",
         "deleteTitle": "Delete Role",
         "deleteMsg": "Are you sure you want to delete the '{{name}}' role? Users assigned to this role may lose their permissions.",
-        "deleteBtn": "Delete"
+        "deleteBtn": "Delete",
+        "deleteRoleBtn": "Delete Role",
+        "cancelBtn": "Cancel",
+        "createBtn": "Create",
+        "editBtn": "Save Changes"
     }
 }
