@@ -62,6 +62,7 @@
     "autoRefreshStop": "Stop Auto-refresh",
     "autoRefreshStart": "Start Auto-refresh",
     "pause": "Paused",
+    "refresh": "Refresh",
     "exportCsv": "Export CSV",
     "dateRange": "Date Range",
     "search": "Search",

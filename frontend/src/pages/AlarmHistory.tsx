@@ -525,12 +525,12 @@ const AlarmHistory: React.FC = () => {
               <span style={{ fontSize: '12px', fontVariantNumeric: 'tabular-nums', color: autoRefresh ? 'var(--primary-600, #2563eb)' : 'var(--neutral-400)', minWidth: '36px', fontWeight: 500 }}>
                 {autoRefresh
                   ? <><i className="fas fa-circle-notch fa-spin" style={{ marginRight: '4px', fontSize: '10px' }}></i>{countdown}s</>
-                  : <><i className="fas fa-pause" style={{ marginRight: '4px', fontSize: '10px', color: 'var(--neutral-400)' }}></i>Pause</>}
+                  : <><i className="fas fa-pause" style={{ marginRight: '4px', fontSize: '10px', color: 'var(--neutral-400)' }}></i>{t('pause')}</>}
               </span>
               <button
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', border: 'none', cursor: 'pointer', background: autoRefresh ? 'var(--primary-100, #dbeafe)' : 'var(--neutral-200)', color: autoRefresh ? 'var(--primary-600, #2563eb)' : 'var(--neutral-500)', fontSize: '9px', flexShrink: 0, transition: 'all 0.15s ease' }}
                 onClick={() => setAutoRefresh(v => !v)}
-                title={autoRefresh ? 'Stop auto-refresh' : 'Start auto-refresh'}
+                title={autoRefresh ? t('autoRefreshStop') : t('autoRefreshStart')}
               >
                 <i className={`fas ${autoRefresh ? 'fa-pause' : 'fa-play'}`}></i>
               </button>
@@ -541,7 +541,7 @@ const AlarmHistory: React.FC = () => {
               disabled={isInitialLoading}
             >
               <i className={`fas fa-sync-alt ${isBackgroundRefreshing ? 'fa-spin' : ''}`}></i>
-              Refresh
+              {t('refresh')}
             </button>
             <button
               className="mgmt-btn mgmt-btn-primary"
@@ -549,7 +549,7 @@ const AlarmHistory: React.FC = () => {
               disabled={!Array.isArray(alarmEvents) || alarmEvents.length === 0}
             >
               <i className="fas fa-download"></i>
-              CSV Export
+              {t('exportCsv')}
             </button>
           </div>
         }

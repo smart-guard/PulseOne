@@ -62,6 +62,7 @@
     "autoRefreshStop": "자동 새로고침 중지",
     "autoRefreshStart": "자동 새로고침 시작",
     "pause": "정지",
+    "refresh": "새로고침",
     "exportCsv": "CSV 내보내기",
     "dateRange": "기간 설정",
     "search": "조회",
