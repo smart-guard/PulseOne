@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { StatCard } from '../components/common/StatCard';
@@ -15,6 +16,7 @@ import { Tenant } from '../types/common';
 import '../styles/management.css';
 
 const UserManagement: React.FC = () => {
+  const { t } = useTranslation('userManagement');
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,9 +106,9 @@ const UserManagement: React.FC = () => {
 
   const handleRestore = async (user: User) => {
     const confirmed = await confirm({
-      title: 'Restore User',
-      message: `Restore user '${user.full_name} (@${user.username})'?`,
-      confirmText: 'Restore',
+      title: t('restoreTitle'),
+      message: t('restoreMessage', { name: user.full_name, username: user.username }),
+      confirmText: t('restoreBtn'),
       confirmButtonType: 'primary'
     });
 
@@ -123,13 +125,13 @@ const UserManagement: React.FC = () => {
 
   const getRoleLabel = (role: string) => {
     const labels: any = {
-      'system_admin': 'System',
-      'company_admin': 'Admin',
-      'site_admin': 'Site',
-      'manager': 'Manager',
-      'engineer': 'Engineer',
-      'operator': 'Operator',
-      'viewer': 'Viewer'
+      'system_admin': t('roleSystem'),
+      'company_admin': t('roleCompanyAdmin'),
+      'site_admin': t('roleSiteAdmin'),
+      'manager': t('roleManager'),
+      'engineer': t('roleEngineer'),
+      'operator': t('roleOperator'),
+      'viewer': t('roleViewer')
     };
     return labels[role] || role;
   };
@@ -137,20 +139,20 @@ const UserManagement: React.FC = () => {
   return (
     <ManagementLayout>
       <PageHeader
-        title="User Management"
-        description="Manage system accounts and permissions. Click a row to view details or restore deleted accounts."
+        title={t('pageTitle')}
+        description={t('pageDesc')}
         icon="fas fa-users-cog"
         actions={
           <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreate}>
-            <i className="fas fa-user-plus"></i> New User Registration
+            <i className="fas fa-user-plus"></i> {t('newUser')}
           </button>
         }
       />
 
       <div className="mgmt-stats-panel">
-        <StatCard label="Total Users" value={stats?.total_users || 0} type="primary" />
-        <StatCard label="Active Users" value={stats?.active_users || 0} type="success" />
-        <StatCard label="Active (24h)" value={stats?.active_today || 0} type="neutral" />
+        <StatCard label={t('totalUsers')} value={stats?.total_users || 0} type="primary" />
+        <StatCard label={t('activeUsers')} value={stats?.active_users || 0} type="success" />
+        <StatCard label={t('activeToday')} value={stats?.active_today || 0} type="neutral" />
       </div>
 
       <FilterBar
@@ -158,23 +160,23 @@ const UserManagement: React.FC = () => {
         onSearchChange={setSearchTerm}
         filters={[
           {
-            label: 'Company',
+            label: t('filterCompany'),
             value: selectedTenantId,
             options: [
-              { label: 'All', value: 'all' },
-              ...tenants.map(t => ({ label: t.company_name, value: t.id.toString() }))
+              { label: t('filterAll'), value: 'all' },
+              ...tenants.map(tn => ({ label: tn.company_name, value: tn.id.toString() }))
             ],
             onChange: setSelectedTenantId
           },
           {
-            label: 'Role',
+            label: t('filterRole'),
             value: selectedRole,
             options: [
-              { label: 'All', value: 'all' },
-              { label: 'Admin', value: 'company_admin' },
-              { label: 'Engineer', value: 'engineer' },
-              { label: 'Operator', value: 'operator' },
-              { label: 'Viewer', value: 'viewer' }
+              { label: t('filterAll'), value: 'all' },
+              { label: t('filterAdmin'), value: 'company_admin' },
+              { label: t('filterEngineer'), value: 'engineer' },
+              { label: t('filterOperator'), value: 'operator' },
+              { label: t('filterViewer'), value: 'viewer' }
             ],
             onChange: setSelectedRole
           }
@@ -199,7 +201,7 @@ const UserManagement: React.FC = () => {
                 checked={includeDeleted}
                 onChange={(e) => setIncludeDeleted(e.target.checked)}
               />
-              Include Deleted Users
+              {t('includeDeleted')}
             </label>
           </div>
         }
@@ -210,14 +212,14 @@ const UserManagement: React.FC = () => {
           <table className="mgmt-table">
             <thead>
               <tr>
-                <th style={{ width: '10%' }}>Name</th>
-                <th style={{ width: '12%' }}>Username</th>
-                <th style={{ width: '12%' }}>Company</th>
-                <th style={{ width: '22%' }}>Email</th>
-                <th style={{ width: '10%' }}>Role</th>
-                <th style={{ width: '12%' }}>Department</th>
-                <th style={{ width: '12%' }}>마지막 로그인</th>
-                <th style={{ width: '5%', textAlign: 'center' }}>상태</th>
+                <th style={{ width: '10%' }}>{t('colName')}</th>
+                <th style={{ width: '12%' }}>{t('colUsername')}</th>
+                <th style={{ width: '12%' }}>{t('colCompany')}</th>
+                <th style={{ width: '22%' }}>{t('colEmail')}</th>
+                <th style={{ width: '10%' }}>{t('colRole')}</th>
+                <th style={{ width: '12%' }}>{t('colDepartment')}</th>
+                <th style={{ width: '12%' }}>{t('colLastLogin')}</th>
+                <th style={{ width: '5%', textAlign: 'center' }}>{t('colStatus')}</th>
               </tr>
             </thead>
             <tbody>
@@ -237,7 +239,7 @@ const UserManagement: React.FC = () => {
                   </td>
                   <td>
                     <span className="tenant-name" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--neutral-600)' }}>
-                      {tenants.find(t => t.id === user.tenant_id)?.company_name || '미지정'}
+                      {tenants.find(tn => tn.id === user.tenant_id)?.company_name || t('unassigned')}
                     </span>
                   </td>
                   <td>
@@ -249,11 +251,11 @@ const UserManagement: React.FC = () => {
                     </span>
                   </td>
                   <td>{user.department || '-'}</td>
-                  <td>{user.last_login ? new Date(user.last_login).toLocaleString() : '기록 없음'}</td>
+                  <td>{user.last_login ? new Date(user.last_login).toLocaleString() : t('noLoginRecord')}</td>
                   <td style={{ textAlign: 'center' }}>
                     <div style={{ display: 'inline-flex', justifyContent: 'center' }}>
                       <StatusBadge
-                        status={user.is_deleted ? '삭제됨' : (user.is_active ? '활성' : '비활성')}
+                        status={user.is_deleted ? t('statusDeleted') : (user.is_active ? t('statusActive') : t('statusInactive'))}
                         type={user.is_deleted ? 'error' : (user.is_active ? 'active' : 'inactive')}
                         showDot={true}
                       />
@@ -263,7 +265,7 @@ const UserManagement: React.FC = () => {
               ))}
               {paginatedUsers.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="empty-table">등록된 사용자가 없습니다.</td>
+                  <td colSpan={8} className="empty-table">{t('noUsers')}</td>
                 </tr>
               )}
             </tbody>

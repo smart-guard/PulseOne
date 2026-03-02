@@ -50,6 +50,7 @@ export const NAMESPACES = [
     'systemSettings',
     'errorMonitoring',
     'loginHistory',
+    'userManagement',
 ];
 
 i18n
