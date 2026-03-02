@@ -595,7 +595,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                         className="mgmt-select"
                                         value={selectedManufacturer || ''}
                                         onChange={(e) => handleManufacturerSelect(Number(e.target.value))}
-                                        style={{ height: '52px' }}
+                                        style={{ height: '52px', minHeight: '52px' }}
                                     >
                                         <option value="">{t('labels.selectManufacturer', { ns: 'deviceTemplates' })}</option>
                                         {manufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -608,7 +608,7 @@ ${deviceTags.length > 0 ? `- Tags: ${deviceTags.join(', ')}\n` : ''}${Object.key
                                         value={selectedModel || ''}
                                         disabled={!selectedManufacturer}
                                         onChange={(e) => handleModelSelect(Number(e.target.value))}
-                                        style={{ height: '52px' }}
+                                        style={{ height: '52px', minHeight: '52px' }}
                                     >
                                         <option value="">{t('labels.selectModel', { ns: 'deviceTemplates' })}</option>
                                         {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}

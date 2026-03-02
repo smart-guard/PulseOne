@@ -1146,6 +1146,7 @@
 .mgmt-modal-content .mgmt-input,
 .mgmt-modal-content .mgmt-select {
     width: 100% !important;
+    height: 52px !important;
 }
 
 .mgmt-modal-form-group label {
