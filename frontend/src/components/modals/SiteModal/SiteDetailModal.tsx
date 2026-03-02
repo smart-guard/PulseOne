@@ -51,7 +51,7 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                 setFormData(siteRes.data);
                 setError(null);
             } else {
-                setError('Failed to load site information.');
+                setError(t('modal.loadFailed', { ns: 'sites' }));
             }
             if (collectorsRes.success && collectorsRes.data) {
                 setCollectors(collectorsRes.data);
@@ -62,7 +62,7 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                 setAllSites(sitesRes.data.items.filter(s => s.id !== id));
             }
         } catch (err: any) {
-            setError('Failed to load data.');
+            setError(t('modal.loadDataFailed', { ns: 'sites' }));
         } finally {
             setLoading(false);
         }
@@ -96,10 +96,10 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                 await refreshCollectors();
                 await loadAvailableCollectors();
             } else {
-                setError(res.message || 'Failed to assign collector.');
+                setError(res.message || t('modal.assignFailed', { ns: 'sites' }));
             }
         } catch (err: any) {
-            setError(err.message || 'Error assigning collector.');
+            setError(err.message || t('modal.assignError', { ns: 'sites' }));
         } finally {
             setSaving(false);
         }
@@ -113,10 +113,10 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                 await refreshCollectors();
                 await loadAvailableCollectors();
             } else {
-                setError(res.message || 'Failed to unassign collector.');
+                setError(res.message || t('modal.unassignFailed', { ns: 'sites' }));
             }
         } catch (err: any) {
-            setError(err.message || 'Error unassigning collector.');
+            setError(err.message || t('modal.unassignError', { ns: 'sites' }));
         } finally {
             setSaving(false);
         }
@@ -132,7 +132,7 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                 setError(null);
             }
         } catch (err: any) {
-            setError('Failed to load site information.');
+            setError(t('modal.loadFailed', { ns: 'sites' }));
         } finally {
             setLoading(false);
         }
@@ -163,9 +163,9 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
         if (!siteId) return;
 
         const isConfirmed = await confirm({
-            title: 'Save Changes',
-            message: 'Save the entered changes?',
-            confirmText: 'Save',
+            title: t('modal.saveConfirmTitle2', { ns: 'sites' }),
+            message: t('modal.saveConfirmMsg2', { ns: 'sites' }),
+            confirmText: t('modal.saveConfirmText', { ns: 'sites' }),
             confirmButtonType: 'primary'
         });
 
@@ -177,9 +177,9 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
             const res = await SiteApiService.updateSite(siteId, formData);
             if (res.success) {
                 await confirm({
-                    title: 'Save Complete',
-                    message: 'Site information updated successfully.',
-                    confirmText: 'OK',
+                    title: t('modal.saveCompleteTitle', { ns: 'sites' }),
+                    message: t('modal.saveCompleteMsg', { ns: 'sites' }),
+                    confirmText: t('ok', { ns: 'common' }),
                     showCancelButton: false,
                     confirmButtonType: 'primary'
                 });
@@ -187,10 +187,10 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                 onSave();
                 onClose();
             } else {
-                setError(res.message || 'Update failed.');
+                setError(res.message || t('modal.updateFailed', { ns: 'sites' }));
             }
         } catch (err: any) {
-            setError(err.message || 'Error communicating with server.');
+            setError(err.message || t('modal.serverError', { ns: 'sites' }));
         } finally {
             setSaving(false);
         }
@@ -200,9 +200,9 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
         if (!site) return;
 
         const confirmed = await confirm({
-            title: 'Confirm Site Delete',
-            message: `Delete site '${site.name}'? Sites with sub-sites cannot be deleted.`,
-            confirmText: 'Delete',
+            title: t('modal.deleteConfirmTitle', { ns: 'sites' }),
+            message: t('modal.deleteConfirmMsg', { ns: 'sites', name: site.name }),
+            confirmText: t('modal.deleteConfirmText', { ns: 'sites' }),
             confirmButtonType: 'danger'
         });
 
@@ -212,19 +212,19 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                 const res = await SiteApiService.deleteSite(site.id);
                 if (res.success) {
                     await confirm({
-                        title: 'Delete Complete',
-                        message: 'Site deleted successfully.',
-                        confirmText: 'OK',
+                        title: t('modal.deleteCompleteTitle', { ns: 'sites' }),
+                        message: t('modal.deleteCompleteMsg', { ns: 'sites' }),
+                        confirmText: t('ok', { ns: 'common' }),
                         showCancelButton: false,
                         confirmButtonType: 'primary'
                     });
                     onSave();
                     onClose();
                 } else {
-                    setError(res.message || 'Delete failed. Check for sub-sites.');
+                    setError(res.message || t('modal.deleteFailed', { ns: 'sites' }));
                 }
             } catch (err: any) {
-                setError(err.message || 'Error during delete.');
+                setError(err.message || t('modal.deleteError', { ns: 'sites' }));
             } finally {
                 setSaving(false);
             }
@@ -256,8 +256,8 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
     const selectStyle: React.CSSProperties = { ...inputStyle };
 
     const renderContent = () => {
-        if (loading) return <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--neutral-400)', fontSize: '13px' }}><i className="fas fa-spinner fa-spin" style={{ marginRight: '6px' }}></i>{t('loading', {ns: 'common'})}</div>;
-        if (!site) return <div className="mgmt-alert mgmt-alert-danger">{t('labels.failedToLoadSiteInformation', {ns: 'sites'})}</div>;
+        if (loading) return <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--neutral-400)', fontSize: '13px' }}><i className="fas fa-spinner fa-spin" style={{ marginRight: '6px' }}></i>{t('loading', { ns: 'common' })}</div>;
+        if (!site) return <div className="mgmt-alert mgmt-alert-danger">{t('labels.failedToLoadSiteInformation', { ns: 'sites' })}</div>;
 
         if (isEditing) {
             return (
@@ -266,25 +266,25 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                         {/* Basic Info */}
                         <div style={sectionStyle}>
-                            <div style={sectionTitleStyle}><i className="fas fa-info-circle"></i> Basic Info</div>
+                            <div style={sectionTitleStyle}><i className="fas fa-info-circle"></i> {t('modal.sectionBasicInfo', { ns: 'sites' })}</div>
                             <div>
-                                <div style={fieldLabel}>Site Name *</div>
+                                <div style={fieldLabel}>{t('modal.siteName', { ns: 'sites' })}</div>
                                 <input style={inputStyle} type="text" value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} required />
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                                 <div>
-                                    <div style={fieldLabel}>{t('field.code', {ns: 'sites'})}</div>
+                                    <div style={fieldLabel}>{t('field.code', { ns: 'sites' })}</div>
                                     <input style={inputStyle} type="text" value={site.code} disabled />
                                 </div>
                                 <div>
-                                    <div style={fieldLabel}>{t('labels.siteType', {ns: 'sites'})}</div>
+                                    <div style={fieldLabel}>{t('labels.siteType', { ns: 'sites' })}</div>
                                     <select style={selectStyle} value={formData.site_type || ''} onChange={e => setFormData({ ...formData, site_type: e.target.value })}>
                                         <option value="company">HQ</option>
-                                        <option value="office">{t('labels.officebranch', {ns: 'sites'})}</option>
-                                        <option value="factory">{t('labels.factoryplant', {ns: 'sites'})}</option>
-                                        <option value="building">{t('labels.building', {ns: 'sites'})}</option>
-                                        <option value="floor">{t('labels.floor', {ns: 'sites'})}</option>
-                                        <option value="room">{t('labels.room', {ns: 'sites'})}</option>
+                                        <option value="office">{t('labels.officebranch', { ns: 'sites' })}</option>
+                                        <option value="factory">{t('labels.factoryplant', { ns: 'sites' })}</option>
+                                        <option value="building">{t('labels.building', { ns: 'sites' })}</option>
+                                        <option value="floor">{t('labels.floor', { ns: 'sites' })}</option>
+                                        <option value="room">{t('labels.room', { ns: 'sites' })}</option>
                                     </select>
                                 </div>
                             </div>
@@ -292,34 +292,34 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
 
                         {/* 위치 + 상위 사이트 */}
                         <div style={sectionStyle}>
-                            <div style={sectionTitleStyle}><i className="fas fa-map-marker-alt"></i> Location Info</div>
+                            <div style={sectionTitleStyle}><i className="fas fa-map-marker-alt"></i> {t('modal.sectionLocation', { ns: 'sites' })}</div>
                             <div>
-                                <div style={fieldLabel}>{t('table.parentSite', {ns: 'sites'})}</div>
+                                <div style={fieldLabel}>{t('table.parentSite', { ns: 'sites' })}</div>
                                 <select style={selectStyle} value={formData.parent_site_id || ''} onChange={e => setFormData({ ...formData, parent_site_id: e.target.value ? parseInt(e.target.value) : undefined })}>
-                                    <option value="">{t('labels.noneTopLevel', {ns: 'sites'})}</option>
+                                    <option value="">{t('labels.noneTopLevel', { ns: 'sites' })}</option>
                                     {allSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <div style={fieldLabel}>{t('labels.address', {ns: 'sites'})}</div>
+                                <div style={fieldLabel}>{t('labels.address', { ns: 'sites' })}</div>
                                 <input style={inputStyle} type="text" value={formData.address || ''} onChange={e => setFormData({ ...formData, address: e.target.value })} />
                             </div>
                         </div>
 
                         {/* Contact Person */}
                         <div style={{ ...sectionStyle, gridColumn: '1 / -1' }}>
-                            <div style={sectionTitleStyle}><i className="fas fa-user-tie"></i> Manager Info</div>
+                            <div style={sectionTitleStyle}><i className="fas fa-user-tie"></i> {t('modal.sectionManager', { ns: 'sites' })}</div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                                 <div>
-                                    <div style={fieldLabel}>{t('labels.managerName', {ns: 'sites'})}</div>
+                                    <div style={fieldLabel}>{t('labels.managerName', { ns: 'sites' })}</div>
                                     <input style={inputStyle} type="text" value={formData.manager_name || formData.contact_name || ''} onChange={e => setFormData({ ...formData, manager_name: e.target.value })} placeholder="Manager name" />
                                 </div>
                                 <div>
-                                    <div style={fieldLabel}>{t('labels.email', {ns: 'sites'})}</div>
+                                    <div style={fieldLabel}>{t('labels.email', { ns: 'sites' })}</div>
                                     <input style={inputStyle} type="email" value={formData.manager_email || formData.contact_email || ''} onChange={e => setFormData({ ...formData, manager_email: e.target.value })} placeholder="example@pulseone.com" />
                                 </div>
                                 <div>
-                                    <div style={fieldLabel}>{t('labels.contact', {ns: 'sites'})}</div>
+                                    <div style={fieldLabel}>{t('labels.contact', { ns: 'sites' })}</div>
                                     <input style={inputStyle} type="text" value={formData.manager_phone || formData.contact_phone || ''} onChange={e => setFormData({ ...formData, manager_phone: e.target.value })} placeholder="010-0000-0000" />
                                 </div>
                             </div>
@@ -327,13 +327,13 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
 
                         {/* Collector Assignment */}
                         <div style={{ ...sectionStyle, gridColumn: '1 / -1' }}>
-                            <div style={sectionTitleStyle}><i className="fas fa-server"></i> Collector Assignment</div>
+                            <div style={sectionTitleStyle}><i className="fas fa-server"></i> {t('modal.sectionCollectorAssign', { ns: 'sites' })}</div>
 
                             {/* 현재 Assign된 Collector */}
                             {collectors.length > 0 && (
                                 <div style={{ marginBottom: '10px' }}>
                                     <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginBottom: '4px', fontWeight: 600 }}>
-                                        Assigned to this site ({collectors.length})
+                                        {t('modal.assignedToSite', { ns: 'sites' })} ({collectors.length})
                                     </div>
                                     {collectors.map(c => (
                                         <div key={c.id} style={{
@@ -354,9 +354,9 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                                                 style={{ padding: '1px 6px', fontSize: '11px', lineHeight: '18px' }}
                                                 onClick={() => handleUnassignCollector(c.id)}
                                                 disabled={saving || ((c as any).device_count ?? 0) > 0}
-                                                title={((c as any).device_count ?? 0) > 0 ? 'Cannot unassign: connected devices exist' : 'Unassign'}
+                                                title={((c as any).device_count ?? 0) > 0 ? t('modal.cannotUnassign', { ns: 'sites' }) : t('modal.unassign', { ns: 'sites' })}
                                             >
-                                                <i className="fas fa-minus-circle"></i> Unassign
+                                                <i className="fas fa-minus-circle"></i> {t('modal.unassign', { ns: 'sites' })}
                                             </button>
                                         </div>
                                     ))}
@@ -367,7 +367,7 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                             {availableCollectors.length > 0 ? (
                                 <div>
                                     <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginBottom: '4px', fontWeight: 600 }}>
-                                        Available ({availableCollectors.length})
+                                        {t('modal.available', { ns: 'sites' })} ({availableCollectors.length})
                                     </div>
                                     {availableCollectors.map(c => (
                                         <div key={c.id} style={{
@@ -379,7 +379,7 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                                             <span style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>
                                                 <i className="fas fa-server" style={{ marginRight: '6px' }}></i>
                                                 {c.name}
-                                                <span style={{ marginLeft: '6px', fontSize: '10px', padding: '1px 5px', background: 'var(--neutral-100)', borderRadius: '8px' }}>{t('labels.notAssigned', {ns: 'sites'})}</span>
+                                                <span style={{ marginLeft: '6px', fontSize: '10px', padding: '1px 5px', background: 'var(--neutral-100)', borderRadius: '8px' }}>{t('labels.notAssigned', { ns: 'sites' })}</span>
                                             </span>
                                             <button
                                                 type="button" className="btn btn-primary"
@@ -387,14 +387,14 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                                                 onClick={() => handleAssignCollector(c.id)}
                                                 disabled={saving}
                                             >
-                                                <i className="fas fa-plus-circle"></i> Assign
+                                                <i className="fas fa-plus-circle"></i> {t('modal.assign', { ns: 'sites' })}
                                             </button>
                                         </div>
                                     ))}
                                 </div>
                             ) : collectors.length === 0 ? (
                                 <div style={{ color: 'var(--neutral-400)', fontSize: '12px', padding: '4px 0' }}>
-                                    No available Collectors. Increase the quota in tenant settings.
+                                    {t('modal.noAvailableCollectors', { ns: 'sites' })}
                                 </div>
                             ) : null}
                         </div>
@@ -408,16 +408,16 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 {/* Basic Info */}
                 <div style={sectionStyle}>
-                    <div style={sectionTitleStyle}><i className="fas fa-info-circle"></i> Basic Info</div>
-                    <div style={fieldLabel}>{t('table.name', {ns: 'sites'})}</div>
+                    <div style={sectionTitleStyle}><i className="fas fa-info-circle"></i> {t('modal.sectionBasicInfo', { ns: 'sites' })}</div>
+                    <div style={fieldLabel}>{t('table.name', { ns: 'sites' })}</div>
                     <div style={{ ...fieldValue, fontWeight: 600 }}>{site.name}</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                         <div>
-                            <div style={fieldLabel}>{t('labels.codeId', {ns: 'sites'})}</div>
+                            <div style={fieldLabel}>{t('labels.codeId', { ns: 'sites' })}</div>
                             <div style={fieldValue}><code style={{ fontSize: '12px' }}>{site.code}</code> / {site.id}</div>
                         </div>
                         <div>
-                            <div style={fieldLabel}>{t('labels.siteType', {ns: 'sites'})}</div>
+                            <div style={fieldLabel}>{t('labels.siteType', { ns: 'sites' })}</div>
                             <div style={fieldValue}>{(site.site_type || '-').toUpperCase()}</div>
                         </div>
                     </div>
@@ -425,29 +425,29 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
 
                 {/* Location Info */}
                 <div style={sectionStyle}>
-                    <div style={sectionTitleStyle}><i className="fas fa-map-marker-alt"></i> Location Info</div>
-                    <div style={fieldLabel}>{t('table.parentSite', {ns: 'sites'})}</div>
-                    <div style={fieldValue}>{site.parent_site_id ? `ID: ${site.parent_site_id}` : 'Top-Level Site'}</div>
-                    <div style={fieldLabel}>{t('labels.address', {ns: 'sites'})}</div>
+                    <div style={sectionTitleStyle}><i className="fas fa-map-marker-alt"></i> {t('modal.sectionLocation', { ns: 'sites' })}</div>
+                    <div style={fieldLabel}>{t('table.parentSite', { ns: 'sites' })}</div>
+                    <div style={fieldValue}>{site.parent_site_id ? `ID: ${site.parent_site_id}` : t('modal.topLevelSite', { ns: 'sites' })}</div>
+                    <div style={fieldLabel}>{t('labels.address', { ns: 'sites' })}</div>
                     <div style={fieldValue}>{site.address || '-'}</div>
-                    <div style={fieldLabel}>{t('labels.timezone', {ns: 'sites'})}</div>
+                    <div style={fieldLabel}>{t('labels.timezone', { ns: 'sites' })}</div>
                     <div style={fieldValue}>{site.timezone || 'UTC'}</div>
                 </div>
 
                 {/* Contact Person */}
                 <div style={{ ...sectionStyle, gridColumn: '1 / -1' }}>
-                    <div style={sectionTitleStyle}><i className="fas fa-user-tie"></i> Manager Info</div>
+                    <div style={sectionTitleStyle}><i className="fas fa-user-tie"></i> {t('modal.sectionManager', { ns: 'sites' })}</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                         <div>
-                            <div style={fieldLabel}>{t('labels.contactPerson', {ns: 'sites'})}</div>
+                            <div style={fieldLabel}>{t('labels.contactPerson', { ns: 'sites' })}</div>
                             <div style={fieldValue}>{site.manager_name || site.contact_name || '-'}</div>
                         </div>
                         <div>
-                            <div style={fieldLabel}>{t('labels.email', {ns: 'sites'})}</div>
+                            <div style={fieldLabel}>{t('labels.email', { ns: 'sites' })}</div>
                             <div style={fieldValue}>{site.manager_email || site.contact_email || '-'}</div>
                         </div>
                         <div>
-                            <div style={fieldLabel}>{t('labels.contact', {ns: 'sites'})}</div>
+                            <div style={fieldLabel}>{t('labels.contact', { ns: 'sites' })}</div>
                             <div style={fieldValue}>{site.manager_phone || site.contact_phone || '-'}</div>
                         </div>
                     </div>
@@ -455,19 +455,19 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
 
                 {/* Edge Server Status */}
                 <div style={{ ...sectionStyle, gridColumn: '1 / -1' }}>
-                    <div style={sectionTitleStyle}><i className="fas fa-server"></i> Edge Server Status</div>
+                    <div style={sectionTitleStyle}><i className="fas fa-server"></i> {t('modal.sectionEdgeStatus', { ns: 'sites' })}</div>
                     {collectors.length === 0 ? (
                         <div style={{ color: 'var(--neutral-400)', fontSize: '12px', padding: '2px 0' }}>
-                            No Edge Servers registered for this site.
+                            {t('modal.noEdgeServers', { ns: 'sites' })}
                         </div>
                     ) : (
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                             <thead>
                                 <tr style={{ borderBottom: '1px solid var(--neutral-200)' }}>
-                                    <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--neutral-500)' }}>{t('labels.serverName', {ns: 'sites'})}</th>
-                                    <th style={{ textAlign: 'center', padding: '4px 8px', color: 'var(--neutral-500)' }}>{t('table.type', {ns: 'sites'})}</th>
-                                    <th style={{ textAlign: 'center', padding: '4px 8px', color: 'var(--neutral-500)' }}>{t('table.status', {ns: 'sites'})}</th>
-                                    <th style={{ textAlign: 'center', padding: '4px 8px', color: 'var(--neutral-500)' }}>{t('labels.devices', {ns: 'sites'})}</th>
+                                    <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--neutral-500)' }}>{t('labels.serverName', { ns: 'sites' })}</th>
+                                    <th style={{ textAlign: 'center', padding: '4px 8px', color: 'var(--neutral-500)' }}>{t('table.type', { ns: 'sites' })}</th>
+                                    <th style={{ textAlign: 'center', padding: '4px 8px', color: 'var(--neutral-500)' }}>{t('table.status', { ns: 'sites' })}</th>
+                                    <th style={{ textAlign: 'center', padding: '4px 8px', color: 'var(--neutral-500)' }}>{t('labels.devices', { ns: 'sites' })}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -492,7 +492,7 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                                                 background: c.status === 'online' || c.status === 'active' ? 'var(--success-100, #dcfce7)' : 'var(--neutral-100)',
                                                 color: c.status === 'online' || c.status === 'active' ? 'var(--success-700, #15803d)' : 'var(--neutral-500)'
                                             }}>
-                                                {c.status === 'online' || c.status === 'active' ? '🟢 Online' : '🔴 Offline'}
+                                                {c.status === 'online' || c.status === 'active' ? `🟢 ${t('online', { ns: 'common', defaultValue: '온라인' })}` : `🔴 ${t('offline', { ns: 'common', defaultValue: '오프라인' })}`}
                                             </span>
                                         </td>
                                         <td style={{ textAlign: 'center', padding: '4px 8px', color: 'var(--neutral-600)' }}>
@@ -515,7 +515,7 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
             <div className="mgmt-modal-container site-modal">
                 <div className="mgmt-modal-header">
                     <div className="mgmt-modal-title">
-                        <h2>{isEditing ? 'Edit Site Info' : 'Site Details'}</h2>
+                        <h2>{isEditing ? t('modal.editTitle2', { ns: 'sites' }) : t('modal.detailTitle', { ns: 'sites' })}</h2>
                     </div>
                     <button className="mgmt-close-btn" onClick={onClose}>
                         <i className="fas fa-times"></i>
@@ -530,16 +530,16 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                 <div className="mgmt-modal-footer">
                     {!isEditing ? (
                         <div className="footer-right" style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                            <button className="btn btn-outline" onClick={onClose}>{t('close', {ns: 'common'})}</button>
-                            <button className="btn btn-primary" onClick={handleEditToggle}><i className="fas fa-edit"></i> Edit</button>
+                            <button className="btn btn-outline" onClick={onClose}>{t('close', { ns: 'common' })}</button>
+                            <button className="btn btn-primary" onClick={handleEditToggle}><i className="fas fa-edit"></i> {t('modal.editBtn', { ns: 'sites' })}</button>
                         </div>
                     ) : (
                         <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <button className="btn btn-error" onClick={handleDelete} disabled={saving}><i className="fas fa-trash"></i> Delete</button>
+                            <button className="btn btn-error" onClick={handleDelete} disabled={saving}><i className="fas fa-trash"></i> {t('delete', { ns: 'common' })}</button>
                             <div className="footer-right" style={{ display: 'flex', gap: '10px' }}>
-                                <button className="btn btn-outline" onClick={handleEditToggle} disabled={saving}>{t('cancel', {ns: 'common'})}</button>
+                                <button className="btn btn-outline" onClick={handleEditToggle} disabled={saving}>{t('cancel', { ns: 'common' })}</button>
                                 <button type="submit" form="site-detail-form" className="btn btn-primary" disabled={saving}>
-                                    <i className="fas fa-save"></i> {saving ? 'Saving...' : 'Saved'}
+                                    <i className="fas fa-save"></i> {saving ? t('modal.saving', { ns: 'sites' }) : t('modal.saveConfirmText', { ns: 'sites' })}
                                 </button>
                             </div>
                         </div>

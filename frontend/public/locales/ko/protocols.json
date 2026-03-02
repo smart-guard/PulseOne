@@ -55,7 +55,41 @@
         "description": "설명"
     },
     "section": {
-        "basic": "기본 정보"
+        "basic": "기본 정보",
+        "technicalSettings": "기술 설정",
+        "driverCapabilities": "드라이버 기능",
+        "connectionParams": "연결 파라미터",
+        "connectionStatus": "연결 현황"
+    },
+    "detail": {
+        "active": "활성",
+        "inactive": "비활성",
+        "deprecated": "지원 중단",
+        "protocolType": "프로토콜 유형",
+        "displayName": "표시명",
+        "description": "설명",
+        "noDescription": "설명이 없습니다.",
+        "category": "카테고리",
+        "defaultPort": "기본 포트",
+        "manufacturer": "제조사/벤더",
+        "minFirmware": "최소 펌웨어",
+        "defaultPolling": "기본 폴링 (ms)",
+        "defaultTimeout": "기본 타임아웃 (ms)",
+        "maxConnections": "최대 동시 연결",
+        "serialRequired": "시리얼 필요",
+        "brokerRequired": "브로커 필요",
+        "serialHint": "RS-232/485 통신 필요",
+        "brokerHint": "MQTT 브로커 또는 릴레이 필요",
+        "yes": "예",
+        "no": "아니오",
+        "status": "상태",
+        "supportedOps": "지원 작업",
+        "supportedTypes": "지원 데이터 유형",
+        "totalDevices": "전체 디바이스",
+        "activeDevices": "활성 디바이스",
+        "connected": "연결됨",
+        "created": "생성",
+        "updated": "업데이트"
     },
     "devicesModal": {
         "status": "상태"

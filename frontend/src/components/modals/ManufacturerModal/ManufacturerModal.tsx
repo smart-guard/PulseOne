@@ -79,7 +79,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.name) {
-            setError('Manufacturer name is required.');
+            setError(t('modal.requiredError'));
             return;
         }
 
@@ -89,9 +89,9 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
 
             if (manufacturer) {
                 const isConfirmed = await confirm({
-                    title: 'Save Changes',
-                    message: 'Save the changes you have entered?',
-                    confirmText: 'Save',
+                    title: t('modal.saveConfirmTitle'),
+                    message: t('modal.saveConfirmMsg'),
+                    confirmText: t('modal.saveConfirmText'),
                     confirmButtonType: 'primary'
                 });
                 if (!isConfirmed) return;
@@ -99,8 +99,8 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                 const res = await ManufactureApiService.updateManufacturer(manufacturer.id, formData);
                 if (res.success) {
                     await confirm({
-                        title: 'Save Complete',
-                        message: 'Manufacturer updated successfully.',
+                        title: t('modal.saveCompleteTitle'),
+                        message: t('modal.saveCompleteMsg'),
                         confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'primary'
@@ -108,13 +108,13 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                     onSave();
                     onClose();
                 } else {
-                    setError(res.message || 'Update failed.');
+                    setError(res.message || t('modal.updateFailed'));
                 }
             } else {
                 const isConfirmed = await confirm({
-                    title: 'Register Manufacturer',
-                    message: 'Register a new manufacturer?',
-                    confirmText: 'Register',
+                    title: t('modal.registerConfirmTitle'),
+                    message: t('modal.registerConfirmMsg'),
+                    confirmText: t('modal.registerConfirmText'),
                     confirmButtonType: 'primary'
                 });
                 if (!isConfirmed) return;
@@ -122,8 +122,8 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                 const res = await ManufactureApiService.createManufacturer(formData);
                 if (res.success) {
                     await confirm({
-                        title: 'Registration Complete',
-                        message: 'Registered successfully.',
+                        title: t('modal.registerCompleteTitle'),
+                        message: t('modal.registerCompleteMsg'),
                         confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'primary'
@@ -131,11 +131,11 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                     onSave();
                     onClose();
                 } else {
-                    setError(res.message || 'Registration failed.');
+                    setError(res.message || t('modal.registerFailed'));
                 }
             }
         } catch (err: any) {
-            setError(err.message || 'Error communicating with server.');
+            setError(err.message || t('modal.serverError'));
         } finally {
             setSaving(false);
         }
@@ -147,7 +147,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                 <div className="mgmt-modal-header">
                     <div className="mgmt-modal-title">
                         <div className="title-row">
-                            <h2>{manufacturer ? 'Edit Manufacturer' : 'Register New Manufacturer'}</h2>
+                            <h2>{manufacturer ? t('modal.editTitle') : t('modal.createTitle')}</h2>
                         </div>
                     </div>
                     <button className="mgmt-close-btn" onClick={onClose}>
@@ -161,26 +161,26 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                     <form id="manufacturer-form" onSubmit={handleSubmit}>
                         <div className="mgmt-modal-form-grid">
                             <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-info-circle"></i> Basic Info</h3>
+                                <h3><i className="fas fa-info-circle"></i> {t('modal.sectionBasic')}</h3>
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">{t('table.name', {ns: 'manufacturers'})}</label>
+                                    <label className="required">{t('table.name', { ns: 'manufacturers' })}</label>
                                     <input
                                         type="text"
                                         className="form-control"
                                         value={formData.name}
                                         onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="Enter manufacturer name"
+                                        placeholder={t('modal.phName')}
                                         disabled={saving}
                                         required
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>{t('table.description', {ns: 'manufacturers'})}</label>
+                                    <label>{t('table.description', { ns: 'manufacturers' })}</label>
                                     <textarea
                                         className="form-control"
                                         value={formData.description}
                                         onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                        placeholder="Enter description about the manufacturer"
+                                        placeholder={t('modal.phDescription')}
                                         rows={3}
                                         disabled={saving}
                                     />
@@ -188,9 +188,9 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                             </div>
 
                             <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-globe"></i> Details</h3>
+                                <h3><i className="fas fa-globe"></i> {t('modal.sectionDetails')}</h3>
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">{t('table.country', {ns: 'manufacturers'})}</label>
+                                    <label className="required">{t('table.country', { ns: 'manufacturers' })}</label>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         {!isManualCountry ? (
                                             <select
@@ -214,7 +214,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                                                     .map(c => (
                                                         <option key={c.code} value={c.code}>{t(`countries.${c.code}`)}</option>
                                                     ))}
-                                                <option value="__custom__">+ Enter manually (not in list)</option>
+                                                <option value="__custom__">{t('modal.countryEnterManually')}</option>
                                             </select>
                                         ) : (
                                             <div style={{ display: 'flex', gap: '8px' }}>
@@ -232,7 +232,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                                                             setFormData({ ...formData, country: code });
                                                         }
                                                     }}
-                                                    placeholder="Enter country name (e.g. 대한민국, Deutschland)"
+                                                    placeholder={t('modal.phCountryManual')}
                                                     disabled={saving}
                                                     required
                                                     autoFocus
@@ -245,7 +245,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                                                         setIsManualCountry(false);
                                                         setFormData({ ...formData, country: '' });
                                                     }}
-                                                    title="Select from list"
+                                                    title={t('modal.countrySelectFromList')}
                                                 >
                                                     <i className="fas fa-list"></i>
                                                 </button>
@@ -253,13 +253,13 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                                         )}
                                         {isManualCountry && (
                                             <span style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>
-                                                * Please use the standard native-language name where possible.
+                                                {t('modal.countryManualHint')}
                                             </span>
                                         )}
                                     </div>
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>{t('labels.website', {ns: 'manufacturers'})}</label>
+                                    <label>{t('labels.website', { ns: 'manufacturers' })}</label>
                                     <input
                                         type="text"
                                         className="form-control"
@@ -270,7 +270,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>{t('labels.logoImageUrl', {ns: 'manufacturers'})}</label>
+                                    <label>{t('labels.logoImageUrl', { ns: 'manufacturers' })}</label>
                                     <input
                                         type="text"
                                         className="form-control"
@@ -293,7 +293,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                                             onChange={e => setFormData({ ...formData, is_active: e.target.checked })}
                                             disabled={saving}
                                         />
-                                        Active
+                                        {t('modal.active')}
                                     </label>
                                 </div>
                             </div>
@@ -303,10 +303,10 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                 <div className="mgmt-modal-footer">
                     <div className="footer-right" style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                         <button type="button" className="btn btn-outline" onClick={onClose} disabled={saving}>
-                            Cancel
+                            {t('modal.cancel')}
                         </button>
                         <button type="submit" form="manufacturer-form" className="btn btn-primary" disabled={saving}>
-                            <i className="fas fa-check"></i> {saving ? 'Saving...' : (manufacturer ? 'Save Changes' : 'Register')}
+                            <i className="fas fa-check"></i> {saving ? t('modal.saving') : (manufacturer ? t('modal.saveChanges') : t('modal.registerBtn'))}
                         </button>
                     </div>
                 </div>
