@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Layout, Typography, Tag, Space, Card } from 'antd';
 import { DatabaseOutlined, LockOutlined, TableOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import { ManagementLayout } from '../../components/common/ManagementLayout';
 import TablesSidebar from './TablesSidebar';
 import DataTable from './DataTable';
@@ -11,6 +12,7 @@ const { Content, Sider } = Layout;
 const { Title, Text } = Typography;
 
 const DatabaseExplorer: React.FC = () => {
+    const { t } = useTranslation(['common']);
     const [selectedTable, setSelectedTable] = useState<string | null>(null);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -24,15 +26,15 @@ const DatabaseExplorer: React.FC = () => {
                     </div>
                     <div>
                         <Title level={4} style={{ margin: 0, fontWeight: 800, letterSpacing: '-0.02em' }}>
-                            Database Explorer
+                            {t('dbExplorer.title', { ns: 'admin' })}
                         </Title>
                         <Text type="secondary" style={{ fontSize: '12px' }}>
-                            Direct Database Management Interface
+                            {t('dbExplorer.subtitle', { ns: 'admin' })}
                         </Text>
                     </div>
                 </Space>
                 <Tag color="error" icon={<LockOutlined />} style={{ padding: '4px 12px', borderRadius: '6px', fontWeight: 700 }}>
-                    ADMIN ONLY
+                    {t('dbExplorer.adminOnly', { ns: 'admin' })}
                 </Tag>
             </div>
 
@@ -60,8 +62,8 @@ const DatabaseExplorer: React.FC = () => {
                         <div className="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50/30">
                             <Card bordered={false} className="bg-transparent text-center">
                                 <TableOutlined style={{ fontSize: '64px', opacity: 0.1, marginBottom: '24px', display: 'block' }} />
-                                <Title level={4} style={{ color: '#9ca3af', fontWeight: 600 }}>Select a table from the sidebar</Title>
-                                <Text type="secondary">Choose a data entity to view schema and manage records</Text>
+                                <Title level={4} style={{ color: '#9ca3af', fontWeight: 600 }}>{t('dbExplorer.selectTable', { ns: 'admin' })}</Title>
+                                <Text type="secondary">{t('dbExplorer.selectTableDesc', { ns: 'admin' })}</Text>
                             </Card>
                         </div>
                     )}

@@ -138,7 +138,7 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
       {/* 상단 툴바 */}
       <div className="st-toolbar">
         <div className="mode-tag">
-          {mode === 'view' ? 'READ ONLY' : mode === 'edit' ? 'EDIT MODE' : 'CREATE MODE'}
+          {mode === 'view' ? t('settings.readOnly', { ns: 'devices' }) : mode === 'edit' ? t('settings.editMode', { ns: 'devices' }) : t('settings.createMode', { ns: 'devices' })}
         </div>
         {isEditable && (
           <button
@@ -173,7 +173,7 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
               Object.entries(defaultSettings).forEach(([key, value]) => {
                 onUpdateSettings(key, value);
               });
-              alert('Reset complete.');
+              alert(t('settings.resetComplete', { ns: 'devices' }));
             }}
           >
             <i className="fas fa-undo"></i> {t('devices:settings.reset')}
@@ -223,7 +223,7 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
 
             <div className="info-box">
               <i className="fas fa-info-circle"></i>
-              <span>When consecutive errors occur, retry intervals are increased exponentially to reduce system load.</span>
+              <span>{t('settings.backoffInfoMsg', { ns: 'devices' })}</span>
             </div>
           </div>
         </div>
@@ -268,7 +268,7 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
           </div>
           <div className="warning-box">
             <i className="fas fa-exclamation-triangle"></i>
-            <span>Diagnostic and packet logging can significantly increase storage space and CPU usage. Use with caution.</span>
+            <span>{t('settings.diagnosticWarningMsg', { ns: 'devices' })}</span>
           </div>
         </div>
       </div>

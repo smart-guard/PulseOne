@@ -50,7 +50,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
     metadata: {},
     protocol_params: {}
   });
-    const { t } = useTranslation(['devices', 'common']);
+  const { t } = useTranslation(['devices', 'common']);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isTestingRead, setIsTestingRead] = useState(false);
@@ -130,15 +130,15 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
     const newErrors: Record<string, string> = {};
 
     if (!formData.name?.trim()) {
-      newErrors.name = 'Point name is required';
+      newErrors.name = t('dpModal2.validationName', { ns: 'devices' });
     }
 
     if (!formData.address?.trim()) {
-      newErrors.address = 'Address is required';
+      newErrors.address = t('dpModal2.validationAddress', { ns: 'devices' });
     }
 
     if (!formData.data_type) {
-      newErrors.data_type = 'Data type is required';
+      newErrors.data_type = t('dpModal2.validationDataType', { ns: 'devices' });
     }
 
     setErrors(newErrors);
@@ -175,7 +175,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
       onClose();
     } catch (error) {
       console.error('데이터포인트 저장 실패:', error);
-      alert(`Save failed: ${error.message}`);
+      alert(t('dpModal2.saveFailed', { ns: 'devices', error: error.message }));
     } finally {
       setIsLoading(false);
     }
@@ -185,7 +185,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
   const handleDelete = async () => {
     if (!dataPoint || !onDelete) return;
 
-    if (confirm(`Delete data point "${dataPoint.name}"?`)) {
+    if (confirm(t('dpModal2.deleteConfirmMsg', { ns: 'devices', name: dataPoint.name }))) {
       try {
         setIsLoading(true);
         const response = await DataPointApiService.deleteDataPoint(deviceId, dataPoint.id);
@@ -197,7 +197,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
         }
       } catch (error) {
         console.error('데이터포인트 삭제 실패:', error);
-        alert(`Delete failed: ${error.message}`);
+        alert(t('dpModal2.deleteFailed', { ns: 'devices', error: error.message }));
       } finally {
         setIsLoading(false);
       }
@@ -267,8 +267,8 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
         {/* 헤더 */}
         <div className="modal-header">
           <h2>
-            {mode === 'create' ? 'Add Data Point' :
-              mode === 'edit' ? 'Edit Data Point' : 'Data Point Detail'}
+            {mode === 'create' ? t('dpModal2.addDataPoint', { ns: 'devices' }) :
+              mode === 'edit' ? t('dpModal2.editDataPoint', { ns: 'devices' }) : t('dpModal2.dataPointDetail', { ns: 'devices' })}
           </h2>
           <button className="close-btn" onClick={onClose}>
             <i className="fas fa-times"></i>
@@ -280,10 +280,10 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
           <div className="form-grid">
             {/* 기본 정보 */}
             <div className="form-section">
-              <h3>📊 Basic Info</h3>
+              <h3>{t('dpModal2.basicInfo', { ns: 'devices' })}</h3>
 
               <div className="form-group">
-                <label>Point Name *</label>
+                <label>{t('dpModal2.pointName', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.name}</div>
                 ) : (
@@ -301,21 +301,21 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>{t('dpTab.description', {ns: 'devices'})}</label>
+                <label>{t('dpTab.description', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.description || 'N/A'}</div>
                 ) : (
                   <textarea
                     value={formData.description || ''}
                     onChange={(e) => updateField('description', e.target.value)}
-                    placeholder="Description"
+                    placeholder={t('dpModal2.descriptionPlaceholder', { ns: 'devices' })}
                     rows={2}
                   />
                 )}
               </div>
 
               <div className="form-group">
-                <label>Address *</label>
+                <label>{t('dpModal2.address', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value address">{dataPoint?.address}</div>
                 ) : (
@@ -333,7 +333,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>{t('labels.addressString', {ns: 'devices'})}</label>
+                <label>{t('labels.addressString', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.address_string || 'N/A'}</div>
                 ) : (
@@ -347,7 +347,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>Data Type *</label>
+                <label>{t('dpModal2.dataType', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.data_type}</div>
                 ) : (
@@ -356,7 +356,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                     onChange={(e) => updateField('data_type', e.target.value)}
                     className={errors.data_type ? 'error' : ''}
                   >
-                    <option value="bool">{t('labels.boolean', {ns: 'devices'})}</option>
+                    <option value="bool">{t('labels.boolean', { ns: 'devices' })}</option>
                     <option value="uint8">UInt8</option>
                     <option value="int8">Int8</option>
                     <option value="uint16">UInt16</option>
@@ -367,14 +367,14 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                     <option value="int64">Int64</option>
                     <option value="float32">Float32</option>
                     <option value="float64">Float64</option>
-                    <option value="string">{t('labels.string', {ns: 'devices'})}</option>
-                    <option value="bytes">{t('labels.bytes', {ns: 'devices'})}</option>
+                    <option value="string">{t('labels.string', { ns: 'devices' })}</option>
+                    <option value="bytes">{t('labels.bytes', { ns: 'devices' })}</option>
                   </select>
                 )}
               </div>
 
               <div className="form-group">
-                <label>Bit Index (optional, 0~15)</label>
+                <label>{t('dpModal2.bitIndex', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.protocol_params?.bit_index ?? 'N/A'}</div>
                 ) : (
@@ -393,13 +393,13 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                       }
                       updateField('protocol_params', newParams);
                     }}
-                    placeholder="For register bit extraction (e.g. 0)"
+                    placeholder={t('dpModal2.bitIndexPlaceholder', { ns: 'devices' })}
                   />
                 )}
               </div>
 
               <div className="form-group">
-                <label>{t('labels.accessMode', {ns: 'devices'})}</label>
+                <label>{t('labels.accessMode', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.access_mode || 'read'}</div>
                 ) : (
@@ -407,15 +407,15 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                     value={formData.access_mode || 'read'}
                     onChange={(e) => updateField('access_mode', e.target.value)}
                   >
-                    <option value="read">{t('labels.readOnly', {ns: 'devices'})}</option>
-                    <option value="write">{t('labels.writeOnly', {ns: 'devices'})}</option>
-                    <option value="read_write">{t('labels.readwrite', {ns: 'devices'})}</option>
+                    <option value="read">{t('labels.readOnly', { ns: 'devices' })}</option>
+                    <option value="write">{t('labels.writeOnly', { ns: 'devices' })}</option>
+                    <option value="read_write">{t('labels.readwrite', { ns: 'devices' })}</option>
                   </select>
                 )}
               </div>
 
               <div className="form-group">
-                <label>{t('dpModal.unit', {ns: 'devices'})}</label>
+                <label>{t('dpModal.unit', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.unit || 'N/A'}</div>
                 ) : (
@@ -431,10 +431,10 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
 
             {/* 스케일링 및 범위 */}
             <div className="form-section">
-              <h3>📐 Scaling & Range</h3>
+              <h3>{t('dpModal2.scalingRange', { ns: 'devices' })}</h3>
 
               <div className="form-group">
-                <label>{t('dataPoint.scalingFactor', {ns: 'devices'})}</label>
+                <label>{t('dataPoint.scalingFactor', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.scaling_factor || 1}</div>
                 ) : (
@@ -448,7 +448,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>{t('labels.scalingOffset', {ns: 'devices'})}</label>
+                <label>{t('labels.scalingOffset', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.scaling_offset || 0}</div>
                 ) : (
@@ -462,7 +462,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>{t('labels.minValue', {ns: 'devices'})}</label>
+                <label>{t('labels.minValue', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.min_value || 0}</div>
                 ) : (
@@ -475,7 +475,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>{t('labels.maxValue', {ns: 'devices'})}</label>
+                <label>{t('labels.maxValue', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.max_value || 65535}</div>
                 ) : (
@@ -490,10 +490,10 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
 
             {/* 로깅 및 폴링 설정 */}
             <div className="form-section">
-              <h3>📝 Logging & Polling</h3>
+              <h3>{t('dpModal2.loggingPolling', { ns: 'devices' })}</h3>
 
               <div className="form-group">
-                <label>{t('labels.pollingIntervalMs', {ns: 'devices'})}</label>
+                <label>{t('labels.pollingIntervalMs', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.polling_interval_ms || 1000}</div>
                 ) : (
@@ -508,7 +508,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>{t('labels.logIntervalMs', {ns: 'devices'})}</label>
+                <label>{t('labels.logIntervalMs', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.log_interval_ms || 5000}</div>
                 ) : (
@@ -523,7 +523,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>{t('labels.deadband', {ns: 'devices'})}</label>
+                <label>{t('labels.deadband', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.log_deadband || 0}</div>
                 ) : (
@@ -538,7 +538,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>{t('labels.groupName', {ns: 'devices'})}</label>
+                <label>{t('labels.groupName', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.group_name || 'N/A'}</div>
                 ) : (
@@ -546,7 +546,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                     type="text"
                     value={formData.group_name || ''}
                     onChange={(e) => updateField('group_name', e.target.value)}
-                    placeholder="Data point group"
+                    placeholder={t('dpModal2.groupPlaceholder', { ns: 'devices' })}
                   />
                 )}
               </div>
@@ -554,14 +554,14 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
 
             {/* 상태 및 옵션 */}
             <div className="form-section">
-              <h3>⚙️ Status & Options</h3>
+              <h3>{t('dpModal2.statusOptions', { ns: 'devices' })}</h3>
 
               <div className="form-group">
-                <label>{t('status.enabled', {ns: 'devices'})}</label>
+                <label>{t('status.enabled', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">
                     <span className={`status-badge ${dataPoint?.is_enabled ? 'enabled' : 'disabled'}`}>
-                      {dataPoint?.is_enabled ? 'Enabled' : 'Disabled'}
+                      {dataPoint?.is_enabled ? t('dpModal2.enabled', { ns: 'devices' }) : t('dpModal2.disabled', { ns: 'devices' })}
                     </span>
                   </div>
                 ) : (
@@ -577,11 +577,11 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>{t('labels.writable', {ns: 'devices'})}</label>
+                <label>{t('labels.writable', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">
                     <span className={`status-badge ${dataPoint?.is_writable ? 'enabled' : 'disabled'}`}>
-                      {dataPoint?.is_writable ? 'Yes' : 'No'}
+                      {dataPoint?.is_writable ? t('dpModal2.yes', { ns: 'devices' }) : t('dpModal2.no', { ns: 'devices' })}
                     </span>
                   </div>
                 ) : (
@@ -597,11 +597,11 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>{t('labels.loggingEnabled', {ns: 'devices'})}</label>
+                <label>{t('labels.loggingEnabled', { ns: 'devices' })}</label>
                 {mode === 'view' ? (
                   <div className="form-value">
                     <span className={`status-badge ${dataPoint?.is_log_enabled ? 'enabled' : 'disabled'}`}>
-                      {dataPoint?.is_log_enabled ? 'Enabled' : 'Disabled'}
+                      {dataPoint?.is_log_enabled ? t('dpModal2.enabled', { ns: 'devices' }) : t('dpModal2.disabled', { ns: 'devices' })}
                     </span>
                   </div>
                 ) : (
@@ -620,10 +620,10 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
             {/* 현재값 및 테스트 (view/edit 모드에서만) */}
             {mode !== 'create' && dataPoint && (
               <div className="form-section">
-                <h3>📊 Current Value & Test</h3>
+                <h3>{t('dpModal2.currentValueTest', { ns: 'devices' })}</h3>
 
                 <div className="form-group">
-                  <label>{t('labels.currentValue', {ns: 'devices'})}</label>
+                  <label>{t('labels.currentValue', { ns: 'devices' })}</label>
                   <div className="form-value current-value">
                     {dataPoint.current_value !== null && dataPoint.current_value !== undefined
                       ? (typeof dataPoint.current_value === 'object' ? dataPoint.current_value.value : dataPoint.current_value)
@@ -632,7 +632,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                 </div>
 
                 <div className="form-group">
-                  <label>{t('labels.quality', {ns: 'devices'})}</label>
+                  <label>{t('labels.quality', { ns: 'devices' })}</label>
                   <div className="form-value">
                     <span className={`quality-badge quality-${dataPoint.quality?.toLowerCase() || 'unknown'}`}>
                       {dataPoint.quality || 'Unknown'}
@@ -641,7 +641,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                 </div>
 
                 <div className="form-group">
-                  <label>{t('labels.lastRead', {ns: 'devices'})}</label>
+                  <label>{t('labels.lastRead', { ns: 'devices' })}</label>
                   <div className="form-value">
                     {dataPoint.last_update ? new Date(dataPoint.last_update).toLocaleString() : 'N/A'}
                   </div>
@@ -658,12 +658,12 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                     {isTestingRead ? (
                       <>
                         <i className="fas fa-spinner fa-spin"></i>
-                        읽기 테스트 중...
+                        {t('dpModal2.readTestInProgress', { ns: 'devices' })}
                       </>
                     ) : (
                       <>
                         <i className="fas fa-download"></i>
-                        읽기 테스트
+                        {t('dpModal2.readTest', { ns: 'devices' })}
                       </>
                     )}
                   </button>
@@ -675,7 +675,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                           type="text"
                           value={testValue}
                           onChange={(e) => setTestValue(e.target.value)}
-                          placeholder="Enter test value"
+                          placeholder={t('dpModal2.writeTestPlaceholder', { ns: 'devices' })}
                           className="test-input"
                         />
                         <button
@@ -687,12 +687,12 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                           {isTestingWrite ? (
                             <>
                               <i className="fas fa-spinner fa-spin"></i>
-                              쓰기 중...
+                              {t('dpModal2.writeTestInProgress', { ns: 'devices' })}
                             </>
                           ) : (
                             <>
                               <i className="fas fa-upload"></i>
-                              쓰기 테스트
+                              {t('dpModal2.writeTest', { ns: 'devices' })}
                             </>
                           )}
                         </button>
@@ -723,13 +723,13 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                 disabled={isLoading}
               >
                 <i className="fas fa-trash"></i>
-                삭제
+                {t('modal.delete', { ns: 'devices' })}
               </button>
             )}
           </div>
           <div className="footer-right">
             <button type="button" className="btn btn-secondary" onClick={onClose}>
-              취소
+              {t('modal.cancel', { ns: 'devices' })}
             </button>
             {mode !== 'view' && (
               <button
@@ -741,12 +741,12 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                 {isLoading ? (
                   <>
                     <i className="fas fa-spinner fa-spin"></i>
-                    저장 중...
+                    {t('dpModal2.saving', { ns: 'devices' })}
                   </>
                 ) : (
                   <>
                     <i className="fas fa-save"></i>
-                    {mode === 'create' ? 'Create' : 'Save'}
+                    {mode === 'create' ? t('dpModal2.create', { ns: 'devices' }) : t('dpModal2.save', { ns: 'devices' })}
                   </>
                 )}
               </button>

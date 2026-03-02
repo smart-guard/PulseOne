@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AuditLogApiService } from '../api/services/auditLogApi';
 import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
@@ -9,6 +10,7 @@ import { AuditLog } from '../types/manufacturing';
 import '../styles/management.css';
 
 const AuditLogPage: React.FC = () => {
+    const { t } = useTranslation(['auditLog', 'common']);
     const [logs, setLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -33,7 +35,7 @@ const AuditLogPage: React.FC = () => {
                 setTotalCount(response.data.pagination?.total_count || 0);
             }
         } catch (err) {
-            setError('Error loading audit logs.');
+            setError(t('errorLoading', { defaultValue: '감사 로그를 불러오는 중 오류가 발생했습니다.' }));
         } finally {
             setLoading(false);
         }
@@ -45,11 +47,11 @@ const AuditLogPage: React.FC = () => {
 
     const getActionBadge = (action: string) => {
         switch (action) {
-            case 'CREATE': return <span className="badge success">Created</span>;
-            case 'UPDATE': return <span className="badge warning">Modified</span>;
-            case 'DELETE': return <span className="badge danger">Deleted</span>;
-            case 'INSTANTIATE': return <span className="badge primary">Instantiate</span>;
-            case 'ACTION': return <span className="badge info">Action</span>;
+            case 'CREATE': return <span className="badge success">{t('action.created', { defaultValue: '생성' })}</span>;
+            case 'UPDATE': return <span className="badge warning">{t('action.modified', { defaultValue: '수정' })}</span>;
+            case 'DELETE': return <span className="badge danger">{t('action.deleted', { defaultValue: '삭제' })}</span>;
+            case 'INSTANTIATE': return <span className="badge primary">{t('action.instantiate', { defaultValue: '인스턴스화' })}</span>;
+            case 'ACTION': return <span className="badge info">{t('action.action', { defaultValue: '액션' })}</span>;
             default: return <span className="badge neutral">{action}</span>;
         }
     };
@@ -57,15 +59,15 @@ const AuditLogPage: React.FC = () => {
     return (
         <ManagementLayout>
             <PageHeader
-                title="System Audit Log"
-                description="View system configuration changes and user activity history."
+                title={t('pageTitle', { defaultValue: '시스템 감사 로그' })}
+                description={t('pageDesc', { defaultValue: '시스템 구성 변경 및 사용자 활동 이력을 확인합니다.' })}
                 icon="fas fa-clipboard-check"
             />
 
             <div className="mgmt-stats-panel">
-                <StatCard label="Today's Logs" value={totalCount} type="primary" />
-                <StatCard label="Threats Detected" value="0" type="error" />
-                <StatCard label="Last Entry" value="1 min ago" type="neutral" />
+                <StatCard label={t('stats.todayLogs', { defaultValue: '오늘 로그' })} value={totalCount} type="primary" />
+                <StatCard label={t('stats.threatsDetected', { defaultValue: '위협 감지' })} value="0" type="error" />
+                <StatCard label={t('stats.lastEntry', { defaultValue: '마지막 항목' })} value={t('stats.lastEntryValue', { defaultValue: '1분 전' })} type="neutral" />
             </div>
 
             <FilterBar
@@ -78,15 +80,15 @@ const AuditLogPage: React.FC = () => {
                 activeFilterCount={(searchTerm ? 1 : 0) + (entityTypeFilter !== 'all' ? 1 : 0)}
                 filters={[
                     {
-                        label: 'Entity Type',
+                        label: t('filter.entityType', { defaultValue: '엔티티 유형' }),
                         value: entityTypeFilter,
                         onChange: setEntityTypeFilter,
                         options: [
-                            { value: 'all', label: 'All' },
-                            { value: 'DEVICE', label: 'Device' },
-                            { value: 'TEMPLATE', label: 'Template' },
-                            { value: 'USER', label: 'User' },
-                            { value: 'SYSTEM', label: 'System' }
+                            { value: 'all', label: t('filter.all', { defaultValue: '전체' }) },
+                            { value: 'DEVICE', label: t('filter.device', { defaultValue: '디바이스' }) },
+                            { value: 'TEMPLATE', label: t('filter.template', { defaultValue: '템플릿' }) },
+                            { value: 'USER', label: t('filter.user', { defaultValue: '사용자' }) },
+                            { value: 'SYSTEM', label: t('filter.system', { defaultValue: '시스템' }) }
                         ]
                     }
                 ]}
@@ -96,19 +98,19 @@ const AuditLogPage: React.FC = () => {
                 <table className="mgmt-table">
                     <thead>
                         <tr>
-                            <th>Timestamp</th>
-                            <th>Operator</th>
-                            <th>Action</th>
-                            <th>Target</th>
-                            <th>Target Name</th>
-                            <th>Details</th>
+                            <th>{t('col.timestamp', { defaultValue: '시각' })}</th>
+                            <th>{t('col.operator', { defaultValue: '운영자' })}</th>
+                            <th>{t('col.action', { defaultValue: '액션' })}</th>
+                            <th>{t('col.target', { defaultValue: '대상' })}</th>
+                            <th>{t('col.targetName', { defaultValue: '대상명' })}</th>
+                            <th>{t('col.details', { defaultValue: '상세' })}</th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>Loading...</td></tr>
+                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>{t('common:loading', { defaultValue: '로딩 중...' })}</td></tr>
                         ) : logs.length === 0 ? (
-                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>No logs recorded.</td></tr>
+                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>{t('noLogs', { defaultValue: '기록된 로그가 없습니다.' })}</td></tr>
                         ) : (
                             logs.map(log => (
                                 <tr key={log.id}>

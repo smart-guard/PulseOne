@@ -474,9 +474,9 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                 value={formData.access_mode || 'read'}
                 onChange={e => setFormData({ ...formData, access_mode: e.target.value as any })}
               >
-                <option value="read">Read Only</option>
-                <option value="write">Write Only</option>
-                <option value="read_write">Read / Write</option>
+                <option value="read">{t('labels.readOnly', { ns: 'devices' })}</option>
+                <option value="write">{t('labels.writeOnly', { ns: 'devices' })}</option>
+                <option value="read_write">{t('labels.readwrite', { ns: 'devices' })}</option>
               </select>
             </div>
 
@@ -729,13 +729,13 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           <i className="fas fa-search"></i>
           <input
             type="text"
-            placeholder="Search..."
+            placeholder={t('dpTabView.searchPlaceholder', { ns: 'devices' })}
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
         </div>
         <select value={filterDataType} onChange={e => setFilterDataType(e.target.value)}>
-          <option value="all">All Types</option>
+          <option value="all">{t('dpTabView.allTypes', { ns: 'devices' })}</option>
           <optgroup label="Categories">
             <option value="number">Number (Any)</option>
             <option value="boolean">Boolean</option>
@@ -751,9 +751,9 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           </optgroup>
         </select>
         <select value={filterEnabled} onChange={e => setFilterEnabled(e.target.value)}>
-          <option value="all">All Status</option>
-          <option value="enabled">Enabled</option>
-          <option value="disabled">Disabled</option>
+          <option value="all">{t('dpTabView.allStatus', { ns: 'devices' })}</option>
+          <option value="enabled">{t('dpTabView.enabled', { ns: 'devices' })}</option>
+          <option value="disabled">{t('dpTabView.disabled', { ns: 'devices' })}</option>
         </select>
       </div>
 
@@ -766,8 +766,8 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
           <div className="th col-type">{t('devices:dataPoint.dataType')} / {t('devices:dataPoint.unit')}</div>
           <div className="th col-access">{t('devices:dataPoint.accessMode')}</div>
           <div className="th col-scale">{t('devices:dataPoint.scalingFactor')}</div>
-          <div className="th col-range">Range (Min~Max)</div>
-          <div className="th col-val">Current Value</div>
+          <div className="th col-range">{t('dpTabView.rangeMinMax', { ns: 'devices' })}</div>
+          <div className="th col-val">{t('dpTabView.currentValue', { ns: 'devices' })}</div>
           <div className="th col-action"></div>
         </div>
         <div className="dp-table-body">
@@ -841,12 +841,12 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                         if (showModal) {
                           showModal({
                             type: 'confirm',
-                            title: '삭제 확인',
-                            message: `[${dp.name}] 데이터포인트를 삭제하시겠습니까?`,
-                            confirmText: '삭제',
+                            title: t('dpTabView.deleteConfirmTitle', { ns: 'devices' }),
+                            message: t('dpTabView.deleteConfirmMsg', { ns: 'devices', name: dp.name }),
+                            confirmText: t('modal.delete', { ns: 'devices' }),
                             onConfirm: () => onDelete(dp.id)
                           });
-                        } else if (confirm('삭제하시겠습니까?')) {
+                        } else if (confirm(t('dpTabView.deleteConfirmMsg', { ns: 'devices', name: dp.name }))) {
                           onDelete(dp.id);
                         }
                       }} title="삭제" className="danger"><i className="fas fa-trash"></i></button>
@@ -857,7 +857,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
             </div>
           ))}
           {filteredDataPoints.length === 0 && (
-            <div className="empty-msg">No data.</div>
+            <div className="empty-msg">{t('dpTabView.noDataPoints', { ns: 'devices' })}</div>
           )}
         </div>
       </div>

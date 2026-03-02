@@ -3,6 +3,7 @@
 // ============================================================================
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { VirtualPoint } from '../../../types/virtualPoints';
 import { virtualPointsApi } from '../../../api/services/virtualPointsApi';
 import './VirtualPointModal.css'; // Consistent styling source
@@ -29,6 +30,7 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
     onDelete
 
 }) => {
+    const { t } = useTranslation(['virtualPoints', 'common']);
     const [activeTab, setActiveTab] = React.useState<'overview' | 'history' | 'dependency'>('overview');
     const [logs, setLogs] = React.useState<any[]>([]);
     const [loadingLogs, setLoadingLogs] = React.useState(false);
@@ -69,18 +71,18 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                         <div className="icon-box">
                             <i className="fas fa-microchip"></i>
                         </div>
-                        <h2>Virtual Point Engine Details</h2>
+                        <h2>{t('detail.title', { ns: 'virtualPoints' })}</h2>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         {virtualPoint.is_deleted ? (
                             <div className="vpd-status-banner danger" style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' }}>
                                 <i className="fas fa-trash-alt"></i>
-                                Deleted Virtual Point
+                                {t('detail.deletedPoint', { ns: 'virtualPoints' })}
                             </div>
                         ) : (
                             <div className={`vpd-status-banner ${virtualPoint.is_enabled ? 'active' : 'paused'}`}>
                                 <i className={`fas ${virtualPoint.is_enabled ? 'fa-check-circle' : 'fa-pause-circle'}`}></i>
-                                {virtualPoint.is_enabled ? 'Real-time Calculation Active' : 'Calculation Paused'}
+                                {virtualPoint.is_enabled ? t('detail.realtimeActive', { ns: 'virtualPoints' }) : t('detail.calculationPaused', { ns: 'virtualPoints' })}
                             </div>
                         )}
                         <button className="close-btn" onClick={onClose} title="Close">
@@ -95,19 +97,19 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                         className={`vpd-tab ${activeTab === 'overview' ? 'active' : ''}`}
                         onClick={() => handleTabChange('overview')}
                     >
-                        <i className="fas fa-chart-pie mr-2"></i> Overview & Status
+                        <i className="fas fa-chart-pie mr-2"></i> {t('detail.overviewStatus', { ns: 'virtualPoints' })}
                     </button>
                     <button
                         className={`vpd-tab ${activeTab === 'history' ? 'active' : ''}`}
                         onClick={() => handleTabChange('history')}
                     >
-                        <i className="fas fa-history mr-2"></i> Change History (Audit Log)
+                        <i className="fas fa-history mr-2"></i> {t('detail.changeHistory', { ns: 'virtualPoints' })}
                     </button>
                     <button
                         className={`vpd-tab ${activeTab === 'dependency' ? 'active' : ''}`}
                         onClick={() => handleTabChange('dependency')}
                     >
-                        <i className="fas fa-project-diagram mr-2"></i> Dependency Map
+                        <i className="fas fa-project-diagram mr-2"></i> {t('detail.dependencyMap', { ns: 'virtualPoints' })}
                     </button>
                 </div>
 
@@ -123,25 +125,25 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
 
                                 <div className="vpd-stats-grid">
                                     <div className="vpd-stat-card">
-                                        <label>Category</label>
-                                        <div className="val">{virtualPoint.category || 'Default'}</div>
+                                        <label>{t('detail.category', { ns: 'virtualPoints' })}</label>
+                                        <div className="val">{virtualPoint.category || t('detail.defaultCategory', { ns: 'virtualPoints' })}</div>
                                     </div>
                                     <div className="vpd-stat-card">
-                                        <label>Data Type</label>
+                                        <label>{t('detail.dataType', { ns: 'virtualPoints' })}</label>
                                         <div className="val">{virtualPoint.data_type} {virtualPoint.unit && `(${virtualPoint.unit})`}</div>
                                     </div>
                                     <div className="vpd-stat-card">
-                                        <label>Execution Mode</label>
-                                        <div className="val">{virtualPoint.execution_type === 'periodic' ? `Periodic (${virtualPoint.execution_interval}ms)` : 'On Data Change'}</div>
+                                        <label>{t('detail.executionMode', { ns: 'virtualPoints' })}</label>
+                                        <div className="val">{virtualPoint.execution_type === 'periodic' ? t('detail.periodicExec', { ns: 'virtualPoints', ms: virtualPoint.execution_interval }) : t('detail.onDataChange', { ns: 'virtualPoints' })}</div>
                                     </div>
                                     <div className="vpd-stat-card">
-                                        <label>Calculation Scope</label>
+                                        <label>{t('detail.calcScope', { ns: 'virtualPoints' })}</label>
                                         <div className="val" style={{ textTransform: 'capitalize' }}>{virtualPoint.scope_type} Level</div>
                                     </div>
                                 </div>
 
                                 <div className="vpd-result-box">
-                                    <label>Current Calculation Result</label>
+                                    <label>{t('detail.currentCalcResult', { ns: 'virtualPoints' })}</label>
                                     <div className="main-val">
                                         {virtualPoint.current_value !== undefined ? virtualPoint.current_value : 'N/A'}
                                         <span style={{ fontSize: '14px', fontWeight: 600, marginLeft: '8px', opacity: 0.5 }}>{virtualPoint.unit}</span>
@@ -149,8 +151,8 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                                     <div className="timestamp">
                                         <i className="far fa-clock"></i>
                                         {virtualPoint.last_calculated
-                                            ? `Last update: ${new Date(virtualPoint.last_calculated).toLocaleString()}`
-                                            : 'No calculation records'}
+                                            ? `${t('detail.lastUpdate', { ns: 'virtualPoints' })} ${new Date(virtualPoint.last_calculated).toLocaleString()}`
+                                            : t('detail.noCalcRecords', { ns: 'virtualPoints' })}
                                     </div>
                                 </div>
                             </div>
@@ -158,7 +160,7 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                             {/* RIGHT COLUMN: Formula Studio Area */}
                             <div className="vpd-right-column">
                                 <div className="vpd-logic-panel">
-                                    <label>Logic Expression</label>
+                                    <label>{t('detail.logicExpression', { ns: 'virtualPoints' })}</label>
                                     <pre>
                                         {virtualPoint.expression || virtualPoint.formula || '// 수식이 정의되지 않았습니다.'}
                                     </pre>
@@ -169,7 +171,7 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                         <div className="vpd-history-panel" style={{ width: '100%', padding: '20px' }}>
                             {loadingLogs ? (
                                 <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
-                                    <i className="fas fa-spinner fa-spin mr-2"></i> Loading logs...
+                                    <i className="fas fa-spinner fa-spin mr-2"></i> {t('detail.loadingLogs', { ns: 'virtualPoints' })}
                                 </div>
                             ) : logs.length > 0 ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -206,7 +208,7 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                             ) : (
                                 <div className="empty-state" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                                     <i className="fas fa-history fa-3x mb-3" style={{ opacity: 0.3 }}></i>
-                                    <p>No saved change history.</p>
+                                    <p>{t('detail.noChangeHistory', { ns: 'virtualPoints' })}</p>
                                 </div>
                             )}
                         </div>
@@ -250,8 +252,8 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                             ) : (
                                 <div className="empty-state" style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                                     <i className="fas fa-link-slash fa-3x mb-3" style={{ opacity: 0.3 }}></i>
-                                    <p>No dependent input variables.</p>
-                                    <p style={{ fontSize: '13px', marginTop: '8px' }}>(May be an independent constant formula)</p>
+                                    <p>{t('detail.noDependencies', { ns: 'virtualPoints' })}</p>
+                                    <p style={{ fontSize: '13px', marginTop: '8px' }}>({t('detail.independentFormula', { ns: 'virtualPoints' })})</p>
                                 </div>
                             )}
                         </div>
@@ -264,13 +266,13 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                             <div style={{ display: 'flex', gap: '12px' }}>
                                 <div style={{ color: '#64748b', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <i className="fas fa-info-circle"></i>
-                                    This point has been deleted. Restore it to use again.
+                                    {t('detail.deletedHint', { ns: 'virtualPoints' })}
                                 </div>
                             </div>
                             <div style={{ display: 'flex', gap: '12px' }}>
-                                <button className="vpd-btn secondary" onClick={onClose}>Close</button>
+                                <button className="vpd-btn secondary" onClick={onClose}>{t('detail.close', { ns: 'virtualPoints' })}</button>
                                 <button className="vpd-btn success" onClick={() => onRestore(virtualPoint.id)}>
-                                    <i className="fas fa-undo"></i> Cancel Delete & Restore
+                                    <i className="fas fa-undo"></i> {t('detail.restoreBtn', { ns: 'virtualPoints' })}
                                 </button>
                             </div>
                         </>
@@ -282,21 +284,21 @@ export const VirtualPointDetailModal: React.FC<VirtualPointDetailModalProps> = (
                                     onClick={() => onToggleEnabled(virtualPoint.id)}
                                 >
                                     <i className={`fas ${virtualPoint.is_enabled ? 'fa-pause' : 'fa-play'}`}></i>
-                                    {virtualPoint.is_enabled ? 'Stop Engine' : 'Resume Engine'}
+                                    {virtualPoint.is_enabled ? t('detail.stopEngine', { ns: 'virtualPoints' }) : t('detail.resumeEngine', { ns: 'virtualPoints' })}
                                 </button>
                                 <button className="vpd-btn secondary" onClick={() => onExecute(virtualPoint.id)}>
-                                    <i className="fas fa-bolt"></i> Run Now (Test)
+                                    <i className="fas fa-bolt"></i> {t('detail.runNow', { ns: 'virtualPoints' })}
                                 </button>
                             </div>
                             <div style={{ display: 'flex', gap: '12px' }}>
-                                <button className="vpd-btn secondary" onClick={onClose}>Close</button>
+                                <button className="vpd-btn secondary" onClick={onClose}>{t('detail.close', { ns: 'virtualPoints' })}</button>
                                 {onDelete && (
                                     <button className="vpd-btn danger" onClick={() => onDelete(virtualPoint.id)}>
-                                        <i className="fas fa-trash"></i> Delete Virtual Point
+                                        <i className="fas fa-trash"></i> {t('detail.deleteVP', { ns: 'virtualPoints' })}
                                     </button>
                                 )}
                                 <button className="vpd-btn primary" onClick={() => onEdit(virtualPoint)}>
-                                    <i className="fas fa-sliders-h"></i> Edit Engine Settings
+                                    <i className="fas fa-sliders-h"></i> {t('detail.editSettings', { ns: 'virtualPoints' })}
                                 </button>
                             </div>
                         </>

@@ -240,10 +240,10 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
     const handleCloseModal = async () => {
         if (hasChanges) {
             const confirmed = await confirm({
-                title: 'Unsaved Changes Warning',
-                message: 'You have unsaved changes. Closing without saving will lose all data. Continue?',
-                confirmText: 'Close',
-                cancelText: 'Cancel',
+                title: tl('confirm.unsavedTitle', { ns: 'dataExport', defaultValue: '저장되지 않은 변경사항' }),
+                message: tl('confirm.unsavedMsg', { ns: 'dataExport', defaultValue: '저장되지 않은 변경사항이 있습니다. 닫으면 데이터가 손실됩니다. 계속하시겠습니까?' }),
+                confirmText: tl('close', { ns: 'common', defaultValue: '닫기' }),
+                cancelText: tl('cancel', { ns: 'common', defaultValue: '취소' }),
                 confirmButtonType: 'warning'
             });
             if (!confirmed) return;
@@ -257,8 +257,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
 
         if (!hasChanges && editingTemplate?.id) {
             await confirm({
-                title: 'No Changes',
-                message: 'No information has been modified.',
+                title: tl('confirm.noChangesTitle', { ns: 'dataExport', defaultValue: '변경사항 없음' }),
+                message: tl('confirm.noChangesMsg', { ns: 'dataExport', defaultValue: '수정된 정보가 없습니다.' }),
                 showCancelButton: false,
                 confirmButtonType: 'primary'
             });
@@ -269,8 +269,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
         try {
             if (editMode === 'advanced' && !isJsonValid) {
                 await confirm({
-                    title: 'JSON Format Error',
-                    message: 'Invalid JSON format. Please correct the code.',
+                    title: tl('confirm.jsonError', { ns: 'dataExport', defaultValue: 'JSON 형식 오류' }),
+                    message: tl('confirm.jsonErrorMsg', { ns: 'dataExport', defaultValue: 'JSON 형식이 잘못되었습니다. 코드를 수정해주세요.' }),
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -297,9 +297,9 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                     // Note: We still save the original templateJson with placeholders as a STRING
                 } catch (parseError) {
                     await confirm({
-                        title: 'JSON Format Error',
-                        message: `Invalid JSON format.\n\n[Details]\n${parseError instanceof Error ? parseError.message : String(parseError)}\n\nTip: Check that the structure (excluding braces) is valid JSON.`,
-                        confirmText: 'OK',
+                        title: tl('confirm.jsonError', { ns: 'dataExport', defaultValue: 'JSON 형식 오류' }),
+                        message: `${tl('confirm.jsonInvalid', { ns: 'dataExport', defaultValue: 'JSON 형식이 잘못되었습니다.' })}\n\n[Details]\n${parseError instanceof Error ? parseError.message : String(parseError)}\n\n${tl('confirm.jsonTip', { ns: 'dataExport', defaultValue: '팁: 플레이스홀더를 제외한 구조가 유효한 JSON인지 확인하세요.' })}`,
+                        confirmText: tl('ok', { ns: 'common', defaultValue: '확인' }),
                         showCancelButton: false,
                         confirmButtonType: 'danger'
                     });
@@ -320,8 +320,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
             }
 
             await confirm({
-                title: 'Save Complete',
-                message: 'Template saved successfully.',
+                title: tl('confirm.saveComplete', { ns: 'dataExport', defaultValue: '저장 완료' }),
+                message: tl('confirm.templateSaved', { ns: 'dataExport', defaultValue: '템플릿이 저장되었습니다.' }),
                 showCancelButton: false,
                 confirmButtonType: 'success'
             });
@@ -331,8 +331,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
             fetchTemplates();
         } catch (error) {
             await confirm({
-                title: 'Save Failed',
-                message: 'Error occurred while saving template.',
+                title: tl('confirm.saveFailed', { ns: 'dataExport', defaultValue: '저장 실패' }),
+                message: tl('confirm.templateSaveError', { ns: 'dataExport', defaultValue: '템플릿 저장 중 오류가 발생했습니다.' }),
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -431,8 +431,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
             }
         } catch (e) {
             confirm({
-                title: 'Analysis Failed',
-                message: 'Please enter a valid JSON sample. (Arrays are also supported)',
+                title: tl('confirm.analysisFailedTitle', { ns: 'dataExport', defaultValue: '분석 실패' }),
+                message: tl('confirm.analysisFailedMsg', { ns: 'dataExport', defaultValue: '유효한 JSON 샘플을 입력해주세요. (배열도 지원됩니다)' }),
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -441,9 +441,9 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
 
     const handleDelete = async (id: number) => {
         const confirmed = await confirm({
-            title: 'Confirm Template Delete',
-            message: 'Delete this payload template? Transmission may fail for targets using this template.',
-            confirmText: 'Delete',
+            title: tl('confirm.deleteTemplateTitle', { ns: 'dataExport', defaultValue: '템플릿 삭제 확인' }),
+            message: tl('confirm.deleteTemplateMsg', { ns: 'dataExport', defaultValue: '이 템플릿을 삭제하시겠습니까? 이 템플릿을 사용하는 대상의 전송이 실패할 수 있습니다.' }),
+            confirmText: tl('delete', { ns: 'common', defaultValue: '삭제' }),
             confirmButtonType: 'danger'
         });
 
@@ -452,14 +452,14 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
             await exportGatewayApi.deleteTemplate(id, tenantId);
             fetchTemplates();
         } catch (error) {
-            await confirm({ title: 'Delete Failed', message: 'Error occurred while deleting the template.', showCancelButton: false, confirmButtonType: 'danger' });
+            await confirm({ title: tl('confirm.deleteFailed', { ns: 'dataExport', defaultValue: '삭제 실패' }), message: tl('confirm.templateDeleteError', { ns: 'dataExport', defaultValue: '템플릿 삭제 중 오류가 발생했습니다.' }), showCancelButton: false, confirmButtonType: 'danger' });
         }
     };
 
     return (
         <div>
             <div className="mgmt-header-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>Payload Template Settings</h3>
+                <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>{tl('template.settingsTitle', { ns: 'dataExport', defaultValue: '페이로드 템플릿 설정' })}</h3>
                 <button className="btn btn-primary btn-sm" onClick={() => {
                     setEditingTemplate({
                         name: '',
@@ -486,7 +486,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                     setIsModalOpen(true);
                     setHasChanges(false);
                 }}>
-                    <i className="fas fa-plus" /> Add Template
+                    <i className="fas fa-plus" /> {tl('template.addTemplate', { ns: 'dataExport', defaultValue: '템플릿 추가' })}
                 </button>
             </div>
 
@@ -494,10 +494,10 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                 <table className="mgmt-table">
                     <thead>
                         <tr>
-                            <th>Name</th>
-                            <th>System Type</th>
-                            <th>Status</th>
-                            <th>Manage</th>
+                            <th>{tl('col.name', { ns: 'dataExport', defaultValue: '이름' })}</th>
+                            <th>{tl('col.systemType', { ns: 'dataExport', defaultValue: '시스템 유형' })}</th>
+                            <th>{tl('col.status', { ns: 'dataExport', defaultValue: '상태' })}</th>
+                            <th>{tl('col.manage', { ns: 'dataExport', defaultValue: '관리' })}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -507,7 +507,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                 <td><span className="mgmt-badge neutral">{t.system_type}</span></td>
                                 <td>
                                     <span className={`mgmt-badge ${t.is_active ? 'success' : 'neutral'}`}>
-                                        {t.is_active ? 'Active' : 'Inactive'}
+                                        {t.is_active ? tl('status.active', { ns: 'dataExport', defaultValue: '활성' }) : tl('status.inactive', { ns: 'dataExport', defaultValue: '비활성' })}
                                     </span>
                                 </td>
                                 <td>
@@ -544,8 +544,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
 
                                             setIsModalOpen(true);
                                             setIsJsonValid(true);
-                                        }} style={{ width: 'auto' }}>{tl('edit', {ns: 'common'})}</button>
-                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-error" onClick={() => handleDelete(t.id)} style={{ width: 'auto' }}>{tl('delete', {ns: 'common'})}</button>
+                                        }} style={{ width: 'auto' }}>{tl('edit', { ns: 'common' })}</button>
+                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-error" onClick={() => handleDelete(t.id)} style={{ width: 'auto' }}>{tl('delete', { ns: 'common' })}</button>
                                     </div>
                                 </td>
                             </tr>
@@ -565,7 +565,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                 <div className="mgmt-modal-overlay">
                     <div className="mgmt-modal-content" style={{ maxWidth: '900px', width: '95%' }}>
                         <div className="mgmt-modal-header" style={{ padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h3 className="mgmt-modal-title" style={{ fontSize: '16px', margin: 0 }}>{editingTemplate?.id ? "Edit Template" : "Add Payload Template"}</h3>
+                            <h3 className="mgmt-modal-title" style={{ fontSize: '16px', margin: 0 }}>{editingTemplate?.id ? tl('template.editTitle', { ns: 'dataExport', defaultValue: '템플릿 편집' }) : tl('template.addTitle', { ns: 'dataExport', defaultValue: '페이로드 템플릿 추가' })}</h3>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <button
                                     type="button"
@@ -575,7 +575,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                     style={{ height: '32px', fontSize: '13px', padding: '0 16px', borderRadius: '6px' }}
                                 >
                                     <i className="fas fa-save" style={{ marginRight: '6px' }} />
-                                    Save
+                                    {tl('save', { ns: 'common', defaultValue: '저장' })}
                                 </button>
                                 <button className="mgmt-modal-close" onClick={handleCloseModal}>&times;</button>
                             </div>
@@ -793,7 +793,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                         onChange={e => setSampleInput(e.target.value)}
                                                     />
                                                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                                                        <button type="button" className="mgmt-btn mgmt-btn-outline" style={{ height: '32px', fontSize: '12px', width: '80px' }} onClick={() => setIsImportVisible(false)}>{tl('cancel', {ns: 'common'})}</button>
+                                                        <button type="button" className="mgmt-btn mgmt-btn-outline" style={{ height: '32px', fontSize: '12px', width: '80px' }} onClick={() => setIsImportVisible(false)}>{tl('cancel', { ns: 'common' })}</button>
                                                         <button type="button" className="mgmt-btn btn-primary" style={{ height: '32px', fontSize: '12px', width: '100px' }} onClick={handleImportFromSample}>Analyze & Apply</button>
                                                     </div>
                                                 </div>
@@ -1012,7 +1012,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                 </div>
                             </div>
                             <div className="mgmt-modal-footer" style={{ padding: '15px 20px', borderTop: '1px solid var(--neutral-200)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                                <button type="button" className="mgmt-btn mgmt-btn-outline" style={{ height: '40px', fontSize: '14px', width: '100px' }} onClick={handleCloseModal}>{tl('cancel', {ns: 'common'})}</button>
+                                <button type="button" className="mgmt-btn mgmt-btn-outline" style={{ height: '40px', fontSize: '14px', width: '100px' }} onClick={handleCloseModal}>{tl('cancel', { ns: 'common' })}</button>
                                 <button type="submit" className={`mgmt-btn btn-primary ${editMode === 'advanced' && !isJsonValid ? 'disabled' : ''}`} disabled={editMode === 'advanced' && !isJsonValid} style={{ height: '40px', fontSize: '14px', minWidth: '120px' }}>템플릿 Save</button>
                             </div>
                         </form>

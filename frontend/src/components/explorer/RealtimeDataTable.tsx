@@ -43,18 +43,19 @@ const RealtimeDataTable: React.FC<RealtimeDataTableProps> = ({
     selectedNode,
     renderEmptyDeviceMessage,
 }) => {
+    const { t } = useTranslation(['common']);
     return (
         <div className="realtime-data">
             <h4>
-                ⚡ Real-time Data ({filteredDataPoints.length})
+                ⚡ {t('realtimeData', { ns: 'common' })} ({filteredDataPoints.length})
             </h4>
 
             {filteredDataPoints.length === 0 ? (
                 selectedNode && ['device', 'master', 'slave'].includes(selectedNode.type) ?
                     renderEmptyDeviceMessage(selectedNode) : (
                         <div className="empty-state">
-                            <p style={{ margin: '0 0 8px 0' }}>No data to display</p>
-                            <small>Select a device from the left tree or adjust the filter</small>
+                            <p style={{ margin: '0 0 8px 0' }}>{t('noDataToDisplay', { ns: 'common' })}</p>
+                            <small>{t('selectDeviceHint', { ns: 'common' })}</small>
                         </div>
                     )
             ) : (
@@ -69,12 +70,12 @@ const RealtimeDataTable: React.FC<RealtimeDataTableProps> = ({
                                 style={{ cursor: 'pointer' }}
                             />
                         </div>
-                        <div className="header-cell">Point Name</div>
-                        <div className="header-cell">Device</div>
-                        <div className="header-cell">Current Value</div>
-                        <div className="header-cell">Quality</div>
-                        <div className="header-cell">Type</div>
-                        <div className="header-cell">Time</div>
+                        <div className="header-cell">{t('pointName', { ns: 'common' })}</div>
+                        <div className="header-cell">{t('device', { ns: 'common' })}</div>
+                        <div className="header-cell">{t('currentValue', { ns: 'common' })}</div>
+                        <div className="header-cell">{t('quality', { ns: 'common' })}</div>
+                        <div className="header-cell">{t('type', { ns: 'common' })}</div>
+                        <div className="header-cell">{t('time', { ns: 'common' })}</div>
                     </div>
 
                     {/* 테이블 바디 */}

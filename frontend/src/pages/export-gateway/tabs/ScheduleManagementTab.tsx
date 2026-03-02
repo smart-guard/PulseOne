@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import exportGatewayApi, { ExportTarget, ExportProfile, ExportSchedule } from '../../../api/services/exportGatewayApi';
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
 
@@ -22,6 +23,7 @@ interface ScheduleManagementTabProps {
 }
 
 const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, tenantId, isAdmin, tenants = [] }) => {
+    const { t } = useTranslation(['dataExport', 'common']);
     const [schedules, setSchedules] = useState<any[]>([]);
     const [targets, setTargets] = useState<ExportTarget[]>([]);
     const [profiles, setProfiles] = useState<ExportProfile[]>([]);
@@ -52,10 +54,10 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
     const handleCloseModal = async () => {
         if (hasChanges) {
             const confirmed = await confirm({
-                title: 'Unsaved Changes Warning',
-                message: 'You have unsaved changes. Closing without saving will lose all data. Continue?',
-                confirmText: 'Close',
-                cancelText: 'Cancel',
+                title: t('confirm.unsavedTitle', { defaultValue: '저장되지 않은 변경사항' }),
+                message: t('confirm.unsavedMsg', { defaultValue: '저장되지 않은 변경사항이 있습니다. 닫으면 데이터가 손실됩니다. 계속하시겠습니까?' }),
+                confirmText: t('close', { ns: 'common', defaultValue: '닫기' }),
+                cancelText: t('cancel', { ns: 'common', defaultValue: '취소' }),
                 confirmButtonType: 'warning'
             });
             if (!confirmed) return;
@@ -71,8 +73,8 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
 
         if (!hasChanges && editingSchedule?.id) {
             await confirm({
-                title: 'No Changes',
-                message: 'No information has been modified.',
+                title: t('confirm.noChangesTitle', { defaultValue: '변경사항 없음' }),
+                message: t('confirm.noChangesMsg', { defaultValue: '수정된 정보가 없습니다.' }),
                 showCancelButton: false,
                 confirmButtonType: 'primary'
             });
@@ -91,8 +93,8 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
 
             if (response.success) {
                 await confirm({
-                    title: 'Save Complete',
-                    message: 'Schedule saved successfully.',
+                    title: t('confirm.saveComplete', { defaultValue: '저장 완료' }),
+                    message: t('confirm.scheduleSaved', { defaultValue: '스케줄이 저장되었습니다.' }),
                     showCancelButton: false,
                     confirmButtonType: 'success'
                 });
@@ -101,16 +103,16 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
                 fetchData();
             } else {
                 await confirm({
-                    title: 'Save Failed',
-                    message: response.message || 'Error occurred while saving schedule.',
+                    title: t('confirm.saveFailed', { defaultValue: '저장 실패' }),
+                    message: response.message || t('confirm.scheduleError', { defaultValue: '스케줄 저장 중 오류가 발생했습니다.' }),
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
             }
         } catch (error) {
             await confirm({
-                title: 'Save Failed',
-                message: 'Error occurred while saving schedule.',
+                title: t('confirm.saveFailed', { defaultValue: '저장 실패' }),
+                message: t('confirm.scheduleError', { defaultValue: '스케줄 저장 중 오류가 발생했습니다.' }),
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -119,9 +121,9 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
 
     const handleDelete = async (id: number) => {
         const confirmed = await confirm({
-            title: 'Confirm Delete Schedule',
-            message: 'Delete this transmission schedule?',
-            confirmText: 'Delete',
+            title: t('confirm.deleteScheduleTitle', { defaultValue: '스케줄 삭제 확인' }),
+            message: t('confirm.deleteScheduleMsg', { defaultValue: '이 전송 스케줄을 삭제하시겠습니까?' }),
+            confirmText: t('delete', { ns: 'common', defaultValue: '삭제' }),
             confirmButtonType: 'danger'
         });
 
@@ -130,16 +132,16 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
             await exportGatewayApi.deleteSchedule(id, tenantId);
             fetchData();
         } catch (error) {
-            await confirm({ title: 'Delete Failed', message: 'Error occurred while deleting schedule.', showCancelButton: false, confirmButtonType: 'danger' });
+            await confirm({ title: t('confirm.deleteFailed', { defaultValue: '삭제 실패' }), message: t('confirm.scheduleDeleteError', { defaultValue: '스케줄 삭제 중 오류가 발생했습니다.' }), showCancelButton: false, confirmButtonType: 'danger' });
         }
     };
 
     return (
         <div>
             <div className="mgmt-header-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>Batch Transmission Schedule Management</h3>
+                <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>{t('schedule.settingsTitle', { defaultValue: '일괄 전송 스케줄 관리' })}</h3>
                 <button className="btn btn-primary btn-sm" onClick={() => { setEditingSchedule({ schedule_name: '', cron_expression: '0 0 * * *', data_range: 'hour', lookback_periods: 1, timezone: 'Asia/Seoul', is_enabled: true }); setIsModalOpen(true); }}>
-                    <i className="fas fa-plus" /> Add Schedule
+                    <i className="fas fa-plus" /> {t('schedule.addSchedule', { defaultValue: '스케줄 추가' })}
                 </button>
             </div>
 
@@ -147,12 +149,12 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
                 <table className="mgmt-table">
                     <thead>
                         <tr>
-                            <th>Schedule Name</th>
-                            <th>Target</th>
-                            <th>Cron Expression</th>
-                            <th>Status</th>
-                            <th>Last Run</th>
-                            <th>Manage</th>
+                            <th>{t('col.scheduleName', { defaultValue: '스케줄 이름' })}</th>
+                            <th>{t('col.target', { defaultValue: '대상' })}</th>
+                            <th>{t('col.cronExpression', { defaultValue: 'Cron 표현식' })}</th>
+                            <th>{t('col.status', { defaultValue: '상태' })}</th>
+                            <th>{t('col.lastRun', { defaultValue: '마지막 실행' })}</th>
+                            <th>{t('col.manage', { defaultValue: '관리' })}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -166,7 +168,7 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
                                 <td><code style={{ background: '#f0f0f0', padding: '2px 4px', borderRadius: '4px' }}>{s.cron_expression}</code></td>
                                 <td>
                                     <span className={`mgmt-badge ${s.is_enabled ? 'success' : 'neutral'}`}>
-                                        {s.is_enabled ? 'Active' : 'Inactive'}
+                                        {s.is_enabled ? t('status.active', { defaultValue: '활성' }) : t('status.inactive', { defaultValue: '비활성' })}
                                     </span>
                                 </td>
                                 <td>
@@ -175,8 +177,8 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
                                 </td>
                                 <td>
                                     <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs" onClick={() => { setEditingSchedule(s); setIsModalOpen(true); }} style={{ width: 'auto' }}>Edit</button>
-                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs mgmt-btn-error" onClick={() => handleDelete(s.id)} style={{ width: 'auto' }}>Delete</button>
+                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs" onClick={() => { setEditingSchedule(s); setIsModalOpen(true); }} style={{ width: 'auto' }}>{t('edit', { ns: 'common', defaultValue: '편집' })}</button>
+                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs mgmt-btn-error" onClick={() => handleDelete(s.id)} style={{ width: 'auto' }}>{t('delete', { ns: 'common', defaultValue: '삭제' })}</button>
                                     </div>
                                 </td>
                             </tr>
@@ -230,7 +232,7 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
                     `}</style>
                     <div className="mgmt-modal-content" style={{ maxWidth: '850px', width: '90%' }}>
                         <div className="mgmt-modal-header">
-                            <h3 className="mgmt-modal-title">{editingSchedule?.id ? "Edit Schedule" : "New Transmission Schedule"}</h3>
+                            <h3 className="mgmt-modal-title">{editingSchedule?.id ? t('schedule.editTitle', { defaultValue: '스케줄 편집' }) : t('schedule.newTitle', { defaultValue: '새 전송 스케줄' })}</h3>
                             <button className="mgmt-modal-close" onClick={handleCloseModal}>&times;</button>
                         </div>
                         <form onSubmit={handleSave}>

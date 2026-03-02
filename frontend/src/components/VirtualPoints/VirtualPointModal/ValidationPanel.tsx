@@ -27,7 +27,7 @@ const ValidationPanel: React.FC<ValidationPanelProps> = ({
   onRunSimulation
 }) => {
   const [testInputs, setTestInputs] = useState<Record<string, any>>({});
-    const { t } = useTranslation(['virtualPoints', 'common']);
+  const { t } = useTranslation(['virtualPoints', 'common']);
 
   useEffect(() => {
     const inputs: Record<string, any> = {};
@@ -56,30 +56,30 @@ const ValidationPanel: React.FC<ValidationPanelProps> = ({
           {/* Identity & Launch Status */}
           <div className="concept-group-card">
             <div className="concept-title">
-              <i className="fas fa-check-double"></i> Final Configuration Review
+              <i className="fas fa-check-double"></i> {t('validation.finalConfigReview', { ns: 'virtualPoints' })}
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Point Name</span>
-                <span style={{ fontWeight: 800 }}>{formData.name || '(not entered)'}</span>
+                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>{t('validation.pointName', { ns: 'virtualPoints' })}</span>
+                <span style={{ fontWeight: 800 }}>{formData.name || t('validation.notEntered', { ns: 'virtualPoints' })}</span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Scheduling Mode</span>
-                <span>{formData.execution_type === 'periodic' ? `Periodic (${formData.execution_interval}ms)` : 'Event-based (On Change)'}</span>
+                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>{t('validation.schedulingMode', { ns: 'virtualPoints' })}</span>
+                <span>{formData.execution_type === 'periodic' ? t('validation.periodic', { ns: 'virtualPoints', ms: formData.execution_interval }) : t('validation.eventBased', { ns: 'virtualPoints' })}</span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Data Type</span>
+                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>{t('validation.dataType', { ns: 'virtualPoints' })}</span>
                 <span className="summary-badge active" style={{ textTransform: 'uppercase' }}>{formData.data_type} {formData.unit && `(${formData.unit})`}</span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Deploy Status</span>
+                <span style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>{t('validation.deployStatus', { ns: 'virtualPoints' })}</span>
                 <span style={{ color: formData.is_enabled ? '#10b981' : '#f59e0b', fontWeight: 800 }}>
                   <i className="fas fa-circle" style={{ fontSize: '8px', marginRight: '6px' }}></i>
-                  {formData.is_enabled ? 'Ready to Live' : 'Draft Mode'}
+                  {formData.is_enabled ? t('validation.readyToLive', { ns: 'virtualPoints' }) : t('validation.draftMode', { ns: 'virtualPoints' })}
                 </span>
               </div>
             </div>
@@ -88,17 +88,17 @@ const ValidationPanel: React.FC<ValidationPanelProps> = ({
           {/* Logic Preview */}
           <div className="concept-group-card" style={{ borderLeft: '4px solid var(--blueprint-500)' }}>
             <div className="concept-title">
-              <i className="fas fa-microchip"></i> Calculation Logic Summary
+              <i className="fas fa-microchip"></i> {t('validation.calcLogicSummary', { ns: 'virtualPoints' })}
             </div>
             <div style={{ background: '#1e293b', color: '#38bdf8', padding: '20px', borderRadius: '12px', fontFamily: "'JetBrains Mono', monospace", fontSize: '14px', marginBottom: '16px' }}>
-              {formData.expression || '// No expression defined'}
+              {formData.expression || t('validation.noExpression', { ns: 'virtualPoints' })}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', width: '100%', marginBottom: '4px' }}>Variables Used</span>
+              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', width: '100%', marginBottom: '4px' }}>{t('validation.variablesUsed', { ns: 'virtualPoints' })}</span>
               {formData.input_variables?.map((v: any) => (
                 <span key={v.id} className="preset-chip" style={{ fontSize: '11px', background: '#f8fafc' }}>{v.input_name}</span>
               ))}
-              {(!formData.input_variables || formData.input_variables.length === 0) && <span style={{ fontSize: '12px', color: '#94a3b8' }}>None</span>}
+              {(!formData.input_variables || formData.input_variables.length === 0) && <span style={{ fontSize: '12px', color: '#94a3b8' }}>{t('validation.none', { ns: 'virtualPoints' })}</span>}
             </div>
           </div>
 
@@ -109,13 +109,13 @@ const ValidationPanel: React.FC<ValidationPanelProps> = ({
           <div className="guidance-panel">
             <div className="guidance-header">
               <i className="fas fa-rocket" style={{ color: 'var(--blueprint-500)' }}></i>
-              Ready to Publish
+              {t('validation.readyToPublish', { ns: 'virtualPoints' })}
             </div>
 
             <div className="guidance-step">
               <div className="guidance-text">
-                <h4>This is the final review step.</h4>
-                <p>Please review the summary on the left. Pay special attention to <strong>Data Type</strong> and <strong>Formula</strong>이 올바른지 점검이 필요합니다.</p>
+                <h4>{t('validation.finalReviewStep', { ns: 'virtualPoints' })}</h4>
+                <p>{t('validation.finalReviewDesc', { ns: 'virtualPoints' })}</p>
               </div>
             </div>
 
@@ -142,13 +142,13 @@ const ValidationPanel: React.FC<ValidationPanelProps> = ({
             {/* Sandbox Simulation */}
             <div style={{ marginTop: 'auto', background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 800, color: '#475569' }}>Simulation Sandbox</span>
+                <span style={{ fontSize: '13px', fontWeight: 800, color: '#475569' }}>{t('validation.simulationSandbox', { ns: 'virtualPoints' })}</span>
                 <button
                   className="btn btn-primary btn-sm"
                   onClick={() => onRunSimulation(testInputs)}
                   disabled={isSimulating || !formData.expression}
                 >
-                  {isSimulating ? '실행 중' : 'Live Recalc'}
+                  {isSimulating ? t('validation.running', { ns: 'virtualPoints' }) : t('validation.liveRecalc', { ns: 'virtualPoints' })}
                 </button>
               </div>
 
@@ -186,14 +186,14 @@ const ValidationPanel: React.FC<ValidationPanelProps> = ({
 
               {simulationResult !== null ? (
                 <div style={{ textAlign: 'center', background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>EXPECTED RESULT ({formData.unit || '-'})</div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>{t('validation.expectedResult', { ns: 'virtualPoints' })} ({formData.unit || '-'})</div>
                   <div style={{ fontSize: '32px', fontWeight: 800, color: '#0d9488' }}>
                     {typeof simulationResult === 'number' ? simulationResult.toFixed(formData.decimal_places || 2) : String(simulationResult)}
                   </div>
                 </div>
               ) : (
                 <div style={{ textAlign: 'center', padding: '12px', color: '#94a3b8', fontSize: '11px', fontStyle: 'italic' }}>
-                  입력값을 조절한 후 <strong>Live Recalc</strong>를 눌러보세요.
+                  {t('validation.simHint', { ns: 'virtualPoints' })}
                 </div>
               )}
             </div>

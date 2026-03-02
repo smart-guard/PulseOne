@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import exportGatewayApi, { ExportProfile } from '../../../api/services/exportGatewayApi';
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
 import DataPointSelector from '../components/DataPointSelector';
@@ -11,6 +12,7 @@ interface ProfileManagementTabProps {
 }
 
 const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, tenantId, isAdmin, tenants = [] }) => {
+    const { t } = useTranslation(['dataExport', 'common']);
     const [profiles, setProfiles] = useState<ExportProfile[]>([]);
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -84,8 +86,8 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
         // 1. Validation: Ensure at least one point is mapped
         if (!editingProfile?.data_points || editingProfile.data_points.length === 0) {
             await confirm({
-                title: 'Insufficient Points',
-                message: 'You must map at least one data point.',
+                title: t('confirm.insufficientPoints', { defaultValue: '포인트 부족' }),
+                message: t('confirm.insufficientPointsMsg', { defaultValue: '최소 하나의 데이터 포인트를 매핑해야 합니다.' }),
                 showCancelButton: false,
                 confirmButtonType: 'warning'
             });
@@ -95,8 +97,8 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
         // 2. Check for modifications
         if (!hasChanges && editingProfile.id) {
             await confirm({
-                title: 'No Changes',
-                message: 'No information has been modified.',
+                title: t('confirm.noChangesTitle', { defaultValue: '변경사항 없음' }),
+                message: t('confirm.noChangesMsg', { defaultValue: '수정된 정보가 없습니다.' }),
                 showCancelButton: false,
                 confirmButtonType: 'primary'
             });
@@ -106,10 +108,10 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
 
         // 3. Final Confirmation
         const confirmed = await confirm({
-            title: 'Confirm Save',
-            message: editingProfile.id ? 'Save profile changes?' : 'Create a new profile?',
-            confirmText: 'Save',
-            cancelText: 'Cancel',
+            title: t('confirm.confirmSaveTitle', { defaultValue: '저장 확인' }),
+            message: editingProfile.id ? t('confirm.saveProfileChanges', { defaultValue: '프로파일 변경사항을 저장하시겠습니까?' }) : t('confirm.createProfile', { defaultValue: '새 프로파일을 생성하시겠습니까?' }),
+            confirmText: t('save', { ns: 'common', defaultValue: '저장' }),
+            cancelText: t('cancel', { ns: 'common', defaultValue: '취소' }),
             confirmButtonType: 'primary'
         });
         if (!confirmed) return;
@@ -134,8 +136,8 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
 
             if (response.success) {
                 await confirm({
-                    title: 'Save Complete',
-                    message: 'Profile saved successfully.',
+                    title: t('confirm.saveComplete', { defaultValue: '저장 완료' }),
+                    message: t('confirm.profileSaved', { defaultValue: '프로파일이 저장되었습니다.' }),
                     showCancelButton: false,
                     confirmButtonType: 'success'
                 });
@@ -144,16 +146,16 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                 fetchProfiles();
             } else {
                 await confirm({
-                    title: 'Save Failed',
-                    message: response.message || 'Error occurred while saving profile.',
+                    title: t('confirm.saveFailed', { defaultValue: '저장 실패' }),
+                    message: response.message || t('confirm.profileSaveError', { defaultValue: '프로파일 저장 중 오류가 발생했습니다.' }),
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
             }
         } catch (error) {
             await confirm({
-                title: 'Save Failed',
-                message: 'Error occurred while saving profile.',
+                title: t('confirm.saveFailed', { defaultValue: '저장 실패' }),
+                message: t('confirm.profileSaveError', { defaultValue: '프로파일 저장 중 오류가 발생했습니다.' }),
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -163,10 +165,10 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
     const handleCloseModal = async () => {
         if (hasChanges) {
             const confirmed = await confirm({
-                title: 'Unsaved Changes Warning',
-                message: 'You have unsaved changes. Closing without saving will discard all data. Are you sure?',
-                confirmText: 'Close',
-                cancelText: 'Cancel',
+                title: t('confirm.unsavedTitle', { defaultValue: '저장되지 않은 변경사항' }),
+                message: t('confirm.unsavedMsg', { defaultValue: '저장되지 않은 변경사항이 있습니다. 닫으면 데이터가 손실됩니다. 계속하시겠습니까?' }),
+                confirmText: t('close', { ns: 'common', defaultValue: '닫기' }),
+                cancelText: t('cancel', { ns: 'common', defaultValue: '취소' }),
                 confirmButtonType: 'warning'
             });
             if (!confirmed) return;
@@ -177,9 +179,9 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
 
     const handleDelete = async (id: number) => {
         const confirmed = await confirm({
-            title: 'Confirm Profile Delete',
-            message: 'Delete this profile? All related gateway assignment data will also be deleted.',
-            confirmText: 'Delete',
+            title: t('confirm.deleteProfileTitle', { defaultValue: '프로파일 삭제 확인' }),
+            message: t('confirm.deleteProfileMsg', { defaultValue: '이 프로파일을 삭제하시겠습니까? 관련된 게이트웨이 할당 데이터도 삭제됩니다.' }),
+            confirmText: t('delete', { ns: 'common', defaultValue: '삭제' }),
             confirmButtonType: 'danger'
         });
 
@@ -188,7 +190,7 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
             await exportGatewayApi.deleteProfile(id);
             fetchProfiles();
         } catch (error) {
-            await confirm({ title: 'Delete Failed', message: 'Error occurred while deleting the profile.', showCancelButton: false, confirmButtonType: 'danger' });
+            await confirm({ title: t('confirm.deleteFailed', { defaultValue: '삭제 실패' }), message: t('confirm.profileDeleteError', { defaultValue: '프로파일 삭제 중 오류가 발생했습니다.' }), showCancelButton: false, confirmButtonType: 'danger' });
         }
     };
 
@@ -300,9 +302,9 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
     return (
         <div>
             <div className="mgmt-header-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>Export Profile</h3>
+                <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>{t('profile.settingsTitle', { defaultValue: '익스포트 프로파일' })}</h3>
                 <button className="btn btn-primary btn-sm" onClick={() => { setEditingProfile({ name: '', description: '', data_points: [], is_enabled: true }); setIsModalOpen(true); }}>
-                    <i className="fas fa-plus" /> Create Profile
+                    <i className="fas fa-plus" /> {t('profile.createProfile', { defaultValue: '프로파일 생성' })}
                 </button>
             </div>
 
@@ -310,10 +312,10 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                 <table className="mgmt-table">
                     <thead>
                         <tr>
-                            <th>Name</th>
-                            <th>Description</th>
-                            <th>Points</th>
-                            <th>Manage</th>
+                            <th>{t('col.name', { defaultValue: '이름' })}</th>
+                            <th>{t('col.description', { defaultValue: '설명' })}</th>
+                            <th>{t('col.points', { defaultValue: '포인트' })}</th>
+                            <th>{t('col.manage', { defaultValue: '관리' })}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -328,8 +330,8 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                 </td>
                                 <td>
                                     <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button className="btn btn-outline btn-xs" onClick={() => handleEditProfile(p)}>Edit</button>
-                                        <button className="btn btn-outline btn-xs btn-danger" onClick={() => handleDelete(p.id)}>Delete</button>
+                                        <button className="btn btn-outline btn-xs" onClick={() => handleEditProfile(p)}>{t('edit', { ns: 'common', defaultValue: '편집' })}</button>
+                                        <button className="btn btn-outline btn-xs btn-danger" onClick={() => handleDelete(p.id)}>{t('delete', { ns: 'common', defaultValue: '삭제' })}</button>
                                     </div>
                                 </td>
                             </tr>
@@ -457,7 +459,7 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                             <div className="ultra-wide-header">
                                 <h3 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>
                                     <i className={`fas ${editingProfile?.id ? 'fa-edit' : 'fa-plus-circle'} `} style={{ marginRight: '12px', color: 'var(--primary-600)' }} />
-                                    {editingProfile?.id ? "Edit Profile" : "New Profile"}
+                                    {editingProfile?.id ? t('profile.editTitle', { defaultValue: '프로파일 편집' }) : t('profile.newTitle', { defaultValue: '새 프로파일' })}
                                 </h3>
                                 <button type="button" className="mgmt-modal-close" onClick={handleCloseModal} style={{ fontSize: '28px', color: '#94a3b8' }}>&times;</button>
                             </div>

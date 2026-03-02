@@ -112,7 +112,7 @@ interface Props { deviceId: number; }
 
 const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
   const [entries, setEntries] = useState<PacketEntry[]>([]);
-    const { t } = useTranslation(['devices', 'common']);
+  const { t } = useTranslation(['devices', 'common']);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<number[]>([]);
@@ -178,9 +178,9 @@ const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
       {/* 컨트롤 바 */}
       <div className="plt-controls">
         <div className="plt-left">
-          <span className="plt-title">{t('labels.communicationPacketLog', {ns: 'devices'})}</span>
+          <span className="plt-title">{t('labels.communicationPacketLog', { ns: 'devices' })}</span>
           <span className="plt-subtitle">
-            {logDir ? <code>{logDir}</code> : 'Fetching log file'}
+            {logDir ? <code>{logDir}</code> : t('logTab.fetchingLogFile', { ns: 'devices' })}
           </span>
         </div>
         <div className="plt-right">
@@ -192,14 +192,14 @@ const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
           />
           <input
             type="text"
-            placeholder="Search..."
+            placeholder={t('logTab.searchPlaceholder', { ns: 'devices' })}
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="plt-search"
           />
           <label className="plt-realtime">
             <input type="checkbox" checked={isRealTime} onChange={e => setIsRealTime(e.target.checked)} />
-            Real-time
+            {t('logTab.realtime', { ns: 'devices' })}
           </label>
           <button className="plt-btn" onClick={load} disabled={isLoading} title="새로고침">
             <span className={isLoading ? 'spin' : ''}>⟳</span>
@@ -212,16 +212,16 @@ const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
         <div className="plt-error">
           ⚠️ {error}
           {error.includes('ENOENT') || error.includes('없') ? (
-            <span> — Enable packet_logging_enabled=true in settings and restart to generate logs.</span>
+            <span> — {t('logTab.enoentHint', { ns: 'devices' })}</span>
           ) : null}
         </div>
       )}
 
       {!error && !isLoading && entries.length === 0 && (
         <div className="plt-empty">
-          <div>📭 No packet logs</div>
+          <div>{t('logTab.noPacketLogs', { ns: 'devices' })}</div>
           <div className="plt-empty-hint">
-            Set <strong>packet_logging_enabled = true</strong> in System Settings<br />to record Modbus / MQTT / BACnet communications in <code>logs/packets/</code>.
+            {t('logTab.packetLoggingHint', { ns: 'devices' })}
           </div>
         </div>
       )}
@@ -232,8 +232,8 @@ const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
           <table className="plt-table">
             <thead>
               <tr>
-                <th style={{ width: 180 }}>{t('logTab.time', {ns: 'devices'})}</th>
-                <th style={{ width: 90 }}>{t('protocol', {ns: 'devices'})}</th>
+                <th style={{ width: 180 }}>{t('logTab.time', { ns: 'devices' })}</th>
+                <th style={{ width: 90 }}>{t('protocol', { ns: 'devices' })}</th>
                 <th>Raw</th>
                 <th>Decoded</th>
               </tr>
@@ -262,7 +262,7 @@ const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
                       <td colSpan={4}>
                         <div className="plt-analysis">
                           <div className="plt-analysis-header">
-                            🔬 Engineer Interpretation — {e.protocol} @ {e.timestamp}
+                            {t('logTab.engineerInterpretation', { ns: 'devices' })} — {e.protocol} @ {e.timestamp}
                           </div>
                           <AnalysisPanel entry={e} />
                         </div>

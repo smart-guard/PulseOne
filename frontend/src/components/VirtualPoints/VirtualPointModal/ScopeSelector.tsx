@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface Device {
   id: number;
@@ -32,6 +33,7 @@ export const ScopeSelector: React.FC<ScopeSelectorProps> = ({
   scopeId,
   onScopeChange
 }) => {
+  const { t } = useTranslation(['virtualPoints', 'common']);
   const [devices, setDevices] = useState<Device[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
   const [loading, setLoading] = useState(false);
@@ -77,18 +79,18 @@ export const ScopeSelector: React.FC<ScopeSelectorProps> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      
+
       {/* 적용 범위 선택 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <label style={{ 
-          fontSize: '14px', 
-          fontWeight: '500', 
-          color: '#374151' 
+        <label style={{
+          fontSize: '14px',
+          fontWeight: '500',
+          color: '#374151'
         }}>
           Scope *
         </label>
-        
-        <select 
+
+        <select
           value={scopeType}
           onChange={(e) => handleScopeTypeChange(e.target.value as any)}
           style={{
@@ -100,21 +102,21 @@ export const ScopeSelector: React.FC<ScopeSelectorProps> = ({
             cursor: 'pointer'
           }}
         >
-          <option value="global">Global (All Devices)</option>
-          <option value="site">By Site</option>
-          <option value="device">Specific Device</option>
+          <option value="global">{t('scope.global', { ns: 'virtualPoints' })}</option>
+          <option value="site">{t('scope.bySite', { ns: 'virtualPoints' })}</option>
+          <option value="device">{t('scope.specificDevice', { ns: 'virtualPoints' })}</option>
         </select>
       </div>
 
       {/* 범위별 상세 선택 */}
       {scopeType !== 'global' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <label style={{ 
-            fontSize: '14px', 
-            fontWeight: '500', 
-            color: '#374151' 
+          <label style={{
+            fontSize: '14px',
+            fontWeight: '500',
+            color: '#374151'
           }}>
-            {scopeType === 'device' ? 'Select Device' : 'Select Site'} *
+            {scopeType === 'device' ? t('scope.selectDevice', { ns: 'virtualPoints' }) : t('scope.selectSite', { ns: 'virtualPoints' })} *
           </label>
 
           {loading ? (
@@ -142,9 +144,9 @@ export const ScopeSelector: React.FC<ScopeSelectorProps> = ({
               }}
             >
               <option value="">
-                {scopeType === 'device' ? 'Select a device' : 'Select a site'}
+                {scopeType === 'device' ? t('scope.selectADevice', { ns: 'virtualPoints' }) : t('scope.selectASite', { ns: 'virtualPoints' })}
               </option>
-              
+
               {scopeType === 'device' ? (
                 devices.map(device => (
                   <option key={device.id} value={device.id}>
@@ -175,7 +177,7 @@ export const ScopeSelector: React.FC<ScopeSelectorProps> = ({
               {scopeType === 'device' ? (
                 (() => {
                   const selectedDevice = devices.find(d => d.id === scopeId);
-                  return selectedDevice ? 
+                  return selectedDevice ?
                     `선택됨: ${selectedDevice.site_name} - ${selectedDevice.name} (${selectedDevice.protocol_type})` :
                     '디바이스 정보를 불러오는 중...';
                 })()

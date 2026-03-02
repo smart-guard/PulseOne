@@ -10,6 +10,7 @@ import {
     SaveOutlined,
     CloseOutlined
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import { DatabaseApiService, ColumnInfo, TableDataResponse } from '../../api/services/databaseApi';
 
 const { Title, Text } = Typography;
@@ -20,6 +21,7 @@ interface DataTableProps {
 }
 
 const DataTable: React.FC<DataTableProps> = ({ tableName }) => {
+    const { t } = useTranslation(['common']);
     const [schema, setSchema] = useState<ColumnInfo[]>([]);
     const [data, setData] = useState<any[]>([]);
     const [pagination, setPagination] = useState<TableDataResponse['pagination']>({
@@ -116,24 +118,24 @@ const DataTable: React.FC<DataTableProps> = ({ tableName }) => {
         const pkVal = row[pkCol];
 
         if (!pkVal) {
-            message.error('Cannot identify primary key for this row.');
+            message.error(t('dbExplorer.noPrimaryKey', { ns: 'admin' }));
             return;
         }
 
         confirm({
-            title: 'Delete Row',
+            title: t('dbExplorer.deleteRow', { ns: 'admin' }),
             icon: <ExclamationCircleOutlined />,
-            content: `Are you sure you want to delete row where ${pkCol} = ${pkVal}?`,
-            okText: 'Delete',
+            content: t('dbExplorer.deleteRowConfirm', { ns: 'admin', pkCol, pkVal }),
+            okText: t('delete', { ns: 'common' }),
             okType: 'danger',
-            cancelText: 'Cancel',
+            cancelText: t('cancel', { ns: 'common' }),
             onOk: async () => {
                 try {
                     await DatabaseApiService.deleteRow(tableName, pkCol, pkVal);
-                    message.success('Row deleted successfully');
+                    message.success(t('dbExplorer.rowDeleted', { ns: 'admin' }));
                     loadData(pagination.page);
                 } catch (err: any) {
-                    message.error(`Delete failed: ${err.message}`);
+                    message.error(t('dbExplorer.deleteFailed', { ns: 'admin', error: err.message }));
                 }
             },
         });
@@ -151,7 +153,7 @@ const DataTable: React.FC<DataTableProps> = ({ tableName }) => {
             const pkVal = editingRow[pkCol];
 
             if (!pkVal) {
-                message.error('Cannot identify primary key for update.');
+                message.error(t('dbExplorer.noPrimaryKeyUpdate', { ns: 'admin' }));
                 return;
             }
 
@@ -170,7 +172,7 @@ const DataTable: React.FC<DataTableProps> = ({ tableName }) => {
             }
 
             await DatabaseApiService.updateRow(tableName, pkCol, pkVal, updates);
-            message.success('Row updated successfully');
+            message.success(t('dbExplorer.rowUpdated', { ns: 'admin' }));
             setEditingRow(null);
             loadData(pagination.page);
         } catch (err: any) {
@@ -181,13 +183,13 @@ const DataTable: React.FC<DataTableProps> = ({ tableName }) => {
     // --- Dynamic Column Generation ---
     const columns = React.useMemo(() => [
         {
-            title: 'Actions',
+            title: t('dbExplorer.actions', { ns: 'admin' }),
             key: 'actions',
             fixed: 'left' as const,
             width: 80,
             render: (_: any, record: any) => (
                 <Space size="small">
-                    <Tooltip title="Edit">
+                    <Tooltip title={t('edit', { ns: 'common' })}>
                         <Button
                             type="text"
                             size="small"
@@ -195,7 +197,7 @@ const DataTable: React.FC<DataTableProps> = ({ tableName }) => {
                             onClick={(e) => { e.stopPropagation(); startEdit(record); }}
                         />
                     </Tooltip>
-                    <Tooltip title="Delete">
+                    <Tooltip title={t('delete', { ns: 'common' })}>
                         <Button
                             type="text"
                             size="small"
@@ -239,8 +241,8 @@ const DataTable: React.FC<DataTableProps> = ({ tableName }) => {
                     <Space align="center" size="middle">
                         <Title level={5} style={{ margin: 0, fontWeight: 700 }}>{tableName}</Title>
                         <Space split={<div className="w-1 h-1 bg-gray-300 rounded-full" />}>
-                            <Text type="secondary" style={{ fontSize: '12px' }}>{pagination.total} records</Text>
-                            <Text type="secondary" style={{ fontSize: '12px' }}>{schema.length} columns</Text>
+                            <Text type="secondary" style={{ fontSize: '12px' }}>{pagination.total} {t('dbExplorer.records', { ns: 'admin' })}</Text>
+                            <Text type="secondary" style={{ fontSize: '12px' }}>{schema.length} {t('dbExplorer.columns', { ns: 'admin' })}</Text>
                             {schema.some(c => c.pk) && (
                                 <Tag color="warning" icon={<KeyOutlined />} style={{ fontSize: '10px' }}>
                                     {schema.filter(c => c.pk).map(c => c.name).join(', ')}
@@ -254,7 +256,7 @@ const DataTable: React.FC<DataTableProps> = ({ tableName }) => {
                     onClick={() => loadSchemaAndData()}
                     loading={loading}
                 >
-                    Refresh
+                    {t('refresh', { ns: 'common' })}
                 </Button>
             </div>
 
@@ -278,7 +280,7 @@ const DataTable: React.FC<DataTableProps> = ({ tableName }) => {
                         pageSize: pagination.limit,
                         total: pagination.total,
                         showSizeChanger: false,
-                        showTotal: (total) => `Total ${total} items`,
+                        showTotal: (total) => `${t('common:total')} ${total} ${t('dbExplorer.items', { ns: 'admin' })}`,
                     }}
                     onChange={handleTableChange}
                     onRow={(record) => ({
@@ -306,7 +308,7 @@ const DataTable: React.FC<DataTableProps> = ({ tableName }) => {
                 title={
                     <Space>
                         <EditOutlined className="text-blue-600" />
-                        <span>Edit Record</span>
+                        <span>{t('dbExplorer.editRecord', { ns: 'admin' })}</span>
                     </Space>
                 }
                 open={!!editingRow}
@@ -316,10 +318,10 @@ const DataTable: React.FC<DataTableProps> = ({ tableName }) => {
                 destroyOnClose
                 footer={[
                     <Button key="cancel" onClick={() => setEditingRow(null)} icon={<CloseOutlined />}>
-                        Cancel
+                        {t('cancel', { ns: 'common' })}
                     </Button>,
                     <Button key="save" type="primary" onClick={handleSave} icon={<SaveOutlined />}>
-                        Save Changes
+                        {t('dbExplorer.saveChanges', { ns: 'admin' })}
                     </Button>
                 ]}
             >
