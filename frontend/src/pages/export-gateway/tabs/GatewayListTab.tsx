@@ -466,7 +466,7 @@ const GatewayDetailModal: React.FC<{
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
                                 <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'white' }}>{gateway.server_name || gateway.name}</h2>
                                 <Tag color={(gateway.live_status?.status === 'online' || gateway.live_status?.status === 'running' || gateway.status === 'online' || gateway.status === 'active') ? 'success' : 'default'} style={{ border: 'none', borderRadius: '4px', fontSize: '11px', height: '22px', lineHeight: '22px', fontWeight: 700, flexShrink: 0 }}>
-                                    {(gateway.live_status?.status === 'online' || gateway.live_status?.status === 'running' || gateway.status === 'online' || gateway.status === 'active') ? 'ONLINE' : 'OFFLINE'}
+                                    {(gateway.live_status?.status === 'online' || gateway.live_status?.status === 'running' || gateway.status === 'online' || gateway.status === 'active') ? t('exportPage.statOnline', { ns: 'dataExport' }) : t('exportPage.statOffline', { ns: 'dataExport' })}
                                 </Tag>
                             </div>
                             <div style={{ fontSize: '14px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -488,7 +488,7 @@ const GatewayDetailModal: React.FC<{
                     {/* Summary Board */}
                     <div style={{ background: 'white', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', marginBottom: '32px' }}>
                         <div style={{ fontSize: '13px', fontWeight: 800, color: '#475569', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            <i className="fas fa-project-diagram" style={{ color: 'var(--primary-500)' }} /> Data Pipeline Configuration Summary
+                            <i className="fas fa-project-diagram" style={{ color: 'var(--primary-500)' }} /> {t('labels.pipelineSummaryTitle', { ns: 'dataExport' })}
                         </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto 1fr', alignItems: 'center', gap: '20px' }}>
                             <div style={{ padding: '20px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #f1f5f9', textAlign: 'center' }}>
@@ -499,19 +499,19 @@ const GatewayDetailModal: React.FC<{
                                             <div style={{ color: 'var(--primary-600)' }}>{assignedProfiles[0].name}</div>
                                             <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>({assignedProfiles[0].data_points?.length || 0} Points)</div>
                                         </>
-                                    ) : 'Unassigned'}
+                                    ) : t('labels.unassigned', { ns: 'dataExport' })}
                                 </div>
                             </div>
                             <i className="fas fa-long-arrow-alt-right" style={{ color: '#cbd5e1', fontSize: '18px' }} />
                             <div style={{ padding: '20px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #f1f5f9', textAlign: 'center' }}>
                                 <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>{t('labels.exportTarget', { ns: 'dataExport' })}</div>
-                                <div style={{ fontSize: '15px', fontWeight: 800, color: '#1e293b' }}>{linkedTargets.length > 0 ? `${linkedTargets.length} Endpoints` : '-'}</div>
+                                <div style={{ fontSize: '15px', fontWeight: 800, color: '#1e293b' }}>{linkedTargets.length > 0 ? `${linkedTargets.length} ${t('labels.endpoints', { ns: 'dataExport' })}` : '-'}</div>
                             </div>
                             <i className="fas fa-long-arrow-alt-right" style={{ color: '#cbd5e1', fontSize: '18px' }} />
                             <div style={{ padding: '20px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #f1f5f9', textAlign: 'center' }}>
                                 <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>{t('labels.exportMode', { ns: 'dataExport' })}</div>
                                 <div style={{ fontSize: '15px', fontWeight: 800, color: '#1e293b' }}>
-                                    {linkedSchedules.length > 0 ? 'Scheduled' : 'Setup Required'}
+                                    {linkedSchedules.length > 0 ? t('labels.scheduled', { ns: 'dataExport' }) : t('labels.setupRequired', { ns: 'dataExport' })}
                                 </div>
                             </div>
                         </div>
