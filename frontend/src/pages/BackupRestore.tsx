@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { StatCard } from '../components/common/StatCard';
 import { Pagination } from '../components/common/Pagination';
 import { useConfirmContext } from '../components/common/ConfirmProvider';
@@ -22,6 +23,7 @@ interface BackupRecord {
 
 const BackupRestore: React.FC = () => {
   const { confirm } = useConfirmContext();
+  const { t } = useTranslation('backup');
   const [activeTab, setActiveTab] = useState<'backups' | 'settings' | 'restore'>('backups');
   const [backupRecords, setBackupRecords] = useState<BackupRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,9 +91,9 @@ const BackupRestore: React.FC = () => {
 
     if (!isChanged) {
       await confirm({
-        title: 'No Changes',
-        message: 'No settings have been modified.',
-        confirmText: 'OK',
+        title: t('confirm.noChangesTitle'),
+        message: t('confirm.noChangesMsg'),
+        confirmText: t('confirm.saveText'),
         showCancelButton: false
       });
       return;
@@ -99,9 +101,9 @@ const BackupRestore: React.FC = () => {
 
     // 2. 변경 사항이 있을 경우 저장 확인 팝업
     const ok = await confirm({
-      title: 'Confirm Save',
-      message: 'Save the changed backup settings?',
-      confirmText: 'Save',
+      title: t('confirm.saveTitle'),
+      message: t('confirm.saveMsg'),
+      confirmText: t('confirm.saveText'),
       confirmButtonType: 'primary'
     });
 
@@ -118,9 +120,9 @@ const BackupRestore: React.FC = () => {
       if (result.success) {
         setInitialSettings(settings); // 최초 상태 동기화
         await confirm({
-          title: 'Settings Saved',
-          message: 'Backup settings saved successfully.',
-          confirmText: 'OK',
+          title: t('confirm.saveDoneTitle'),
+          message: t('confirm.saveDoneMsg'),
+          confirmText: t('confirm.saveText'),
           showCancelButton: false
         });
       } else {
@@ -136,9 +138,9 @@ const BackupRestore: React.FC = () => {
   // 즉시 Run Backup
   const handleCreateBackup = async () => {
     const ok = await confirm({
-      title: 'Run Immediate Backup',
-      message: 'Back up the current database state immediately? This may take some time depending on data size.',
-      confirmText: 'Start Backup',
+      title: t('confirm.backupTitle'),
+      message: t('confirm.backupMsg'),
+      confirmText: t('confirm.backupText'),
       confirmButtonType: 'primary'
     });
 
@@ -166,9 +168,9 @@ const BackupRestore: React.FC = () => {
   // 백업 삭제
   const handleDeleteBackup = async (id: number) => {
     const ok = await confirm({
-      title: 'Confirm Backup Delete',
-      message: 'Really delete this backup file? Both the file and DB record will be permanently removed.',
-      confirmText: 'Delete',
+      title: t('confirm.deleteTitle'),
+      message: t('confirm.deleteMsg'),
+      confirmText: t('confirm.deleteText'),
       confirmButtonType: 'danger'
     });
 
@@ -188,9 +190,9 @@ const BackupRestore: React.FC = () => {
   // 백업에서 복원
   const handleRestoreFromBackup = async (id: number, name: string) => {
     const ok = await confirm({
-      title: 'System Restore Warning',
-      message: `Restore system to [${name}] backup point? The current database will be replaced and system access may be briefly interrupted.`,
-      confirmText: 'Run Restore',
+      title: t('confirm.restoreTitle'),
+      message: t('confirm.restoreMsg', { name }),
+      confirmText: t('confirm.restoreText'),
       confirmButtonType: 'danger'
     });
 
@@ -201,7 +203,7 @@ const BackupRestore: React.FC = () => {
       const result = await response.json();
       if (result.success) {
         await confirm({
-          title: 'Restore Complete',
+          title: t('confirm.restoreDoneTitle'),
           message: result.message,
           confirmText: 'OK',
           showCancelButton: false
@@ -239,9 +241,9 @@ const BackupRestore: React.FC = () => {
       <div className="mgmt-header">
         <div className="mgmt-header-info">
           <h1 className="mgmt-title">
-            <i className="fas fa-shield-alt text-primary-500"></i> Backup & System Recovery
+            <i className="fas fa-shield-alt text-primary-500"></i> {t('title')}
           </h1>
-          <p className="mgmt-subtitle">Manage safe protection of important data and rapid recovery in emergencies.</p>
+          <p className="mgmt-subtitle">{t('description')}</p>
         </div>
         <div className="mgmt-header-actions">
           <button
@@ -249,19 +251,19 @@ const BackupRestore: React.FC = () => {
             onClick={() => setShowBackupModal(true)}
           >
             <i className="fas fa-plus"></i>
-            Create Backup Now
+            {t('createBackup')}
           </button>
         </div>
       </div>
 
       {/* 통계 패널 */}
       <div className="mgmt-stats-panel">
-        <StatCard title="Total Backups" value={totalCount} icon="fas fa-archive" type="primary" />
-        <StatCard title="Successful Backups" value={backupRecords.filter(b => b.status === 'completed').length} icon="fas fa-check-circle" type="success" />
-        <StatCard title="Total Usage" value={formatBytes(backupRecords.reduce((sum, b) => sum + (b.size || 0), 0))} icon="fas fa-hdd" type="blueprint" />
+        <StatCard title={t('stats.totalBackups')} value={totalCount} icon="fas fa-archive" type="primary" />
+        <StatCard title={t('stats.successBackups')} value={backupRecords.filter(b => b.status === 'completed').length} icon="fas fa-check-circle" type="success" />
+        <StatCard title={t('stats.totalSize')} value={formatBytes(backupRecords.reduce((sum, b) => sum + (b.size || 0), 0))} icon="fas fa-hdd" type="blueprint" />
         <StatCard
-          title="Scheduled Backup Status"
-          value={settings['backup.auto_enabled'] === 'true' ? 'Active' : 'Inactive'}
+          title={t('stats.scheduleStatus')}
+          value={settings['backup.auto_enabled'] === 'true' ? t('stats.active') : t('stats.inactive')}
           icon="fas fa-clock"
           type={settings['backup.auto_enabled'] === 'true' ? 'primary' : 'neutral'}
         />
@@ -278,7 +280,7 @@ const BackupRestore: React.FC = () => {
               padding: '8px 20px'
             }}
           >
-            <i className="fas fa-list-ul mr-2"></i> Backup List
+            <i className="fas fa-list-ul mr-2"></i> {t('tabs.list')}
           </button>
           <button
             className={`mgmt-btn-text premium ${activeTab === 'settings' ? 'active' : ''}`}
@@ -288,7 +290,7 @@ const BackupRestore: React.FC = () => {
               padding: '8px 20px'
             }}
           >
-            <i className="fas fa-cog mr-2"></i> Backup Settings
+            <i className="fas fa-cog mr-2"></i> {t('tabs.settings')}
           </button>
         </div>
       </div>
@@ -300,19 +302,19 @@ const BackupRestore: React.FC = () => {
             <table className="mgmt-table">
               <thead>
                 <tr>
-                  <th style={{ width: '40%', paddingLeft: '24px' }}>Name / Filename</th>
-                  <th style={{ width: '10%' }}>Status</th>
-                  <th style={{ width: '12%' }}>Size</th>
-                  <th style={{ width: '18%' }}>Created Info</th>
-                  <th style={{ width: '12%' }}>File Validity</th>
-                  <th style={{ width: '8%', textAlign: 'right', paddingRight: '24px' }}>Action</th>
+                  <th style={{ width: '40%', paddingLeft: '24px' }}>{t('table.nameFile')}</th>
+                  <th style={{ width: '10%' }}>{t('table.status')}</th>
+                  <th style={{ width: '12%' }}>{t('table.size')}</th>
+                  <th style={{ width: '18%' }}>{t('table.createdBy')}</th>
+                  <th style={{ width: '12%' }}>{t('table.fileValidity')}</th>
+                  <th style={{ width: '8%', textAlign: 'right', paddingRight: '24px' }}>{t('table.action')}</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', padding: '100px 0' }}>Loading...</td></tr>
+                  <tr><td colSpan={6} style={{ textAlign: 'center', padding: '100px 0' }}>{t('table.loading')}</td></tr>
                 ) : backupRecords.length === 0 ? (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', padding: '100px 0' }}>No saved backup records.</td></tr>
+                  <tr><td colSpan={6} style={{ textAlign: 'center', padding: '100px 0' }}>{t('table.noData')}</td></tr>
                 ) : (
                   backupRecords.map(backup => (
                     <tr key={backup.id} className="mgmt-table-row">
@@ -335,25 +337,25 @@ const BackupRestore: React.FC = () => {
                       </td>
                       <td>
                         <span className={`mgmt-status-pill ${backup.status === 'completed' ? 'active' : backup.status === 'failed' ? 'error' : 'warning'}`}>
-                          {backup.status === 'completed' ? 'Done' : backup.status === 'failed' ? 'Failed' : 'In Progress'}
+                          {backup.status === 'completed' ? t('status.completed') : backup.status === 'failed' ? t('status.failed') : t('status.running')}
                         </span>
                       </td>
                       <td>
                         <div style={{ fontWeight: 600, fontSize: '14px' }}>{formatBytes(backup.size)}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--neutral-400)', marginTop: '2px' }}>{formatDuration(backup.duration!)} elapsed</div>
+                        <div style={{ fontSize: '11px', color: 'var(--neutral-400)', marginTop: '2px' }}>{formatDuration(backup.duration!)} {t('table.elapsed')}</div>
                       </td>
                       <td>
                         <div style={{ fontSize: '13px', fontWeight: 500 }}>{new Date(backup.created_at).toLocaleString()}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginTop: '2px' }}>by {backup.created_by || 'system'}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginTop: '2px' }}>{t('table.by')} {backup.created_by || t('system')}</div>
                       </td>
                       <td>
                         {backup.fileExists ? (
                           <div style={{ color: 'var(--success-600)', fontSize: '12px', fontWeight: 600 }}>
-                            <i className="fas fa-check-circle mr-1"></i> 파일 정상
+                            <i className="fas fa-check-circle mr-1"></i> {t('table.fileOk')}
                           </div>
                         ) : (
                           <div style={{ color: 'var(--error-500)', fontSize: '12px', fontWeight: 600 }}>
-                            <i className="fas fa-exclamation-triangle mr-1"></i> 파일 소실
+                            <i className="fas fa-exclamation-triangle mr-1"></i> {t('table.fileMissing')}
                           </div>
                         )}
                       </td>
@@ -361,7 +363,7 @@ const BackupRestore: React.FC = () => {
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                           <button
                             className="mgmt-btn-icon primary"
-                            title="Restore"
+                            title={t('table.restoreAction')}
                             onClick={() => handleRestoreFromBackup(backup.id, backup.name)}
                             disabled={!backup.fileExists}
                             style={{ width: '36px', height: '36px' }}
@@ -370,7 +372,7 @@ const BackupRestore: React.FC = () => {
                           </button>
                           <button
                             className="mgmt-btn-icon error"
-                            title="Delete"
+                            title={t('table.deleteAction')}
                             onClick={() => handleDeleteBackup(backup.id)}
                             style={{ width: '36px', height: '36px' }}
                           >
@@ -398,14 +400,14 @@ const BackupRestore: React.FC = () => {
             {/* Card 1: Schedule Settings */}
             <div className="mgmt-card" style={{ padding: '32px', margin: '0' }}>
               <h3 className="mb-6" style={{ fontSize: '18px', fontWeight: 700 }}>
-                <i className="fas fa-calendar-check mr-2 text-primary-500"></i> Scheduled Backup Settings
+                <i className="fas fa-calendar-check mr-2 text-primary-500"></i> {t('settings.autoBackupTitle')}
               </h3>
 
               <div className="mgmt-form-group mb-6">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--neutral-50)', padding: '16px 20px', borderRadius: '12px', border: '1px solid var(--neutral-100)' }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: '15px' }}>Enable Auto Backup</div>
-                    <div style={{ fontSize: '13px', color: 'var(--neutral-500)', marginTop: '2px' }}>Automatically backs up the system at regular intervals.</div>
+                    <div style={{ fontWeight: 700, fontSize: '15px' }}>{t('settings.autoBackupLabel')}</div>
+                    <div style={{ fontSize: '13px', color: 'var(--neutral-500)', marginTop: '2px' }}>{t('settings.autoBackupDesc')}</div>
                   </div>
                   <div
                     className={`mgmt-toggle ${settings['backup.auto_enabled'] === 'true' ? 'active' : ''}`}
@@ -418,7 +420,7 @@ const BackupRestore: React.FC = () => {
               </div>
 
               <div className="mgmt-form-group">
-                <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>Backup Time (KST)</label>
+                <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>{t('settings.scheduleTimeLabel')}</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <input
                     type="time"
@@ -429,7 +431,7 @@ const BackupRestore: React.FC = () => {
                     disabled={settings['backup.auto_enabled'] !== 'true'}
                   />
                   <div style={{ color: 'var(--neutral-400)', fontSize: '13px' }}>
-                    Performs a full backup at the specified time each day.
+                    {t('settings.scheduleTimeDesc')}
                   </div>
                 </div>
               </div>
@@ -438,11 +440,11 @@ const BackupRestore: React.FC = () => {
             {/* Card 2: Retention & Options */}
             <div className="mgmt-card" style={{ padding: '32px', margin: '0' }}>
               <h3 className="mb-6" style={{ fontSize: '18px', fontWeight: 700 }}>
-                <i className="fas fa-database mr-2 text-blueprint-500"></i> Backup Retention & Options
+                <i className="fas fa-database mr-2 text-blueprint-500"></i> {t('settings.retentionTitle')}
               </h3>
 
               <div className="mgmt-form-group mb-8">
-                <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>Backup Retention Period</label>
+                <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>{t('settings.retentionLabel')}</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <input
                     type="number"
@@ -453,9 +455,9 @@ const BackupRestore: React.FC = () => {
                     value={settings['backup.retention_days']}
                     onChange={(e) => setSettings({ ...settings, 'backup.retention_days': e.target.value })}
                   />
-                  <span style={{ fontWeight: 600 }}>days</span>
+                  <span style={{ fontWeight: 600 }}>{t('settings.retentionUnit')}</span>
                   <div style={{ color: 'var(--neutral-400)', fontSize: '13px', marginLeft: '12px' }}>
-                    Files are auto-deleted after the retention period.
+                    {t('settings.retentionDesc')}
                   </div>
                 </div>
               </div>
@@ -469,10 +471,10 @@ const BackupRestore: React.FC = () => {
                     checked={settings['backup.include_logs'] === 'true'}
                     onChange={(e) => setSettings({ ...settings, 'backup.include_logs': e.target.checked ? 'true' : 'false' })}
                   />
-                  <label htmlFor="include-logs" style={{ fontWeight: 600, cursor: 'pointer' }}>Include System Event Logs</label>
+                  <label htmlFor="include-logs" style={{ fontWeight: 600, cursor: 'pointer' }}>{t('settings.includeLogsLabel')}</label>
                 </div>
                 <div style={{ fontSize: '13px', color: 'var(--neutral-500)', marginLeft: '30px', marginTop: '4px' }}>
-                  When enabled, event logs are also backed up along with the DB.
+                  {t('settings.includeLogsDesc')}
                 </div>
               </div>
             </div>
@@ -486,9 +488,9 @@ const BackupRestore: React.FC = () => {
                 disabled={savingSettings}
               >
                 {savingSettings ? (
-                  <><i className="fas fa-spinner fa-spin mr-2"></i> 저장 중...</>
+                  <><i className="fas fa-spinner fa-spin mr-2"></i> {t('settings.saving')}</>
                 ) : (
-                  <><i className="fas fa-save mr-2"></i> Save Backup Settings</>
+                  <><i className="fas fa-save mr-2"></i> {t('settings.saveBtn')}</>
                 )}
               </button>
             </div>
@@ -498,8 +500,8 @@ const BackupRestore: React.FC = () => {
         {activeTab === 'restore' && (
           <div className="mgmt-card" style={{ padding: '80px 40px', textAlign: 'center', color: 'var(--neutral-400)', flex: 1 }}>
             <i className="fas fa-tools mb-4" style={{ fontSize: '64px', opacity: 0.3 }}></i>
-            <h3 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--neutral-600)' }}>Feature Coming Soon</h3>
-            <p style={{ fontSize: '14px' }}>External backup file upload and point-in-time recovery (PITR) will be available in the next update.</p>
+            <h3 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--neutral-600)' }}>{t('restore.title')}</h3>
+            <p style={{ fontSize: '14px' }}>{t('restore.desc')}</p>
           </div>
         )}
       </div>
@@ -509,38 +511,38 @@ const BackupRestore: React.FC = () => {
         <div className="mgmt-modal-overlay">
           <div className="mgmt-modal" style={{ maxWidth: '500px' }}>
             <div className="mgmt-modal-header">
-              <h3>Create New Backup</h3>
+              <h3>{t('modal.title')}</h3>
               <button className="mgmt-modal-close" onClick={() => setShowBackupModal(false)}>×</button>
             </div>
             <div className="mgmt-modal-body">
               <div className="mgmt-form-group mb-4">
-                <label>Backup Name</label>
+                <label>{t('modal.nameLabel')}</label>
                 <input
                   type="text"
                   className="mgmt-input"
-                  placeholder="e.g. Pre-maintenance backup"
+                  placeholder={t('modal.namePlaceholder')}
                   value={backupFormData.name}
                   onChange={(e) => setBackupFormData({ ...backupFormData, name: e.target.value })}
                 />
               </div>
               <div className="mgmt-form-group">
-                <label>Description</label>
+                <label>{t('modal.descLabel')}</label>
                 <textarea
                   className="mgmt-input"
                   style={{ height: '80px', paddingTop: '10px' }}
-                  placeholder="Enter backup reason or notes."
+                  placeholder={t('modal.descPlaceholder')}
                   value={backupFormData.description}
                   onChange={(e) => setBackupFormData({ ...backupFormData, description: e.target.value })}
                 />
               </div>
               <div className="mt-4 p-3 bg-primary-50 rounded" style={{ fontSize: '12px', border: '1px solid var(--primary-100)' }}>
                 <i className="fas fa-info-circle mr-2 text-primary-500"></i>
-                Creates a full snapshot of the current system database.
+                {t('modal.infoMsg')}
               </div>
             </div>
             <div className="mgmt-modal-footer">
-              <button className="mgmt-btn mgmt-btn-outline" onClick={() => setShowBackupModal(false)}>Cancel</button>
-              <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreateBackup} disabled={!backupFormData.name}>Run Backup</button>
+              <button className="mgmt-btn mgmt-btn-outline" onClick={() => setShowBackupModal(false)}>{t('modal.cancel')}</button>
+              <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreateBackup} disabled={!backupFormData.name}>{t('modal.run')}</button>
             </div>
           </div>
         </div>

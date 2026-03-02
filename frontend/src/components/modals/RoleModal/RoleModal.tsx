@@ -105,18 +105,18 @@ export const RoleModal: React.FC<RoleModalProps> = ({
         // System roles cannot be deleted usually, checked by API, but we should also warn in UI
         if (role.is_system) {
             await confirm({
-                title: 'Cannot Delete System Role',
-                message: 'Default system roles cannot be deleted.',
-                confirmText: 'Confirm',
+                title: t('roleModal.cantDeleteSystemTitle', { ns: 'permissions' }),
+                message: t('roleModal.cantDeleteSystemMsg', { ns: 'permissions' }),
+                confirmText: t('roleModal.cantDeleteSystemBtn', { ns: 'permissions' }),
                 confirmButtonType: 'primary'
             });
             return;
         }
 
         const confirmed = await confirm({
-            title: 'Delete Role',
-            message: `Are you sure you want to delete the '${role.name}' role? Users assigned to this role may lose their permissions.`,
-            confirmText: 'Delete',
+            title: t('roleModal.deleteTitle', { ns: 'permissions' }),
+            message: t('roleModal.deleteMsg', { ns: 'permissions', name: role.name }),
+            confirmText: t('roleModal.deleteBtn', { ns: 'permissions' }),
             confirmButtonType: 'danger'
         });
 
@@ -141,7 +141,7 @@ export const RoleModal: React.FC<RoleModalProps> = ({
             <div className="modal-container user-modal">
                 <div className="modal-header">
                     <div className="modal-title">
-                        <h2>{role ? 'Edit Role' : 'Create New Role'}</h2>
+                        <h2>{role ? t('roleModal.editTitle', { ns: 'permissions' }) : t('roleModal.createTitle', { ns: 'permissions' })}</h2>
                     </div>
                     <button className="close-btn" onClick={onClose} disabled={loading}>
                         <i className="fas fa-times"></i>
@@ -152,27 +152,27 @@ export const RoleModal: React.FC<RoleModalProps> = ({
                     <form id="role-form" onSubmit={handleSubmit}>
                         <div className="modal-form-grid">
                             <div className="modal-form-section">
-                                <h3><i className="fas fa-info-circle"></i> Basic Info</h3>
+                                <h3><i className="fas fa-info-circle"></i> {t('roleModal.sectionBasic', { ns: 'permissions' })}</h3>
                                 <div className="modal-form-group">
-                                    <label className="required">{t('roleModal.name', {ns: 'permissions'})}</label>
+                                    <label className="required">{t('roleModal.name', { ns: 'permissions' })}</label>
                                     <input
                                         type="text"
                                         className="form-control"
                                         value={formData.name}
                                         onChange={(e) => handleInputChange('name', e.target.value)}
-                                        placeholder="e.g. Security Manager"
+                                        placeholder={t('roleModal.namePlaceholder', { ns: 'permissions' })}
                                         required
                                         disabled={loading || (role?.is_system === 1)} // System role name usually locked? Let's lock it to be safe
                                     />
-                                    {role?.is_system === 1 && <p className="modal-form-hint">시스템 역할의 이름은 변경할 수 없습니다.</p>}
+                                    {role?.is_system === 1 && <p className="modal-form-hint">{t('roleModal.systemNameLocked', { ns: 'permissions' })}</p>}
                                 </div>
                                 <div className="modal-form-group">
-                                    <label>설명</label>
+                                    <label>{t('roleModal.descLabel', { ns: 'permissions' })}</label>
                                     <textarea
                                         className="form-control"
                                         value={formData.description || ''}
                                         onChange={(e) => handleInputChange('description', e.target.value)}
-                                        placeholder="이 역할에 대한 설명을 입력하세요"
+                                        placeholder={t('roleModal.descPlaceholder', { ns: 'permissions' })}
                                         rows={3}
                                         disabled={loading}
                                     />
@@ -180,9 +180,9 @@ export const RoleModal: React.FC<RoleModalProps> = ({
                             </div>
 
                             <div className="modal-form-section">
-                                <h3><i className="fas fa-key"></i> 권한 설정</h3>
+                                <h3><i className="fas fa-key"></i> {t('roleModal.sectionPermissions', { ns: 'permissions' })}</h3>
                                 <div className="modal-form-group">
-                                    <label>할당된 권한 ({formData.permissions?.length || 0}개)</label>
+                                    <label>{t('roleModal.permCount', { ns: 'permissions', count: formData.permissions?.length || 0 })}</label>
                                     <div className="permissions-grid" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                                         {availablePermissions.map(perm => (
                                             <label key={perm.id} className="permission-item">

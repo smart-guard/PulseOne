@@ -27,11 +27,6 @@
         "system": "System",
         "custom": "Custom"
     },
-    "roleModal": {
-        "name": "Role Name",
-        "description": "Description",
-        "permissions": "Permission Settings"
-    },
     "labels": {
         "users": "Users",
         "userDetails": "User Details",
@@ -65,6 +60,40 @@
         "systemBadge": "(System)",
         "deleteTitle": "Delete User",
         "deleteMessage": "'{{name}}' user will be deactivated. Deleted users will be in the 'Deleted users' section and can be restored later.",
+        "deleteBtn": "Delete"
+    },
+    "page": {
+        "title": "Permission Management",
+        "desc": "Define and manage system roles and permissions.",
+        "newRole": "New Role",
+        "statTotal": "Total Roles",
+        "statSystem": "System Roles",
+        "statCustom": "Custom Roles",
+        "filterType": "Type",
+        "filterAll": "All",
+        "filterSystem": "System Roles",
+        "filterCustom": "Custom",
+        "colAssignedUsers": "Assigned Users",
+        "colRegisteredAt": "Registered At",
+        "loadingData": "Loading...",
+        "noRoles": "No roles registered.",
+        "userCount": "{{count}} users"
+    },
+    "roleModal": {
+        "createTitle": "Create New Role",
+        "editTitle": "Edit Role",
+        "sectionBasic": "Basic Info",
+        "sectionPermissions": "Permission Settings",
+        "permCount": "Assigned Permissions ({{count}})",
+        "namePlaceholder": "e.g. Security Manager",
+        "descLabel": "Description",
+        "descPlaceholder": "Enter a description for this role",
+        "systemNameLocked": "System role name cannot be changed.",
+        "cantDeleteSystemTitle": "Cannot Delete System Role",
+        "cantDeleteSystemMsg": "Default system roles cannot be deleted.",
+        "cantDeleteSystemBtn": "OK",
+        "deleteTitle": "Delete Role",
+        "deleteMsg": "Are you sure you want to delete the '{{name}}' role? Users assigned to this role may lose their permissions.",
         "deleteBtn": "Delete"
     }
 }

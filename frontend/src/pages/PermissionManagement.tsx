@@ -23,7 +23,7 @@ interface EnhancedRole extends Role {
 
 const PermissionManagement: React.FC = () => {
   const [roles, setRoles] = useState<EnhancedRole[]>([]);
-    const { t } = useTranslation(['permissions', 'common']);
+  const { t } = useTranslation(['permissions', 'common']);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all'); // all, system, custom
@@ -107,20 +107,20 @@ const PermissionManagement: React.FC = () => {
   return (
     <ManagementLayout>
       <PageHeader
-        title="Permission Management"
-        description="Define and manage system roles and permissions."
+        title={t('page.title', { ns: 'permissions' })}
+        description={t('page.desc', { ns: 'permissions' })}
         icon="fas fa-shield-alt"
         actions={
           <button className="btn btn-primary" onClick={handleCreate}>
-            <i className="fas fa-plus"></i> New Role
+            <i className="fas fa-plus"></i> {t('page.newRole', { ns: 'permissions' })}
           </button>
         }
       />
 
       <div className="mgmt-stats-panel">
-        <StatCard label="Total Roles" value={stats.total} type="primary" />
-        <StatCard label="System Roles" value={stats.system} type="blueprint" />
-        <StatCard label="Custom Roles" value={stats.custom} type="success" />
+        <StatCard label={t('page.statTotal', { ns: 'permissions' })} value={stats.total} type="primary" />
+        <StatCard label={t('page.statSystem', { ns: 'permissions' })} value={stats.system} type="blueprint" />
+        <StatCard label={t('page.statCustom', { ns: 'permissions' })} value={stats.custom} type="success" />
       </div>
 
       <FilterBar
@@ -128,12 +128,12 @@ const PermissionManagement: React.FC = () => {
         onSearchChange={setSearchTerm}
         filters={[
           {
-            label: 'Type',
+            label: t('page.filterType', { ns: 'permissions' }),
             value: filterType,
             options: [
-              { label: 'All', value: 'all' },
-              { label: 'System Roles', value: 'system' },
-              { label: 'Custom', value: 'custom' }
+              { label: t('page.filterAll', { ns: 'permissions' }), value: 'all' },
+              { label: t('page.filterSystem', { ns: 'permissions' }), value: 'system' },
+              { label: t('page.filterCustom', { ns: 'permissions' }), value: 'custom' }
             ],
             onChange: setFilterType
           }
@@ -150,18 +150,18 @@ const PermissionManagement: React.FC = () => {
           <table className="mgmt-table">
             <thead>
               <tr>
-                <th style={{ width: '20%' }}>{t('table.roleName', {ns: 'permissions'})}</th>
-                <th style={{ width: '35%' }}>{t('table.description', {ns: 'permissions'})}</th>
-                <th style={{ width: '15%' }}>{t('table.type', {ns: 'permissions'})}</th>
-                <th style={{ width: '15%' }}>Assigned Users</th>
-                <th style={{ width: '15%' }}>Registered At</th>
+                <th style={{ width: '20%' }}>{t('table.roleName', { ns: 'permissions' })}</th>
+                <th style={{ width: '35%' }}>{t('table.description', { ns: 'permissions' })}</th>
+                <th style={{ width: '15%' }}>{t('table.type', { ns: 'permissions' })}</th>
+                <th style={{ width: '15%' }}>{t('page.colAssignedUsers', { ns: 'permissions' })}</th>
+                <th style={{ width: '15%' }}>{t('page.colRegisteredAt', { ns: 'permissions' })}</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
                   <td colSpan={5} className="loading-cell">
-                    <div className="loading-spinner small"></div> 데이터 로딩 중...
+                    <div className="loading-spinner small"></div> {t('page.loadingData', { ns: 'permissions' })}
                   </td>
                 </tr>
               ) : paginatedRoles.length > 0 ? (
@@ -189,13 +189,13 @@ const PermissionManagement: React.FC = () => {
                         </span>
                       ) : (
                         <span className="status-badge status-success">
-                          <i className="fas fa-user-edit"></i> 사용자 정의
+                          <i className="fas fa-user-edit"></i> {t('page.customRole', { ns: 'permissions' })}
                         </span>
                       )}
                     </td>
                     <td>
                       <span className="count-badge">
-                        {role.userCount || 0}명
+                        {t('page.userCount', { ns: 'permissions', count: role.userCount || 0 })}
                       </span>
                     </td>
                     <td>
@@ -206,7 +206,7 @@ const PermissionManagement: React.FC = () => {
               ) : (
                 <tr>
                   <td colSpan={5} className="empty-table">
-                    등록된 역할이 없습니다.
+                    {t('page.noRoles', { ns: 'permissions' })}
                   </td>
                 </tr>
               )}
