@@ -43,7 +43,7 @@ const AlarmHistoryDetailModal: React.FC<AlarmHistoryDetailModalProps> = ({ event
         <div className="modal-overlay">
             <div className="modal modal-xl">
                 <div className="modal-header">
-                    <h2 className="modal-title">Alarm History Details: #{event.id}</h2>
+                    <h2 className="modal-title">{t('modals.historyDetailTitle', { defaultValue: '알람 이력 상세' })}: #{event.id}</h2>
                     <button className="close-button" onClick={onClose}><i className="fas fa-times"></i></button>
                 </div>
                 <div className="modal-content">
@@ -52,9 +52,9 @@ const AlarmHistoryDetailModal: React.FC<AlarmHistoryDetailModalProps> = ({ event
 
                             {/* --- Section 1: Basic Information --- */}
                             <div className="form-section">
-                                <div className="section-title">{t('modals.basicInfo', {ns: 'alarms'})}</div>
+                                <div className="section-title">{t('modals.basicInfo', { ns: 'alarms' })}</div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">{t('columns.message', {ns: 'alarms'})}</label>
+                                    <label className="form-label">{t('columns.message', { ns: 'alarms' })}</label>
                                     <div className="detail-read-value" style={{
                                         fontSize: '15px',
                                         fontWeight: 600,
@@ -65,11 +65,11 @@ const AlarmHistoryDetailModal: React.FC<AlarmHistoryDetailModalProps> = ({ event
                                         color: 'var(--neutral-900)',
                                         lineHeight: '1.5'
                                     }}>
-                                        {event.alarm_message || 'No message'}
+                                        {event.alarm_message || t('modals.noMessage', { defaultValue: '메시지 없음' })}
                                     </div>
                                 </div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">{t('labels.severityStatus', {ns: 'alarms'})}</label>
+                                    <label className="form-label">{t('labels.severityStatus', { ns: 'alarms' })}</label>
                                     <div style={{ display: 'flex', gap: '8px', padding: '4px 0' }}>
                                         <span className={`badge severity-badge ${getSeverityBadgeClass(severity)}`}>
                                             {severity}
@@ -81,7 +81,7 @@ const AlarmHistoryDetailModal: React.FC<AlarmHistoryDetailModalProps> = ({ event
                                     </div>
                                 </div>
                                 <div className="detail-item-group">
-                                    <label className="form-label">{t('modals.deviceRule', {ns: 'alarms'})}</label>
+                                    <label className="form-label">{t('modals.deviceRule', { ns: 'alarms' })}</label>
                                     <div className="detail-read-value" style={{ padding: '8px 12px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-100)' }}>
                                         <div style={{ fontWeight: 600 }}>{event.device_name || 'N/A'}</div>
                                         <div style={{ fontSize: '13px', color: 'var(--neutral-500)', marginTop: '2px' }}>{event.rule_name || 'N/A'}</div>
@@ -91,9 +91,9 @@ const AlarmHistoryDetailModal: React.FC<AlarmHistoryDetailModalProps> = ({ event
 
                             {/* --- Section 2: Values & Timing --- */}
                             <div className="form-section">
-                                <div className="section-title">{t('modals.occurrenceInfo', {ns: 'alarms'})}</div>
+                                <div className="section-title">{t('modals.occurrenceInfo', { ns: 'alarms' })}</div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">{t('modals.triggerValue', {ns: 'alarms'})}</label>
+                                    <label className="form-label">{t('modals.triggerValue', { ns: 'alarms' })}</label>
                                     <div className="detail-read-value" style={{
                                         fontSize: '18px',
                                         fontWeight: 700,
@@ -108,13 +108,13 @@ const AlarmHistoryDetailModal: React.FC<AlarmHistoryDetailModalProps> = ({ event
                                     </div>
                                 </div>
                                 <div className="detail-item-group" style={{ marginBottom: '20px' }}>
-                                    <label className="form-label">{t('columns.occurrenceTime', {ns: 'alarms'})}</label>
+                                    <label className="form-label">{t('columns.occurrenceTime', { ns: 'alarms' })}</label>
                                     <div className="detail-read-value" style={{ padding: '8px 12px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-100)' }}>
                                         {new Date(occurrenceTime).toLocaleString('ko-KR')}
                                     </div>
                                 </div>
                                 <div className="detail-item-group">
-                                    <label className="form-label">{t('modals.dataPoint', {ns: 'alarms'})}</label>
+                                    <label className="form-label">{t('modals.dataPoint', { ns: 'alarms' })}</label>
                                     <div className="detail-read-value" style={{ padding: '8px 12px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-100)' }}>
                                         {event.data_point_name || '-'}
                                     </div>
@@ -151,7 +151,7 @@ const AlarmHistoryDetailModal: React.FC<AlarmHistoryDetailModalProps> = ({ event
                                                 <div style={{ marginTop: '4px', fontSize: '13px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                         <i className="fas fa-user-check" style={{ color: 'var(--neutral-400)' }}></i>
-                                                        <span style={{ fontWeight: 500 }}>{event.acknowledged_by || 'Unknown User'}</span>
+                                                        <span style={{ fontWeight: 500 }}>{event.acknowledged_by || t('modals.unknownUser', { defaultValue: '알 수 없는 사용자' })}</span>
                                                     </div>
                                                     {event.acknowledge_comment && (
                                                         <div style={{ marginTop: '4px', padding: '8px', background: 'var(--warning-50)', borderRadius: '4px', border: '1px solid var(--warning-100)', color: 'var(--warning-900)' }}>
@@ -175,7 +175,7 @@ const AlarmHistoryDetailModal: React.FC<AlarmHistoryDetailModalProps> = ({ event
                                                 <div style={{ marginTop: '4px', fontSize: '13px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                         <i className="fas fa-check-double" style={{ color: 'var(--neutral-400)' }}></i>
-                                                        <span style={{ fontWeight: 500 }}>{event.cleared_by || 'System/Unknown'}</span>
+                                                        <span style={{ fontWeight: 500 }}>{event.cleared_by || t('modals.systemUnknown', { defaultValue: '시스템/알 수 없음' })}</span>
                                                     </div>
                                                     {event.clear_comment && (
                                                         <div style={{ marginTop: '4px', padding: '8px', background: 'var(--success-50)', borderRadius: '4px', border: '1px solid var(--success-100)', color: 'var(--success-900)' }}>

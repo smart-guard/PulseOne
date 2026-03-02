@@ -20,7 +20,7 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
   onEdit,
   onApply
 }) => {
-    const { t } = useTranslation(['alarms', 'common']);
+  const { t } = useTranslation(['alarms', 'common']);
   const [Count, setOutdatedCount] = React.useState(0);
   const [showPropagateModal, setShowPropagateModal] = React.useState(false);
 
@@ -53,46 +53,46 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
 
   const renderConfigDetails = () => {
     const { condition_type, default_config: config } = template;
-    if (!config) return <div className="adm-empty-state">{t('labels.noConfigurationDataAvailable', {ns: 'alarms'})}</div>;
+    if (!config) return <div className="adm-empty-state">{t('labels.noConfigurationDataAvailable', { ns: 'alarms' })}</div>;
 
     return (
       <div className="adm-logic-card">
         <div className="adm-logic-header">
-          <i className="fas fa-cog"></i> {condition_type.toUpperCase()} Logic Configuration
+          <i className="fas fa-cog"></i> {condition_type.toUpperCase()} {t('labels.logicConfig', { defaultValue: '로직 구성' })}
         </div>
         <div className="adm-logic-body">
           {condition_type === 'threshold' && (
             <div className="adm-info-row">
-              <span className="label">{t('templates.highThreshold', {ns: 'alarms'})}</span>
+              <span className="label">{t('templates.highThreshold', { ns: 'alarms' })}</span>
               <span className="value highlight">{config.high_limit ?? '-'}</span>
             </div>
           )}
           {condition_type === 'range' && (
             <div className="adm-info-grid">
               <div className="adm-info-row">
-                <span className="label">{t('templates.lowLimit', {ns: 'alarms'})}</span>
+                <span className="label">{t('templates.lowLimit', { ns: 'alarms' })}</span>
                 <span className="value">{config.low_limit ?? '-'}</span>
               </div>
               <div className="adm-info-row">
-                <span className="label">{t('templates.highLimit', {ns: 'alarms'})}</span>
+                <span className="label">{t('templates.highLimit', { ns: 'alarms' })}</span>
                 <span className="value">{config.high_limit ?? '-'}</span>
               </div>
             </div>
           )}
           {condition_type === 'digital' && (
             <div className="adm-info-row">
-              <span className="label">{t('labels.triggerCondition', {ns: 'alarms'})}</span>
+              <span className="label">{t('labels.triggerCondition', { ns: 'alarms' })}</span>
               <span className="value highlight">{config.trigger_condition === '1' ? 'TRUE (1)' : 'FALSE (0)'}</span>
             </div>
           )}
           {condition_type === 'script' && (
             <div className="adm-script-view">
-              <pre><code>{config.script || '// No script defined'}</code></pre>
+              <pre><code>{config.script || `// ${t('labels.noScriptDefined', { defaultValue: '스크립트 미정' })}`}</code></pre>
             </div>
           )}
           <div className="adm-logic-meta">
-            <span><i className="fas fa-history"></i> Delay: {config.delay_ms || 0}ms</span>
-            <span><i className="fas fa-wave-square"></i> Deadband: {config.deadband || 0}</span>
+            <span><i className="fas fa-history"></i> {t('labels.delay', { defaultValue: '지연' })}: {config.delay_ms || 0}ms</span>
+            <span><i className="fas fa-wave-square"></i> {t('labels.deadband', { defaultValue: '데드밴드' })}: {config.deadband || 0}</span>
           </div>
         </div>
       </div>
@@ -109,8 +109,8 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
               <i className="fas fa-file-alt"></i>
             </div>
             <div className="adm-title-group">
-              <h3 className="adm-title">{t('labels.alarmTemplateDetails', {ns: 'alarms'})}</h3>
-              <p className="adm-subtitle">Review the detailed settings and configuration of this template.</p>
+              <h3 className="adm-title">{t('labels.alarmTemplateDetails', { ns: 'alarms' })}</h3>
+              <p className="adm-subtitle">{t('labels.templateDetailSubtitle', { defaultValue: '이 템플릿의 상세 설정 및 구성을 확인합니다.' })}</p>
             </div>
           </div>
           <button className="adm-close-btn" onClick={onClose} aria-label="Close">&times;</button>
@@ -121,46 +121,46 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
           {/* Sidebar */}
           <div className="adm-sidebar">
             <div className="adm-meta-block">
-              <label>{t('templates.name', {ns: 'alarms'})}</label>
+              <label>{t('templates.name', { ns: 'alarms' })}</label>
               <div className="adm-name-text">{template.name}</div>
             </div>
 
             <div className="adm-meta-block">
-              <label>{t('templates.severityLabel', {ns: 'alarms'})}</label>
+              <label>{t('templates.severityLabel', { ns: 'alarms' })}</label>
               <div className={`adm-badge ${getSeverityBadgeClass(template.severity)}`}>
                 {template.severity.toUpperCase()}
               </div>
             </div>
 
             <div className="adm-meta-block">
-              <label>{t('modals.category', {ns: 'alarms'})}</label>
+              <label>{t('modals.category', { ns: 'alarms' })}</label>
               <div className="adm-meta-val">{template.category}</div>
             </div>
 
             <div className="adm-meta-block">
-              <label>{t('templates.typeLabel', {ns: 'alarms'})}</label>
+              <label>{t('templates.typeLabel', { ns: 'alarms' })}</label>
               <div className="adm-meta-val">{template.template_type.toUpperCase()}</div>
             </div>
 
             <div className="adm-meta-block">
-              <label>{t('templates.systemLevel', {ns: 'alarms'})}</label>
+              <label>{t('templates.systemLevel', { ns: 'alarms' })}</label>
               <div className="adm-meta-val">
                 {template.is_system_template ? (
-                  <span className="adm-badge" style={{ background: '#1e293b', color: '#f8fafc', border: '1px solid #334155' }}>{t('labels.system', {ns: 'alarms'})}</span>
+                  <span className="adm-badge" style={{ background: '#1e293b', color: '#f8fafc', border: '1px solid #334155' }}>{t('labels.system', { ns: 'alarms' })}</span>
                 ) : (
-                  <span className="adm-badge" style={{ background: '#f1f5f9', color: '#64748b' }}>{t('labels.user', {ns: 'alarms'})}</span>
+                  <span className="adm-badge" style={{ background: '#f1f5f9', color: '#64748b' }}>{t('labels.user', { ns: 'alarms' })}</span>
                 )}
               </div>
             </div>
 
             <div className="adm-meta-block" style={{ marginTop: 'auto', paddingTop: '20px' }}>
-              <label>{t('labels.usageStatistics', {ns: 'alarms'})}</label>
-              <div className="adm-stat-text">{template.usage_count || 0} time(s) applied</div>
+              <label>{t('labels.usageStatistics', { ns: 'alarms' })}</label>
+              <div className="adm-stat-text">{t('labels.appliedCount', { count: template.usage_count || 0, defaultValue: '{{count}}회 적용됨' })}</div>
             </div>
 
             {Count > 0 && (
               <div className="adm-meta-block" style={{ paddingTop: '12px' }}>
-                <label style={{ color: '#d97706' }}>{t('labels.updateRequired', {ns: 'alarms'})}</label>
+                <label style={{ color: '#d97706' }}>{t('labels.updateRequired', { ns: 'alarms' })}</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '14px', fontWeight: 600, color: '#d97706' }}>{Count}개 규칙</span>
                   <button
@@ -186,19 +186,19 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
           {/* Main Content */}
           <div className="adm-main">
             <div className="adm-section">
-              <h4 className="adm-section-header">{t('detail.description', {ns: 'alarms'})}</h4>
+              <h4 className="adm-section-header">{t('detail.description', { ns: 'alarms' })}</h4>
               <div className="adm-description-text">
-                {template.description || 'No description defined.'}
+                {template.description || t('detail.noDescription', { defaultValue: '설명이 없습니다.' })}
               </div>
             </div>
 
             <div className="adm-section">
-              <h4 className="adm-section-header">{t('labels.logicConfiguration', {ns: 'alarms'})}</h4>
+              <h4 className="adm-section-header">{t('labels.logicConfiguration', { ns: 'alarms' })}</h4>
               {renderConfigDetails()}
             </div>
 
             <div className="adm-section">
-              <h4 className="adm-section-header">{t('templates.messageTemplate', {ns: 'alarms'})}</h4>
+              <h4 className="adm-section-header">{t('templates.messageTemplate', { ns: 'alarms' })}</h4>
               <div className="adm-message-card">
                 <i className="fas fa-comment-dots"></i>
                 <span className="adm-message-text">{template.message_template}</span>
@@ -207,11 +207,11 @@ const AlarmTemplateDetailModal: React.FC<AlarmTemplateDetailModalProps> = ({
 
             <div className="adm-system-meta">
               <div className="adm-meta-pair">
-                <span className="label">{t('templates.createdAt', {ns: 'alarms'})}</span>
+                <span className="label">{t('templates.createdAt', { ns: 'alarms' })}</span>
                 <span className="value">{new Date(template.created_at).toLocaleString('ko-KR')}</span>
               </div>
               <div className="adm-meta-pair">
-                <span className="label">{t('templates.lastModified', {ns: 'alarms'})}</span>
+                <span className="label">{t('templates.lastModified', { ns: 'alarms' })}</span>
                 <span className="value">{new Date(template.updated_at).toLocaleString('ko-KR')}</span>
               </div>
             </div>

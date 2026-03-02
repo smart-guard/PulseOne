@@ -69,7 +69,7 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                 setError(null);
             }
         } catch (err: any) {
-            setError('Failed to load manufacturer information.');
+            setError(t('modal.loadFailed', { defaultValue: '제조사 정보를 불러오지 못했습니다.' }));
         } finally {
             setLoading(false);
         }
@@ -83,16 +83,16 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.name) {
-            setError('Manufacturer name is required.');
+            setError(t('modal.requiredError'));
             return;
         }
 
         if (!manufacturerId) return;
 
         const isConfirmed = await confirm({
-            title: 'Save Changes',
-            message: 'Save the entered changes?',
-            confirmText: 'Save',
+            title: t('modal.saveConfirmTitle'),
+            message: t('modal.saveConfirmMsg'),
+            confirmText: t('modal.saveConfirmText'),
             confirmButtonType: 'primary'
         });
 
@@ -104,8 +104,8 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
             const res = await ManufactureApiService.updateManufacturer(manufacturerId, formData);
             if (res.success) {
                 await confirm({
-                    title: 'Save Complete',
-                    message: 'Manufacturer information updated successfully.',
+                    title: t('modal.saveCompleteTitle'),
+                    message: t('modal.saveCompleteMsg'),
                     confirmText: 'OK',
                     showCancelButton: false,
                     confirmButtonType: 'primary'
@@ -114,10 +114,10 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                 onSave();
                 onClose();
             } else {
-                setError(res.message || 'Update failed.');
+                setError(res.message || t('modal.updateFailed'));
             }
         } catch (err: any) {
-            setError(err.message || 'Server communication error.');
+            setError(err.message || t('modal.serverError'));
         } finally {
             setSaving(false);
         }
@@ -127,9 +127,9 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
         if (!manufacturer) return;
 
         const confirmed = await confirm({
-            title: 'Confirm Delete Manufacturer',
-            message: `Delete manufacturer '${manufacturer.name}'? Cannot be deleted if linked models exist.`,
-            confirmText: 'Delete',
+            title: t('confirm.deleteTitle', { defaultValue: '제조사 삭제 확인' }),
+            message: t('confirm.deleteMsg', { name: manufacturer.name }),
+            confirmText: t('confirm.deleteText'),
             confirmButtonType: 'danger'
         });
 
@@ -139,8 +139,8 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                 const res = await ManufactureApiService.deleteManufacturer(manufacturer.id);
                 if (res.success) {
                     await confirm({
-                        title: 'Delete Complete',
-                        message: 'Manufacturer deleted successfully.',
+                        title: t('confirm.deleteSuccessTitle'),
+                        message: t('confirm.deleteSuccessMsg'),
                         confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'primary'
@@ -149,8 +149,8 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                     onClose();
                 } else {
                     await confirm({
-                        title: 'Delete Failed',
-                        message: res.message || 'Delete failed.',
+                        title: t('confirm.deleteFailTitle'),
+                        message: res.message || t('modal.deleteFailed', { defaultValue: '삭제에 실패했습니다.' }),
                         confirmText: 'OK',
                         showCancelButton: false,
                         confirmButtonType: 'danger'
@@ -158,8 +158,8 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                 }
             } catch (err: any) {
                 await confirm({
-                    title: 'Error',
-                    message: err.message || 'Error occurred during deletion.',
+                    title: t('confirm.errorTitle', { defaultValue: '오류 발생' }),
+                    message: err.message || t('modal.deleteError', { defaultValue: '삭제 중 오류가 발생했습니다.' }),
                     confirmText: 'OK',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
@@ -174,13 +174,13 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
         if (loading) {
             return (
                 <div className="loading-spinner">
-                    <i className="fas fa-spinner fa-spin"></i> Loading...
+                    <i className="fas fa-spinner fa-spin"></i> {t('loading', { ns: 'common', defaultValue: '로딩 중...' })}
                 </div>
             );
         }
 
         if (!manufacturer) {
-            return <div className="alert alert-danger">{t('labels.failedToLoadManufacturerInformation', {ns: 'manufacturers'})}</div>;
+            return <div className="alert alert-danger">{t('labels.failedToLoadManufacturerInformation', { ns: 'manufacturers' })}</div>;
         }
 
         if (isEditing) {
@@ -188,34 +188,34 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                 <form id="manufacturer-detail-form" onSubmit={handleSubmit}>
                     <div className="mgmt-modal-form-grid">
                         <div className="mgmt-modal-form-section">
-                            <h3><i className="fas fa-info-circle"></i> Basic Info</h3>
+                            <h3><i className="fas fa-info-circle"></i> {t('modal.sectionBasic')}</h3>
                             <div className="mgmt-modal-form-group">
-                                <label className="required">{t('table.name', {ns: 'manufacturers'})}</label>
+                                <label className="required">{t('table.name', { ns: 'manufacturers' })}</label>
                                 <input
                                     type="text"
                                     className="form-control"
                                     value={formData.name || ''}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    placeholder="Enter manufacturer name"
+                                    placeholder={t('modal.phName')}
                                     required
                                 />
                             </div>
                             <div className="mgmt-modal-form-group">
-                                <label>{t('table.description', {ns: 'manufacturers'})}</label>
+                                <label>{t('table.description', { ns: 'manufacturers' })}</label>
                                 <textarea
                                     className="form-control"
                                     value={formData.description || ''}
                                     onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                    placeholder="Enter a description for the manufacturer"
+                                    placeholder={t('modal.phDescription')}
                                     rows={3}
                                 />
                             </div>
                         </div>
 
                         <div className="mgmt-modal-form-section">
-                            <h3><i className="fas fa-globe"></i> Details</h3>
+                            <h3><i className="fas fa-globe"></i> {t('modal.sectionDetails')}</h3>
                             <div className="mgmt-modal-form-group">
-                                <label className="required">{t('table.country', {ns: 'manufacturers'})}</label>
+                                <label className="required">{t('table.country', { ns: 'manufacturers' })}</label>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {!isManualCountry ? (
                                         <select
@@ -232,14 +232,14 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                                             disabled={saving}
                                             required
                                         >
-                                            <option value="">{t('labels.selectACountry', {ns: 'manufacturers'})}</option>
+                                            <option value="">{t('labels.selectACountry', { ns: 'manufacturers' })}</option>
                                             {COUNTRIES
                                                 .slice()
                                                 .sort((a, b) => t(`countries.${a.code}`).localeCompare(t(`countries.${b.code}`)))
                                                 .map(c => (
                                                     <option key={c.code} value={c.code}>{t(`countries.${c.code}`)}</option>
                                                 ))}
-                                            <option value="__custom__">+ Direct Input (not in list)</option>
+                                            <option value="__custom__">{t('modal.countryEnterManually')}</option>
                                         </select>
                                     ) : (
                                         <div style={{ display: 'flex', gap: '8px' }}>
@@ -254,7 +254,7 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                                                         setFormData({ ...formData, country: code });
                                                     }
                                                 }}
-                                                placeholder="Enter country name in English (e.g. South Korea)"
+                                                placeholder={t('modal.phCountryManual')}
                                                 disabled={saving}
                                                 required
                                                 autoFocus
@@ -267,7 +267,7 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                                                     setIsManualCountry(false);
                                                     setFormData({ ...formData, country: '' });
                                                 }}
-                                                title="Select from list"
+                                                title={t('modal.countrySelectFromList')}
                                             >
                                                 <i className="fas fa-list"></i>
                                             </button>
@@ -275,13 +275,13 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                                     )}
                                     {isManualCountry && (
                                         <span style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>
-                                            * Preferably use standard English names (e.g. USA, South Korea).
+                                            {t('modal.countryManualHint')}
                                         </span>
                                     )}
                                 </div>
                             </div>
                             <div className="mgmt-modal-form-group">
-                                <label>{t('labels.website', {ns: 'manufacturers'})}</label>
+                                <label>{t('labels.website', { ns: 'manufacturers' })}</label>
                                 <input
                                     type="text"
                                     className="form-control"
@@ -291,7 +291,7 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                                 />
                             </div>
                             <div className="mgmt-modal-form-group">
-                                <label>{t('labels.logoImageUrl', {ns: 'manufacturers'})}</label>
+                                <label>{t('labels.logoImageUrl', { ns: 'manufacturers' })}</label>
                                 <input
                                     type="text"
                                     className="form-control"
@@ -312,7 +312,7 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                                         checked={!!formData.is_active}
                                         onChange={e => setFormData({ ...formData, is_active: e.target.checked })}
                                     />
-                                    Active Status
+                                    {t('modal.activeStatus', { defaultValue: '활성 상태' })}
                                 </label>
                             </div>
                         </div>
@@ -324,25 +324,25 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
         return (
             <div className="mgmt-modal-form-grid">
                 <div className="mgmt-modal-form-section">
-                    <h3><i className="fas fa-info-circle"></i> Basic Info</h3>
+                    <h3><i className="fas fa-info-circle"></i> {t('modal.sectionBasic')}</h3>
                     <div className="detail-item">
-                        <div className="detail-label">{t('table.name', {ns: 'manufacturers'})}</div>
+                        <div className="detail-label">{t('table.name', { ns: 'manufacturers' })}</div>
                         <div className="detail-value highlight">{manufacturer.name}</div>
                     </div>
                     <div className="detail-item">
-                        <div className="detail-label">{t('table.description', {ns: 'manufacturers'})}</div>
-                        <div className="detail-value">{manufacturer.description || 'No description available.'}</div>
+                        <div className="detail-label">{t('table.description', { ns: 'manufacturers' })}</div>
+                        <div className="detail-value">{manufacturer.description || t('noDescription', { defaultValue: '설명이 없습니다.' })}</div>
                     </div>
                 </div>
 
                 <div className="mgmt-modal-form-section">
-                    <h3><i className="fas fa-globe"></i> Details</h3>
+                    <h3><i className="fas fa-globe"></i> {t('modal.sectionDetails')}</h3>
                     <div className="detail-item">
-                        <div className="detail-label">{t('table.country', {ns: 'manufacturers'})}</div>
+                        <div className="detail-label">{t('table.country', { ns: 'manufacturers' })}</div>
                         <div className="detail-value">{manufacturer.country ? t(`countries.${manufacturer.country}`, { defaultValue: manufacturer.country }) : '-'}</div>
                     </div>
                     <div className="detail-item">
-                        <div className="detail-label">{t('labels.website', {ns: 'manufacturers'})}</div>
+                        <div className="detail-label">{t('labels.website', { ns: 'manufacturers' })}</div>
                         <div className="detail-value">
                             {manufacturer.website ? (
                                 <a href={manufacturer.website} target="_blank" rel="noopener noreferrer">
@@ -352,16 +352,16 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                         </div>
                     </div>
                     <div className="detail-item">
-                        <div className="detail-label">{t('labels.activeStatus', {ns: 'manufacturers'})}</div>
+                        <div className="detail-label">{t('labels.activeStatus', { ns: 'manufacturers' })}</div>
                         <div className="detail-value">
                             <span className={`badge ${manufacturer.is_active ? 'success' : 'neutral'}`}>
-                                {manufacturer.is_active ? 'Active' : 'Inactive'}
+                                {manufacturer.is_active ? t('badge.active') : t('badge.inactive')}
                             </span>
                         </div>
                     </div>
                     {manufacturer.logo_url && (
                         <div className="detail-item">
-                            <div className="detail-label">{t('labels.manufacturerLogo', {ns: 'manufacturers'})}</div>
+                            <div className="detail-label">{t('labels.manufacturerLogo', { ns: 'manufacturers' })}</div>
                             <div className="detail-value" style={{ marginTop: '8px' }}>
                                 <img src={manufacturer.logo_url} alt="Manufacturer Logo" style={{ maxHeight: '60px', maxWidth: '150px', objectFit: 'contain' }} />
                             </div>
@@ -380,7 +380,7 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                 <div className="mgmt-modal-header">
                     <div className="mgmt-modal-title">
                         <div className="title-row">
-                            <h2>{isEditing ? 'Edit Manufacturer' : 'Manufacturer Details'}</h2>
+                            <h2>{isEditing ? t('modal.editTitle') : t('modal.detailTitle', { defaultValue: '제조사 상세' })}</h2>
                         </div>
                     </div>
                     <button className="mgmt-close-btn" onClick={onClose}>
@@ -396,9 +396,9 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                 <div className="mgmt-modal-footer">
                     {!isEditing ? (
                         <div className="footer-right" style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                            <button className="btn btn-outline" onClick={onClose}>Close</button>
+                            <button className="btn btn-outline" onClick={onClose}>{t('close', { ns: 'common' })}</button>
                             <button className="btn btn-primary" onClick={handleEditToggle}>
-                                <i className="fas fa-edit"></i> Edit
+                                <i className="fas fa-edit"></i> {t('edit', { ns: 'common' })}
                             </button>
                         </div>
                     ) : (
@@ -410,13 +410,13 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                                     onClick={handleDelete}
                                     disabled={saving}
                                 >
-                                    <i className="fas fa-trash"></i> Delete
+                                    <i className="fas fa-trash"></i> {t('delete', { ns: 'common' })}
                                 </button>
                             </div>
                             <div className="footer-right" style={{ display: 'flex', gap: '12px' }}>
-                                <button className="btn btn-outline" onClick={handleEditToggle} disabled={saving}>Cancel</button>
+                                <button className="btn btn-outline" onClick={handleEditToggle} disabled={saving}>{t('cancel', { ns: 'common' })}</button>
                                 <button type="submit" form="manufacturer-detail-form" className="btn btn-primary" disabled={saving}>
-                                    <i className="fas fa-save"></i> {saving ? 'Saving...' : 'Save'}
+                                    <i className="fas fa-save"></i> {saving ? t('modal.saving') : t('modal.saveChanges')}
                                 </button>
                             </div>
                         </div>

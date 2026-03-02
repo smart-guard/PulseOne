@@ -31,12 +31,12 @@ const AlarmActionModal: React.FC<AlarmActionModalProps> = ({
     const [comment, setComment] = useState('System Check');
     const { t } = useTranslation(['alarms', 'common']);
     const isAcknowledge = type === 'acknowledge';
-    const title = isAcknowledge ? 'Acknowledge Alarm' : 'Clear Alarm';
+    const title = isAcknowledge ? t('action.acknowledgeTitle', { defaultValue: '알람 인지' }) : t('action.clearTitle', { defaultValue: '알람 해제' });
     const color = isAcknowledge ? '#1890ff' : '#52c41a';
 
     useEffect(() => {
         if (isOpen) {
-            setComment(isAcknowledge ? 'System Check' : 'Situation resolved and action completed');
+            setComment(isAcknowledge ? t('action.defaultAckComment', { defaultValue: '시스템 확인' }) : t('action.defaultClearComment', { defaultValue: '상황 종료 및 조치 완료' }));
         }
     }, [isOpen, type, isAcknowledge]);
 
@@ -46,11 +46,11 @@ const AlarmActionModal: React.FC<AlarmActionModalProps> = ({
 
     const getSeverityBadge = (severity?: string) => {
         switch (severity?.toLowerCase()) {
-            case 'critical': return <Badge status="error" text="Critical" />;
-            case 'high': return <Badge status="warning" text="High" />;
-            case 'medium': return <Badge status="processing" text="Medium" />;
-            case 'low': return <Badge status="default" text="Low" />;
-            default: return <Badge status="default" text={severity || 'Info'} />;
+            case 'critical': return <Badge status="error" text={t('severity.critical', { defaultValue: '위험' })} />;
+            case 'high': return <Badge status="warning" text={t('severity.high', { defaultValue: '높음' })} />;
+            case 'medium': return <Badge status="processing" text={t('severity.medium', { defaultValue: '중간' })} />;
+            case 'low': return <Badge status="default" text={t('severity.low', { defaultValue: '낮음' })} />;
+            default: return <Badge status="default" text={severity || t('severity.info', { defaultValue: '정보' })} />;
         }
     };
 
@@ -66,7 +66,7 @@ const AlarmActionModal: React.FC<AlarmActionModalProps> = ({
             onOk={handleOk}
             onCancel={onCancel}
             confirmLoading={loading}
-            okText={isAcknowledge ? 'Acknowledge' : 'Clear'}
+            okText={isAcknowledge ? t('action.acknowledgeBtn', { defaultValue: '인지' }) : t('action.clearBtn', { defaultValue: '해제' })}
             cancelText="취소"
             centered
             width={520}

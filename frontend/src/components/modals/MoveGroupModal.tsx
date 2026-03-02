@@ -68,7 +68,7 @@ const MoveGroupModal: React.FC<MoveGroupModalProps> = ({
             }
         } catch (error) {
             console.error('Failed to create group:', error);
-            alert('Failed to create group.');
+            alert(t('labels.createGroupFailed', { ns: 'sites', defaultValue: '그룹 생성에 실패했습니다.' }));
         } finally {
             setCreating(false);
         }
@@ -120,7 +120,7 @@ const MoveGroupModal: React.FC<MoveGroupModalProps> = ({
         <div className="modal-overlay">
             <div className="modal-container" style={{ maxWidth: '500px' }}>
                 <div className="modal-header">
-                    <h2 className="modal-title">{t('labels.moveGroup', {ns: 'sites'})}</h2>
+                    <h2 className="modal-title">{t('labels.moveGroup', { ns: 'sites' })}</h2>
                     <button className="modal-close-btn" onClick={onClose} disabled={loading}>
                         <i className="fas fa-times"></i>
                     </button>
@@ -129,7 +129,7 @@ const MoveGroupModal: React.FC<MoveGroupModalProps> = ({
                 <div className="modal-content">
                     <div className="form-section">
                         <div className="section-header">
-                            <h3>Selected Devices ({selectedDevices.length})</h3>
+                            <h3>{t('labels.selectedDevices', { ns: 'sites', defaultValue: '선택된 디바이스' })} ({selectedDevices.length})</h3>
                         </div>
                         <div className="selected-items-summary">
                             {selectedDevices.slice(0, 10).map(device => (
@@ -139,19 +139,19 @@ const MoveGroupModal: React.FC<MoveGroupModalProps> = ({
                                 </div>
                             ))}
                             {selectedDevices.length > 10 && (
-                                <div className="summary-item more">and {selectedDevices.length - 10} more...</div>
+                                <div className="summary-item more">{t('labels.andMore', { ns: 'sites', count: selectedDevices.length - 10, defaultValue: '외 {{count}}개 더...' })}</div>
                             )}
                         </div>
                     </div>
 
                     <div className="form-section flex-grow">
                         <div className="section-header">
-                            <h3>{t('labels.selectTargetGroup', {ns: 'sites'})}</h3>
+                            <h3>{t('labels.selectTargetGroup', { ns: 'sites' })}</h3>
                             <div className="search-box-sm">
                                 <i className="fas fa-search"></i>
                                 <input
                                     type="text"
-                                    placeholder="Search group..."
+                                    placeholder={t('labels.searchGroup', { ns: 'sites', defaultValue: '그룹 검색...' })}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
@@ -164,12 +164,12 @@ const MoveGroupModal: React.FC<MoveGroupModalProps> = ({
                                 onClick={() => setSelectedGroupId(null)}
                             >
                                 <i className="fas fa-ban group-icon"></i>
-                                <span className="group-name">{t('labels.ungroupNoGroup', {ns: 'sites'})}</span>
+                                <span className="group-name">{t('labels.ungroupNoGroup', { ns: 'sites' })}</span>
                             </div>
 
                             {fetchingGroups ? (
                                 <div className="tree-loading">
-                                    <i className="fas fa-spinner fa-spin"></i> Loading...
+                                    <i className="fas fa-spinner fa-spin"></i> {t('loading', { ns: 'common', defaultValue: '로딩 중...' })}
                                 </div>
                             ) : (
                                 <div className="tree-list">

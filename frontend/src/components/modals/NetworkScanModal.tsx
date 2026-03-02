@@ -56,7 +56,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
 
     const handleScan = async () => {
         if (!range && protocol !== 'BACNET' && protocol !== 'MODBUS_RTU' && protocol !== 'MQTT') {
-            setError(protocol === 'MQTT' ? 'Please enter the broker URL.' : 'Please enter the IP range (CIDR).');
+            setError(protocol === 'MQTT' ? t('labels.enterBrokerUrl', { ns: 'protocols', defaultValue: '브로커 URL을 입력해주세요.' }) : t('labels.enterIpRange', { ns: 'protocols', defaultValue: 'IP 범위(CIDR)를 입력해주세요.' }));
             return;
         }
 
@@ -108,16 +108,16 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
 
                     if (foundCount > 0) {
                         await confirm({
-                            title: 'Scan Complete',
-                            message: `${foundCount} new device(s) found and auto-registered.`,
+                            title: t('labels.scanComplete', { ns: 'protocols', defaultValue: '스캔 완료' }),
+                            message: t('labels.scanFoundDevices', { ns: 'protocols', count: foundCount, defaultValue: '{{count}}개 신규 디바이스를 발견하여 자동 등록했습니다.' }),
                             confirmText: 'OK',
                             showCancelButton: false,
                             confirmButtonType: 'success'
                         });
                     } else {
                         await confirm({
-                            title: 'Scan Complete',
-                            message: 'No new devices found. Please check your network settings.',
+                            title: t('labels.scanComplete', { ns: 'protocols', defaultValue: '스캔 완료' }),
+                            message: t('labels.scanNoDevices', { ns: 'protocols', defaultValue: '신규 디바이스를 발견하지 못했습니다. 네트워크 설정을 확인해주세요.' }),
                             confirmText: 'OK',
                             showCancelButton: false,
                             confirmButtonType: 'warning'
@@ -127,10 +127,10 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
 
             } else {
                 clearInterval(progressTimer);
-                throw new Error(response.error || 'Scan start failed');
+                throw new Error(response.error || t('labels.scanStartFailed', { ns: 'protocols', defaultValue: '스캔 시작에 실패했습니다.' }));
             }
         } catch (err: any) {
-            setError(err.message || 'An error occurred during scanning.');
+            setError(err.message || t('labels.scanError', { ns: 'protocols', defaultValue: '스캔 중 오류가 발생했습니다.' }));
             setIsScanning(false);
             setProgress(0);
         }
