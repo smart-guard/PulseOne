@@ -138,7 +138,7 @@ export const RoleModal: React.FC<RoleModalProps> = ({
 
     return (
         <div className="mgmt-modal-overlay">
-            <div className="mgmt-modal-container user-modal" style={{ maxWidth: '860px' }}>
+            <div className="mgmt-modal-container user-modal" style={{ maxWidth: '760px', width: '90%' }}>
                 {/* Header */}
                 <div className="mgmt-modal-header">
                     <div className="mgmt-modal-title">
@@ -152,11 +152,11 @@ export const RoleModal: React.FC<RoleModalProps> = ({
                 {/* Body */}
                 <div className="mgmt-modal-body">
                     <form id="role-form" onSubmit={handleSubmit}>
-                        <div className="mgmt-modal-form-grid">
-                            {/* Left: Basic Info */}
-                            <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-info-circle"></i> {t('roleModal.sectionBasic', { ns: 'permissions' })}</h3>
 
+                        {/* 섹션 1: 기본 정보 (가로 2열) */}
+                        <div className="mgmt-modal-form-section" style={{ marginBottom: '20px' }}>
+                            <h3 style={{ marginBottom: '14px' }}><i className="fas fa-info-circle"></i> {t('roleModal.sectionBasic', { ns: 'permissions' })}</h3>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '16px', alignItems: 'start' }}>
                                 <div className="mgmt-modal-form-group">
                                     <label className="required">{t('roleModal.name', { ns: 'permissions' })}</label>
                                     <input
@@ -172,12 +172,11 @@ export const RoleModal: React.FC<RoleModalProps> = ({
                                         <p className="mgmt-modal-form-hint">{t('roleModal.systemNameLocked', { ns: 'permissions' })}</p>
                                     )}
                                 </div>
-
                                 <div className="mgmt-modal-form-group">
                                     <label>{t('roleModal.descLabel', { ns: 'permissions' })}</label>
-                                    <textarea
+                                    <input
+                                        type="text"
                                         className="mgmt-modal-input"
-                                        style={{ height: '100px', paddingTop: '10px', resize: 'vertical' }}
                                         value={formData.description || ''}
                                         onChange={(e) => handleInputChange('description', e.target.value)}
                                         placeholder={t('roleModal.descPlaceholder', { ns: 'permissions' })}
@@ -185,31 +184,57 @@ export const RoleModal: React.FC<RoleModalProps> = ({
                                     />
                                 </div>
                             </div>
+                        </div>
 
-                            {/* Right: Permissions */}
-                            <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-key"></i> {t('roleModal.sectionPermissions', { ns: 'permissions' })}</h3>
-                                <div className="mgmt-modal-form-group">
-                                    <label>{t('roleModal.permCount', { ns: 'permissions', count: formData.permissions?.length || 0 })}</label>
-                                    <div className="permissions-grid" style={{ maxHeight: '260px', overflowY: 'auto' }}>
-                                        {availablePermissions.map(perm => (
-                                            <label key={perm.id} className="permission-item">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={formData.permissions?.includes(perm.id)}
-                                                    onChange={() => togglePermission(perm.id)}
-                                                    disabled={loading}
-                                                />
-                                                <span style={{ marginLeft: '6px' }}>
-                                                    <strong style={{ fontSize: '13px' }}>{perm.name}</strong>
-                                                    <span style={{ fontSize: '12px', color: 'var(--neutral-500)', display: 'block', marginTop: '2px' }}>{perm.description}</span>
-                                                </span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
+                        {/* 구분선 */}
+                        <div style={{ borderTop: '1px solid var(--neutral-100)', margin: '0 0 20px 0' }} />
+
+                        {/* 섹션 2: 권한 설정 (3열 그리드) */}
+                        <div className="mgmt-modal-form-section">
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                                <h3 style={{ margin: 0 }}><i className="fas fa-key"></i> {t('roleModal.sectionPermissions', { ns: 'permissions' })}</h3>
+                                <span style={{ fontSize: '13px', color: 'var(--neutral-500)', background: 'var(--neutral-100)', padding: '2px 10px', borderRadius: '12px' }}>
+                                    {t('roleModal.permCount', { ns: 'permissions', count: formData.permissions?.length || 0 })}
+                                </span>
+                            </div>
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(3, 1fr)',
+                                gap: '8px'
+                            }}>
+                                {availablePermissions.map(perm => (
+                                    <label
+                                        key={perm.id}
+                                        className="permission-item"
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            gap: '8px',
+                                            padding: '10px 12px',
+                                            borderRadius: '8px',
+                                            border: '1px solid var(--neutral-200)',
+                                            cursor: loading ? 'not-allowed' : 'pointer',
+                                            background: formData.permissions?.includes(perm.id) ? 'var(--primary-50)' : 'var(--neutral-50)',
+                                            borderColor: formData.permissions?.includes(perm.id) ? 'var(--primary-300)' : 'var(--neutral-200)',
+                                            transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.permissions?.includes(perm.id)}
+                                            onChange={() => togglePermission(perm.id)}
+                                            disabled={loading}
+                                            style={{ marginTop: '2px', flexShrink: 0 }}
+                                        />
+                                        <span>
+                                            <strong style={{ fontSize: '13px', display: 'block', color: 'var(--neutral-800)' }}>{perm.name}</strong>
+                                            <span style={{ fontSize: '11px', color: 'var(--neutral-500)', marginTop: '2px', display: 'block', lineHeight: '1.4' }}>{perm.description}</span>
+                                        </span>
+                                    </label>
+                                ))}
                             </div>
                         </div>
+
                     </form>
                 </div>
 
