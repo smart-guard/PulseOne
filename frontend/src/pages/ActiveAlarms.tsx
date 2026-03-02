@@ -330,25 +330,25 @@ const ActiveAlarms: React.FC = () => {
           activeFilterCount={(searchTerm ? 1 : 0) + (severityFilter !== 'all' ? 1 : 0) + (stateFilter !== 'all' ? 1 : 0)}
           filters={[
             {
-              label: 'Severity',
+              label: t('severity.label'),
               value: severityFilter,
               onChange: setSeverityFilter,
               options: [
-                { value: 'all', label: 'All' },
-                { value: 'critical', label: 'Critical' },
-                { value: 'high', label: 'High' },
-                { value: 'medium', label: 'Medium' },
-                { value: 'low', label: 'Low' }
+                { value: 'all', label: t('filter.all') },
+                { value: 'critical', label: t('severity.critical') },
+                { value: 'high', label: t('severity.high') },
+                { value: 'medium', label: t('severity.medium') },
+                { value: 'low', label: t('severity.low') }
               ]
             },
             {
-              label: 'Status',
+              label: t('state.label'),
               value: stateFilter,
               onChange: setStateFilter,
               options: [
-                { value: 'all', label: 'All' },
-                { value: 'active', label: 'Pending' },
-                { value: 'acknowledged', label: 'Acknowledged' }
+                { value: 'all', label: t('filter.all') },
+                { value: 'active', label: t('active.pending') },
+                { value: 'acknowledged', label: t('acknowledged') }
               ]
             }
           ]}
@@ -421,14 +421,14 @@ const ActiveAlarms: React.FC = () => {
                     <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                       <span className={`mgmt-status-pill ${alarm.state === 'active' ? 'error' : 'active'}`}>
                         <i className={`fas ${alarm.state === 'active' ? 'fa-clock' : 'fa-check-circle'}`} style={{ marginRight: '6px' }}></i>
-                        {alarm.state === 'active' ? 'Pending' : 'Acknowledged'}
+                        {alarm.state === 'active' ? t('active.pending') : t('acknowledged')}
                       </span>
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <button
                         onClick={() => handleViewDetails(alarm)}
                         className="btn-icon"
-                        title="View Details"
+                        title={t('viewDetail')}
                         style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
                       >
                         <i className="far fa-eye"></i>
@@ -460,7 +460,7 @@ const ActiveAlarms: React.FC = () => {
               ) : (
                 <tr>
                   <td colSpan={8} style={{ textAlign: 'center', padding: '48px', color: '#64748b' }}>
-                    {loading ? 'Loading...' : 'No active alarms.'}
+                    {loading ? t('loading') : t('noActive')}
                   </td>
                 </tr>
               )}
