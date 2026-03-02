@@ -574,10 +574,13 @@
 
 .mgmt-table td {
     padding: 8px 12px;
-    /* Reduced from 24px default */
     border-bottom: 1px solid var(--neutral-100);
     font-size: var(--text-sm);
     vertical-align: middle;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 0;
 }
 
 .mgmt-table th {

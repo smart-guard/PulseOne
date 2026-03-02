@@ -212,14 +212,14 @@ const UserManagement: React.FC = () => {
           <table className="mgmt-table">
             <thead>
               <tr>
-                <th style={{ width: '10%' }}>{t('colName')}</th>
+                <th style={{ width: '11%' }}>{t('colName')}</th>
                 <th style={{ width: '12%' }}>{t('colUsername')}</th>
-                <th style={{ width: '12%' }}>{t('colCompany')}</th>
-                <th style={{ width: '22%' }}>{t('colEmail')}</th>
-                <th style={{ width: '10%' }}>{t('colRole')}</th>
-                <th style={{ width: '12%' }}>{t('colDepartment')}</th>
-                <th style={{ width: '12%' }}>{t('colLastLogin')}</th>
-                <th style={{ width: '5%', textAlign: 'center' }}>{t('colStatus')}</th>
+                <th style={{ width: '13%' }}>{t('colCompany')}</th>
+                <th style={{ width: '20%' }}>{t('colEmail')}</th>
+                <th style={{ width: '9%' }}>{t('colRole')}</th>
+                <th style={{ width: '11%' }}>{t('colDepartment')}</th>
+                <th style={{ width: '16%' }}>{t('colLastLogin')}</th>
+                <th style={{ width: '8%', textAlign: 'center' }}>{t('colStatus')}</th>
               </tr>
             </thead>
             <tbody>
