@@ -382,25 +382,41 @@ void DataProcessingService::ProcessRDBTasks(
   auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
   auto current_value_repo = factory.getCurrentValueRepository();
 
-  if (current_value_repo) {
-    size_t success = 0;
-    for (const auto &task : rdb_tasks) {
-      for (const auto &point : task.points) {
-        try {
-          auto entity = ConvertToCurrentValueEntity(point, task.message);
-          if (current_value_repo->save(entity)) {
-            success++;
-          }
-        } catch (...) {
-        }
+  if (!current_value_repo)
+    return;
+
+  // 🔥 모든 task의 포인트를 한 번에 모아 saveBatch() 1회 호출
+  // (기존: 포인트당 개별 트랜잭션 → 30K 포인트 = 30K 트랜잭션 → 느림)
+  // (개선: 전체 포인트를 1 트랜잭션으로 → 30K 포인트 = 1 트랜잭션 → 빠름)
+  std::vector<PulseOne::Database::Entities::CurrentValueEntity> batch_entities;
+
+  size_t total_points = 0;
+  for (const auto &task : rdb_tasks) {
+    total_points += task.points.size();
+  }
+  batch_entities.reserve(total_points);
+
+  for (const auto &task : rdb_tasks) {
+    for (const auto &point : task.points) {
+      try {
+        auto entity = ConvertToCurrentValueEntity(point, task.message);
+        batch_entities.push_back(std::move(entity));
+      } catch (...) {
+        // 변환 실패 포인트는 건너뜀
       }
     }
+  }
 
-    if (success > 0) {
-      LogManager::getInstance().log(
-          "processing", LogLevel::DEBUG_LEVEL,
-          "RDB 비동기 저장 완료: " + std::to_string(success) + "개 포인트");
-    }
+  if (batch_entities.empty())
+    return;
+
+  size_t saved = current_value_repo->saveBatch(batch_entities);
+
+  if (saved > 0) {
+    LogManager::getInstance().log(
+        "processing", LogLevel::DEBUG_LEVEL,
+        "🔥 RDB 배치 저장 완료: " + std::to_string(saved) + "/" +
+            std::to_string(batch_entities.size()) + "개 포인트 (1 트랜잭션)");
   }
 }
 

@@ -309,9 +309,9 @@ DatabaseAbstractionLayer::adaptTimestampFunctions(const std::string &query) {
   } else if (current_db_type_ == "MSSQL") {
     result = std::regex_replace(
         result,
-        std::regex(
-            "(NOW\\(\\)|datetime\\('now',\\s*'localtime'\\)|(datetime('now', 'localtime')))",
-            std::regex_constants::icase),
+        std::regex("(NOW\\(\\)|datetime\\('now',\\s*'localtime'\\)|(datetime('"
+                   "now', 'localtime')))",
+                   std::regex_constants::icase),
         "GETDATE()");
   }
   return result;
@@ -538,6 +538,56 @@ std::string DatabaseAbstractionLayer::getGenericTimestamp() {
   std::ostringstream ss;
   ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
   return ss.str();
+}
+
+// 🔥 Batch: N개 쿼리를 1 트랜잭션으로 처리 (30K 포인트 성능 최적화)
+bool DatabaseAbstractionLayer::executeBatch(
+    const std::vector<std::string> &queries) {
+  if (queries.empty())
+    return true;
+
+  try {
+    // 1. 트랜잭션 시작 (BEGIN 1회)
+    if (!db_manager_->executeNonQuery("BEGIN TRANSACTION")) {
+      db_manager_->log(3, "executeBatch: BEGIN TRANSACTION failed");
+      return false;
+    }
+
+    size_t success_count = 0;
+    size_t fail_count = 0;
+
+    // 2. 각 쿼리를 트랜잭션 컨트롤 없이 직접 실행
+    for (const auto &query : queries) {
+      std::string adapted = adaptQuery(query);
+      if (db_manager_->executeNonQuery(adapted)) {
+        success_count++;
+      } else {
+        fail_count++;
+        db_manager_->log(2, "executeBatch: query failed (continuing): " +
+                                query.substr(0, 80));
+      }
+    }
+
+    // 3. COMMIT 1회
+    if (!db_manager_->executeNonQuery("COMMIT")) {
+      db_manager_->log(3, "executeBatch: COMMIT failed, rolling back");
+      db_manager_->executeNonQuery("ROLLBACK");
+      return false;
+    }
+
+    db_manager_->log(0, "executeBatch: " + std::to_string(success_count) + "/" +
+                            std::to_string(queries.size()) +
+                            " queries committed");
+    return fail_count == 0;
+
+  } catch (const std::exception &e) {
+    db_manager_->log(3, "executeBatch exception: " + std::string(e.what()));
+    try {
+      db_manager_->executeNonQuery("ROLLBACK");
+    } catch (...) {
+    }
+    return false;
+  }
 }
 
 bool DatabaseAbstractionLayer::executeUpsert(

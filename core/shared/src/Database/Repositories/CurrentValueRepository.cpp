@@ -418,6 +418,97 @@ bool CurrentValueRepository::incrementErrorCount(int point_id) {
 }
 
 // =============================================================================
+// 🔥 Batch Save: N개를 1 트랜잭션으로 처리 (30K 포인트 성능 최적화)
+// =============================================================================
+
+size_t CurrentValueRepository::saveBatch(
+    const std::vector<CurrentValueEntity> &entities) {
+  if (entities.empty())
+    return 0;
+
+  try {
+    if (!ensureTableExists())
+      return 0;
+
+    DbLib::DatabaseAbstractionLayer db_layer;
+    std::vector<std::string> queries;
+    queries.reserve(entities.size());
+
+    auto now_str = Utils::TimestampToDBString(Utils::GetCurrentTimestamp());
+
+    for (const auto &entity : entities) {
+      // 유효성 간단 체크
+      if (entity.getPointId() <= 0 || entity.getCurrentValue().empty())
+        continue;
+
+      auto params = entityToParams(entity);
+
+      // INSERT OR REPLACE 쿼리 직접 생성 (executeBatch는 트랜잭션 없이 실행)
+      std::string q = "INSERT OR REPLACE INTO current_values ("
+                      "point_id, current_value, raw_value, value_type, "
+                      "quality_code, quality, value_timestamp, "
+                      "read_count, write_count, error_count, updated_at"
+                      ") VALUES ("
+                      "'" +
+                      params["point_id"] +
+                      "', "
+                      "'" +
+                      params["current_value"] +
+                      "', "
+                      "'" +
+                      params["raw_value"] +
+                      "', "
+                      "'" +
+                      params["value_type"] +
+                      "', "
+                      "'" +
+                      params["quality_code"] +
+                      "', "
+                      "'" +
+                      params["quality"] +
+                      "', "
+                      "'" +
+                      params["value_timestamp"] +
+                      "', "
+                      "'" +
+                      params["read_count"] +
+                      "', "
+                      "'" +
+                      params["write_count"] +
+                      "', "
+                      "'" +
+                      params["error_count"] +
+                      "', "
+                      "'" +
+                      now_str +
+                      "'"
+                      ")";
+      queries.push_back(std::move(q));
+    }
+
+    if (queries.empty())
+      return 0;
+
+    bool ok = db_layer.executeBatch(queries);
+    size_t saved = ok ? queries.size() : 0;
+
+    // 캐시 무효화
+    if (ok && isCacheEnabled()) {
+      for (const auto &entity : entities) {
+        clearCacheForId(entity.getPointId());
+      }
+    }
+
+    return saved;
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().Error("saveBatch failed: " +
+                                    std::string(e.what()));
+    return 0;
+  }
+}
+
+// =============================================================================
 // 캐시 관리 (IRepository 상속)
 // =============================================================================
 
