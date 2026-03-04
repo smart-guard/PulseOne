@@ -14,10 +14,17 @@ class TemplateDataPointRepository extends BaseRepository {
      */
     async findByTemplateId(templateId) {
         try {
-            return await this.query()
+            const rows = await this.query()
                 .where('template_device_id', templateId)
                 .orderBy('sort_order', 'ASC')
                 .orderBy('address', 'ASC');
+
+            // JSON 필드 파싱 (metadata, protocol_params)
+            return rows.map(row => ({
+                ...row,
+                metadata: row.metadata ? (typeof row.metadata === 'string' ? (() => { try { return JSON.parse(row.metadata); } catch { return row.metadata; } })() : row.metadata) : null,
+                protocol_params: row.protocol_params ? (typeof row.protocol_params === 'string' ? (() => { try { return JSON.parse(row.protocol_params); } catch { return row.protocol_params; } })() : row.protocol_params) : null
+            }));
         } catch (error) {
             this.logger.error('TemplateDataPointRepository.findByTemplateId 오류:', error);
             throw error;

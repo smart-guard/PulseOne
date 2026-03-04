@@ -212,7 +212,7 @@ private:
   int current_slave_id_;
 
   std::atomic<bool> is_started_{false};
-  std::recursive_mutex driver_mutex_;
+  mutable std::recursive_mutex driver_mutex_;
   LogManager *logger_;
   PulseOne::Enums::ConnectionStatus status_ =
       PulseOne::Enums::ConnectionStatus::DISCONNECTED;

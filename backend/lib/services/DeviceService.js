@@ -356,9 +356,16 @@ class DeviceService extends BaseService {
         return await this.handleRequest(async () => {
             let dataPoints = await this.repository.getDataPointsByDevice(deviceId);
 
-            // 프론트엔드 CurrentValue 객체 구조에 맞춰 변환
+            // JSON 필드 파싱 (protocol_params, metadata, tags)
             dataPoints = dataPoints.map(dp => ({
                 ...dp,
+                protocol_params: dp.protocol_params
+                    ? (typeof dp.protocol_params === 'string' ? (() => { try { return JSON.parse(dp.protocol_params); } catch { return dp.protocol_params; } })() : dp.protocol_params)
+                    : null,
+                metadata: dp.metadata
+                    ? (typeof dp.metadata === 'string' ? (() => { try { return JSON.parse(dp.metadata); } catch { return dp.metadata; } })() : dp.metadata)
+                    : null,
+                // 프론트엔드 CurrentValue 객체 구조에 맞춰 변환
                 current_value: (dp.current_value !== null && dp.current_value !== undefined) ? {
                     value: safeParseValue(dp.current_value),
                     timestamp: dp.last_update,

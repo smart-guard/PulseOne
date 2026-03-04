@@ -307,7 +307,8 @@ class TemplateDeviceService extends BaseService {
                         unit: p.unit || null,
                         scaling_factor: p.scaling_factor || 1,
                         scaling_offset: p.scaling_offset || 0,
-                        metadata: p.metadata ? (typeof p.metadata === 'object' ? JSON.stringify(p.metadata) : p.metadata) : null
+                        metadata: p.metadata ? (typeof p.metadata === 'object' ? JSON.stringify(p.metadata) : p.metadata) : null,
+                        protocol_params: p.protocol_params ? (typeof p.protocol_params === 'object' ? JSON.stringify(p.protocol_params) : p.protocol_params) : null
                     }));
                     await trx('template_data_points').insert(pointsToInsert);
                 }
@@ -375,7 +376,8 @@ class TemplateDeviceService extends BaseService {
                             unit: p.unit || null,
                             scaling_factor: p.scaling_factor || 1,
                             scaling_offset: p.scaling_offset || 0,
-                            metadata: p.metadata ? (typeof p.metadata === 'object' ? JSON.stringify(p.metadata) : p.metadata) : null
+                            metadata: p.metadata ? (typeof p.metadata === 'object' ? JSON.stringify(p.metadata) : p.metadata) : null,
+                            protocol_params: p.protocol_params ? (typeof p.protocol_params === 'object' ? JSON.stringify(p.protocol_params) : p.protocol_params) : null
                         }));
                         await trx('template_data_points').insert(pointsToInsert);
                     }

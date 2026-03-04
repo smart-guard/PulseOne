@@ -2518,3 +2518,48 @@ CREATE INDEX IF NOT EXISTS idx_cl_tenant  ON control_logs(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_cl_status  ON control_logs(final_status);
 CREATE INDEX IF NOT EXISTS idx_cl_time    ON control_logs(requested_at DESC);
 CREATE INDEX IF NOT EXISTS idx_cl_alarm   ON control_logs(linked_alarm_id);
+
+-- ============================================================
+-- 제어 스케줄 / 시퀀스 / 템플릿
+-- 추가일: 2026-03-02 (schema.sql 동기화)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS control_schedules (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id   INTEGER,
+    point_id    INTEGER NOT NULL,
+    device_id   INTEGER NOT NULL,
+    point_name  TEXT,
+    device_name TEXT,
+    value       TEXT NOT NULL,
+    cron_expr   TEXT,
+    once_at     DATETIME,
+    enabled     BOOLEAN DEFAULT 1,
+    last_run    DATETIME,
+    description TEXT,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id)  REFERENCES tenants(id)      ON DELETE SET NULL,
+    FOREIGN KEY (device_id)  REFERENCES devices(id)      ON DELETE CASCADE,
+    FOREIGN KEY (point_id)   REFERENCES data_points(id)  ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS control_sequences (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id   INTEGER,
+    name        TEXT NOT NULL,
+    description TEXT,
+    steps       TEXT NOT NULL,   -- JSON 배열 형태의 단계 정의
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS control_templates (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id   INTEGER,
+    name        TEXT NOT NULL,
+    point_id    INTEGER,
+    value       TEXT NOT NULL,
+    description TEXT,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id)     ON DELETE SET NULL,
+    FOREIGN KEY (point_id)  REFERENCES data_points(id) ON DELETE SET NULL
+);

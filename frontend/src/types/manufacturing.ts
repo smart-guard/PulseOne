@@ -55,6 +55,7 @@ export interface TemplatePoint {
     scaling_offset?: number;
     is_writable?: boolean;
     metadata?: any;
+    protocol_params?: any; // Modbus 비트 설정 등 (bit_index, bit_start, bit_end)
 }
 
 export interface DeviceTemplate {

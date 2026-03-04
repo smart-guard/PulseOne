@@ -130,10 +130,45 @@ bool ModbusDriver::Initialize(const DriverConfig &config) {
   // 🔥 byte timeout도 DriverConfig 기반으로 설정
   uint32_t byte_timeout_ms = timeout_ms / 2; // 기본값: response timeout의 절반
   if (config_.properties.count("byte_timeout_ms")) {
-    byte_timeout_ms = std::stoi(config_.properties.at("byte_timeout_ms"));
+    try {
+      byte_timeout_ms = std::stoi(config_.properties.at("byte_timeout_ms"));
+    } catch (...) {
+    }
   }
   uint32_t byte_timeout_usec = (byte_timeout_ms % 1000) * 1000;
   modbus_set_byte_timeout(modbus_ctx_, 0, byte_timeout_usec);
+
+  // ── parallel_connections 설정 → ConnectionPool 활성화 ──────────────────
+  // 장치 설정에서 "parallel_connections" 읽기 (기본값 1 = 순차)
+  size_t parallel_connections = 1;
+  if (config_.properties.count("parallel_connections")) {
+    try {
+      int v = std::stoi(config_.properties.at("parallel_connections"));
+      if (v > 0)
+        parallel_connections = static_cast<size_t>(v);
+    } catch (...) {
+    }
+  }
+
+  if (parallel_connections > 1) {
+    // 병렬 모드: ConnectionPool 생성 및 활성화
+    if (!connection_pool_) {
+      connection_pool_ = std::make_unique<ModbusConnectionPool>(this);
+    }
+    int conn_timeout_sec = static_cast<int>(config_.timeout_ms / 1000);
+    if (conn_timeout_sec < 1)
+      conn_timeout_sec = 5;
+
+    bool pool_ok = connection_pool_->EnableConnectionPooling(
+        parallel_connections, conn_timeout_sec);
+
+    logger_->Info("🔗 ConnectionPool 활성화: parallel_connections=" +
+                  std::to_string(parallel_connections) +
+                  (pool_ok ? " ✅" : " ⚠️ 연결 실패 (폴링 시 재시도)"));
+  } else {
+    // 순차 모드: 풀 비활성화 (기본)
+    logger_->Info("🔗 ConnectionPool: 순차 모드 (parallel_connections=1)");
+  }
 
   logger_->Info("✅ ModbusDriver initialization completed");
   return true;
@@ -178,8 +213,12 @@ bool ModbusDriver::Connect() {
       // 🔥 DriverConfig 기반 백오프 계산
       uint32_t retry_delay = 100 * (attempt + 1); // 기본 백오프
       if (config_.properties.count("retry_delay_ms")) {
-        retry_delay =
-            std::stoi(config_.properties.at("retry_delay_ms")) * (attempt + 1);
+        try {
+          retry_delay = static_cast<uint32_t>(
+              std::stoi(config_.properties.at("retry_delay_ms")) *
+              static_cast<int>(attempt + 1));
+        } catch (...) {
+        } // 잘못된 값이면 기본 백오프 유지
       }
 
       logger_->Warn("Connection attempt " + std::to_string(attempt + 1) +
@@ -338,7 +377,13 @@ bool ModbusDriver::ReadValuesImpl(
     // Chunking
     size_t current_idx = 0;
     while (current_idx < group.points.size()) {
-      uint16_t start_addr = group.points[current_idx]->address;
+      // Modbus 주소는 0-65535 범위; uint32_t → uint16_t 절단 방지
+      if (group.points[current_idx]->address > 0xFFFF) {
+        current_idx++;
+        continue; // 범위 초과 주소 skip
+      }
+      uint16_t start_addr =
+          static_cast<uint16_t>(group.points[current_idx]->address);
       uint16_t current_addr = start_addr;
       uint16_t max_count = 120; // Safe Modbus limit
 
@@ -350,7 +395,12 @@ bool ModbusDriver::ReadValuesImpl(
 
       while (next_idx < group.points.size()) {
         const auto *p = group.points[next_idx];
-        uint16_t p_addr = p->address;
+        // Modbus addresses are 0-65535; clamp to avoid silent truncation
+        if (p->address > 0xFFFF) {
+          next_idx++;
+          continue; // skip out-of-range addresses
+        }
+        uint16_t p_addr = static_cast<uint16_t>(p->address);
 
         // Determine register consumption
         uint16_t reg_count = 1;
@@ -454,10 +504,15 @@ bool ModbusDriver::ReadValuesImpl(
               group.func_type == "INPUT_REGISTER") {
             if (offset < reg_buffers.size()) {
               tv.value = ExtractValueFromBuffer(reg_buffers, offset, *p);
+            } else {
+              // Bug33 Fix: 버퍼 범위 초과 → GOOD 대신 BAD quality로 변경
+              tv.quality = Structs::DataQuality::BAD;
             }
           } else { // Coils
             if (offset < coil_buffers.size()) {
               tv.value = (coil_buffers[offset] != 0);
+            } else {
+              tv.quality = Structs::DataQuality::BAD;
             }
           }
 
@@ -512,99 +567,150 @@ bool ModbusDriver::WriteValueImpl(const Structs::DataPoint &point,
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
-  // 🔥 포인트별 Slave ID 가져오기
-  int slave_id = current_slave_id_; // DriverConfig에서 설정된 기본값
+  // 포인트별 Slave ID
+  int slave_id = current_slave_id_;
   if (point.protocol_params.count("slave_id")) {
-    slave_id = std::stoi(point.protocol_params.at("slave_id"));
+    try {
+      slave_id = std::stoi(point.protocol_params.at("slave_id"));
+    } catch (...) {
+    }
   }
   SetSlaveId(slave_id);
 
-  bool success = false;
-  uint16_t modbus_value;
-
-  // 데이터 변환
-  if (!ConvertToModbusValue(value, point, modbus_value)) {
-    SetError(Structs::ErrorCode::DATA_CONVERSION_ERROR,
-             "Failed to convert value to Modbus format");
-    return false;
-  }
-
-  // 🔥 포인트별 function_code 확인
-  // protocol_params["function_code"]는 read FC 번호를 저장 (1=Coil, 3=HR)
-  std::string function_type = point.data_type; // 기본값
+  // ── function_type 결정 ──────────────────────────────────────────────────
+  std::string function_type = point.data_type;
   if (point.protocol_params.count("function_code")) {
-    int fc = std::stoi(point.protocol_params.at("function_code"));
-    switch (fc) {
-    case 1: // FC01 Read Coils → Write Coil
-    case 5: // FC05 Write Single Coil (직접 지정)
-      function_type = "COIL";
-      break;
-    case 2: // FC02 Read Discrete Input → 쓰기 불가지만 COIL로 매핑
-      function_type = "COIL";
-      break;
-    case 3:  // FC03 Read Holding Register → Write Single Register (FC06)
-    case 4:  // FC04 Read Input Register → Write Single Register (FC06)
-    case 6:  // FC06 Write Single Register (직접 지정)
-    case 16: // FC16 Write Multiple Registers
-      function_type = "HOLDING_REGISTER";
-      break;
-    default:
-      function_type = point.data_type;
-      break;
+    try {
+      int fc = std::stoi(point.protocol_params.at("function_code"));
+      switch (fc) {
+      case 1:
+      case 2:
+      case 5:
+        function_type = "COIL";
+        break;
+      case 3:
+      case 4:
+      case 6:
+      case 16:
+        function_type = "HOLDING_REGISTER";
+        break;
+      default:
+        break;
+      }
+    } catch (...) {
     }
   } else {
-    // Fallback: address_string prefix 파싱
     if (!point.address_string.empty() && point.address_string.size() > 3) {
       std::string prefix = point.address_string.substr(0, 3);
       std::transform(prefix.begin(), prefix.end(), prefix.begin(), ::toupper);
-      if (prefix == "CO:" || prefix == "DI:") {
+      if (prefix == "CO:" || prefix == "DI:")
         function_type = "COIL";
-      } else if (prefix == "HR:" || prefix == "IR:") {
+      else if (prefix == "HR:" || prefix == "IR:")
         function_type = "HOLDING_REGISTER";
-      }
     }
-    // Final fallback: BOOL → COIL, 나머지 → HOLDING_REGISTER
-    if (function_type == "bool" || function_type == "BOOL") {
+    if (function_type == "bool" || function_type == "BOOL")
       function_type = "COIL";
-    } else if (function_type != "COIL" && function_type != "HOLDING_REGISTER") {
+    else if (function_type != "COIL" && function_type != "HOLDING_REGISTER")
       function_type = "HOLDING_REGISTER";
-    }
   }
 
-  // 🔥 비트 인덱스 특정 변경 지원 (MaskWriteRegister 활용)
-  if (point.protocol_params.count("bit_index")) {
+  bool success = false;
+
+  // ── bit_index: MaskWriteRegister ───────────────────────────────────────
+  if (point.protocol_params.count("bit_index") &&
+      function_type == "HOLDING_REGISTER") {
     try {
       int bit_idx = std::stoi(point.protocol_params.at("bit_index"));
       if (bit_idx >= 0 && bit_idx < 16) {
-        // bool로 변환되거나 0값이 아닌 경우 true로 간주
-        bool is_on = (modbus_value != 0);
+        // 값을 bool로 변환 (DataVariantToDouble: int32_t/float/double 등 모두
+        // 처리)
+        bool is_on = (PulseOne::BasicTypes::DataVariantToDouble(value) != 0.0);
 
-        uint16_t and_mask = ~(1 << bit_idx);
-        uint16_t or_mask = is_on ? (1 << bit_idx) : 0;
-
+        uint16_t and_mask = static_cast<uint16_t>(~(1 << bit_idx));
+        uint16_t or_mask = is_on ? static_cast<uint16_t>(1 << bit_idx) : 0;
         success = MaskWriteRegister(slave_id, point.address, and_mask, or_mask);
 
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-            end_time - start_time);
-
-        UpdateStats(success, duration.count(), "write");
-        RecordResponseTime(slave_id, duration.count());
-        RecordSlaveRequest(slave_id, success, duration.count());
-
+        auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::high_resolution_clock::now() - start_time);
+        UpdateStats(success, dur.count(), "write");
+        RecordResponseTime(slave_id, dur.count());
+        RecordSlaveRequest(slave_id, success, dur.count());
         return success;
       }
     } catch (...) {
-      // 파싱 실패시 일반 로직으로 진행
     }
   }
 
-  // 데이터 타입에 따라 쓰기
+  // ── HOLDING_REGISTER 쓰기 ─────────────────────────────────────────────
   if (function_type == "HOLDING_REGISTER") {
-    success = WriteHoldingRegister(slave_id, point.address, modbus_value);
-    driver_statistics_.IncrementProtocolCounter("register_writes");
-    RecordRegisterAccess(point.address, false, true);
+
+    // FLOAT32 / INT32 / UINT32 → 2 레지스터 (FC16)
+    if (point.data_type == "FLOAT32" || point.data_type == "INT32" ||
+        point.data_type == "UINT32") {
+
+      // 32비트 값 조립 — 역스케일링 + DataVariantToDouble로 안전하게 추출
+      // 예: user값=23.5, scaling_factor=0.1 → register값=235.0
+      double user_val = PulseOne::BasicTypes::DataVariantToDouble(value);
+      double register_val = user_val;
+      if (point.scaling_factor != 0.0) {
+        register_val = (user_val - point.scaling_offset) / point.scaling_factor;
+      }
+
+      uint32_t raw32 = 0;
+      if (point.data_type == "FLOAT32") {
+        float f = static_cast<float>(register_val);
+        std::memcpy(&raw32, &f, 4);
+      } else if (point.data_type == "INT32") {
+        raw32 = static_cast<uint32_t>(static_cast<int32_t>(register_val));
+      } else { // UINT32
+        raw32 = static_cast<uint32_t>(register_val);
+      }
+
+      // byte_order 적용 (ConvertRegistersToValue와 동일 방식)
+      std::string byte_order = "big_endian";
+      if (config_.properties.count("byte_order"))
+        byte_order = config_.properties.at("byte_order");
+      if (point.protocol_params.count("byte_order"))
+        byte_order = point.protocol_params.at("byte_order");
+      bool swap_words =
+          (byte_order == "swapped" || byte_order == "big_endian_swapped" ||
+           byte_order == "little_endian");
+
+      std::vector<uint16_t> regs(2);
+      if (swap_words) {
+        regs[0] = static_cast<uint16_t>(raw32 & 0xFFFF); // low word first
+        regs[1] = static_cast<uint16_t>((raw32 >> 16) & 0xFFFF);
+      } else {
+        regs[0] =
+            static_cast<uint16_t>((raw32 >> 16) & 0xFFFF); // high word first
+        regs[1] = static_cast<uint16_t>(raw32 & 0xFFFF);
+      }
+
+      success = WriteHoldingRegisters(slave_id, point.address, regs);
+      driver_statistics_.IncrementProtocolCounter("register_writes", 2);
+      RecordRegisterAccess(point.address, false, true);
+
+    } else {
+      // 16비트 이하 타입 → 단일 레지스터 (FC06)
+      uint16_t modbus_value = 0;
+      if (!ConvertToModbusValue(value, point, modbus_value)) {
+        SetError(Structs::ErrorCode::DATA_CONVERSION_ERROR,
+                 "Failed to convert value to Modbus format");
+        return false;
+      }
+      success = WriteHoldingRegister(slave_id, point.address, modbus_value);
+      driver_statistics_.IncrementProtocolCounter("register_writes");
+      RecordRegisterAccess(point.address, false, true);
+    }
+
   } else if (function_type == "COIL") {
+    // COIL 쓰기
+    uint16_t modbus_value = 0;
+    if (!ConvertToModbusValue(value, point, modbus_value)) {
+      SetError(Structs::ErrorCode::DATA_CONVERSION_ERROR,
+               "Failed to convert value to Modbus format");
+      return false;
+    }
     success = WriteCoil(slave_id, point.address, modbus_value != 0);
     driver_statistics_.IncrementProtocolCounter("coil_writes");
   } else {
@@ -648,47 +754,41 @@ std::string ModbusDriver::GetProtocolType() const {
 }
 
 Enums::DriverStatus ModbusDriver::GetStatus() const {
+  // driver_mutex_ 보호 하에 status_ 읽기
+  std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
+
   // 1. 먼저 모듈러스 컨텍스트 확인
   if (!modbus_ctx_) {
     return Enums::DriverStatus::UNINITIALIZED;
   }
 
   // 2. ConnectionStatus를 DriverStatus로 변환 (ERROR 매크로 회피)
-  auto connection_status = status_; // 직접 접근 (atomic 아님)
+  auto connection_status = status_; // driver_mutex_ 보호 하에 안전
 
   // 🔥 숫자 값으로 비교해서 Windows ERROR 매크로 회피
   auto status_value = static_cast<uint8_t>(connection_status);
 
   switch (status_value) {
-  case 0: // DISCONNECTED = 0
+  case 0:
     return Enums::DriverStatus::STOPPED;
-
-  case 1: // CONNECTING = 1
+  case 1:
     return Enums::DriverStatus::STARTING;
-
-  case 2: // CONNECTED = 2
-    // 연결되어 있으면 실제 연결 상태도 확인
+  case 2:
     if (IsConnected()) {
       return Enums::DriverStatus::RUNNING;
     } else {
-      return Enums::DriverStatus::DRIVER_ERROR; // 연결 상태 불일치
+      return Enums::DriverStatus::DRIVER_ERROR;
     }
-
-  case 3: // RECONNECTING = 3
+  case 3:
     return Enums::DriverStatus::STARTING;
-
-  case 4: // DISCONNECTING = 4
+  case 4:
     return Enums::DriverStatus::STOPPING;
-
-  case 5: // ERROR = 5 (숫자로 비교해서 매크로 충돌 회피)
+  case 5:
     return Enums::DriverStatus::DRIVER_ERROR;
-
-  case 6: // TIMEOUT = 6
+  case 6:
     return Enums::DriverStatus::DRIVER_ERROR;
-
-  case 7: // MAINTENANCE = 7
+  case 7:
     return Enums::DriverStatus::MAINTENANCE;
-
   default:
     return Enums::DriverStatus::UNINITIALIZED;
   }
@@ -739,15 +839,9 @@ bool ModbusDriver::ReadHoldingRegisters(int slave_id, uint16_t start_addr,
     }
 
     // Modbus 예외 코드 기록
-    if (errno > 0 && errno < 255) {
-      RecordExceptionCode(static_cast<uint8_t>(errno));
-
-      if (errno >= 1 && errno <= 8) {
-        SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Modbus exception code " +
-                                                         std::to_string(errno) +
-                                                         ": " + error_msg);
-      }
-    }
+    // libmodbus: Modbus exception는 MODBUS_ENOBASE(112)+exception_code로 저장됨
+    // errno 1~8(EPERM~E2BIG)은 OS 에러이며 Modbus 예외가 아님 - 잘못된 분류
+    // 제거됨
 
     return false;
   }
@@ -786,15 +880,8 @@ bool ModbusDriver::ReadInputRegisters(int slave_id, uint16_t start_addr,
     } else {
       SetError(Structs::ErrorCode::READ_FAILED, error_msg);
     }
-
-    if (errno > 0 && errno < 255) {
-      RecordExceptionCode(static_cast<uint8_t>(errno));
-      if (errno >= 1 && errno <= 8) {
-        SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Modbus exception code " +
-                                                         std::to_string(errno) +
-                                                         ": " + error_msg);
-      }
-    }
+    // libmodbus: Modbus exception은 errno=MODBUS_ENOBASE+exc_code로 저장. errno
+    // 1~8은 OS 에러이므로 제거됨
 
     return false;
   }
@@ -890,15 +977,8 @@ bool ModbusDriver::WriteHoldingRegister(int slave_id, uint16_t address,
     } else {
       SetError(Structs::ErrorCode::WRITE_FAILED, error_msg);
     }
-
-    if (errno > 0 && errno < 255) {
-      RecordExceptionCode(static_cast<uint8_t>(errno));
-      if (errno >= 1 && errno <= 8) {
-        SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Modbus exception code " +
-                                                         std::to_string(errno) +
-                                                         ": " + error_msg);
-      }
-    }
+    // libmodbus: Modbus exception은 errno=MODBUS_ENOBASE+exc_code로 저장. errno
+    // 1~8은 OS 에러이므로 제거됨
 
     return false;
   }
@@ -935,20 +1015,13 @@ bool ModbusDriver::WriteHoldingRegisters(int slave_id, uint16_t start_addr,
     } else {
       SetError(Structs::ErrorCode::WRITE_FAILED, error_msg);
     }
-
-    if (errno > 0 && errno < 255) {
-      RecordExceptionCode(static_cast<uint8_t>(errno));
-      if (errno >= 1 && errno <= 8) {
-        SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Modbus exception code " +
-                                                         std::to_string(errno) +
-                                                         ": " + error_msg);
-      }
-    }
+    // libmodbus: Modbus exception은 errno=MODBUS_ENOBASE+exc_code로 저장. errno
+    // 1~8은 OS 에러이므로 제거됨
 
     return false;
   }
 
-  driver_statistics_.IncrementProtocolCounter("register_writes", values.size());
+  // register_writes 카운터는 호출자(WriteValueImpl)에서 관리함 (중복 증가 방지)
   return true;
 }
 
@@ -967,15 +1040,8 @@ bool ModbusDriver::WriteCoil(int slave_id, uint16_t address, bool value) {
     auto error_msg =
         std::string("Write coil failed: ") + modbus_strerror(errno);
     SetError(Structs::ErrorCode::PROTOCOL_ERROR, error_msg);
-
-    if (errno > 0 && errno < 255) {
-      RecordExceptionCode(static_cast<uint8_t>(errno));
-      if (errno >= 1 && errno <= 8) {
-        SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Modbus exception code " +
-                                                         std::to_string(errno) +
-                                                         ": " + error_msg);
-      }
-    }
+    // libmodbus: Modbus exception은 errno=MODBUS_ENOBASE+exc_code로 저장. errno
+    // 1~8은 OS 에러이므로 제거됨
 
     return false;
   }
@@ -1001,15 +1067,8 @@ bool ModbusDriver::WriteCoils(int slave_id, uint16_t start_addr,
     auto error_msg =
         std::string("Write coils failed: ") + modbus_strerror(errno);
     SetError(Structs::ErrorCode::PROTOCOL_ERROR, error_msg);
-
-    if (errno > 0 && errno < 255) {
-      RecordExceptionCode(static_cast<uint8_t>(errno));
-      if (errno >= 1 && errno <= 8) {
-        SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Modbus exception code " +
-                                                         std::to_string(errno) +
-                                                         ": " + error_msg);
-      }
-    }
+    // libmodbus: Modbus exception은 errno=MODBUS_ENOBASE+exc_code로 저장. errno
+    // 1~8은 OS 에러이므로 제거됨
 
     return false;
   }
@@ -1063,7 +1122,13 @@ bool ModbusDriver::SetupModbusConnection() {
     // TCP 방식 - IP:PORT 형태
     auto pos = config_.endpoint.find(':');
     std::string host = config_.endpoint.substr(0, pos);
-    int port = std::stoi(config_.endpoint.substr(pos + 1));
+    int port = 502; // default
+    try {
+      port = std::stoi(config_.endpoint.substr(pos + 1));
+    } catch (...) {
+      logger_->Warn("[SetupModbusConnection] Invalid port in endpoint: " +
+                    config_.endpoint + " — using default 502");
+    }
 
     // Hostname Resolution for Docker (libmodbus often requires IP)
     struct addrinfo hints, *res;
@@ -1107,16 +1172,27 @@ bool ModbusDriver::SetupModbusConnection() {
     int stop_bits = 1;
 
     if (config_.properties.count("baud_rate")) {
-      baud_rate = std::stoi(config_.properties.at("baud_rate"));
+      try {
+        baud_rate = std::stoi(config_.properties.at("baud_rate"));
+      } catch (...) {
+      }
     }
     if (config_.properties.count("parity")) {
-      parity = config_.properties.at("parity")[0];
+      const auto &par_str = config_.properties.at("parity");
+      if (!par_str.empty())
+        parity = par_str[0]; // empty이면 기본값 'N' 유지
     }
     if (config_.properties.count("data_bits")) {
-      data_bits = std::stoi(config_.properties.at("data_bits"));
+      try {
+        data_bits = std::stoi(config_.properties.at("data_bits"));
+      } catch (...) {
+      }
     }
     if (config_.properties.count("stop_bits")) {
-      stop_bits = std::stoi(config_.properties.at("stop_bits"));
+      try {
+        stop_bits = std::stoi(config_.properties.at("stop_bits"));
+      } catch (...) {
+      }
     }
 
     modbus_ctx_ = modbus_new_rtu(config_.endpoint.c_str(), baud_rate, parity,
@@ -1192,11 +1268,11 @@ void ModbusDriver::SetError(Structs::ErrorCode code,
   last_error_.code = code;
   last_error_.message = message;
 
-  // 🔥 통신 중대한 에러 발생 시 연결 상태를 false로 변경하여 재연결 유도
+  // 🔥 연결 단절/실패에만 재연결 유도
+  // READ_FAILED/WRITE_FAILED는 일시적 오류일 수 있으므로 포함하지 않음
+  // (Modbus 예외 코드 응답도 READ_FAILED로 분류되기 때문)
   if (code == Structs::ErrorCode::CONNECTION_LOST ||
-      code == Structs::ErrorCode::CONNECTION_FAILED ||
-      code == Structs::ErrorCode::READ_FAILED ||
-      code == Structs::ErrorCode::WRITE_FAILED) {
+      code == Structs::ErrorCode::CONNECTION_FAILED) {
 
     if (is_connected_.load()) {
       is_connected_.store(false);
@@ -1228,8 +1304,8 @@ ModbusDriver::ConvertModbusValue(const Structs::DataPoint &point,
              point.data_type == "bool") {
     result = (raw_value != 0);
   } else {
-    // 기본값으로 스케일링된 unsigned int 사용
-    result = static_cast<unsigned int>(scaled_value);
+    // 기본: double로 반환 (DataVariant에 unsigned int 타입 없음)
+    result = scaled_value;
   }
 
   return result;
@@ -1238,51 +1314,36 @@ ModbusDriver::ConvertModbusValue(const Structs::DataPoint &point,
 bool ModbusDriver::ConvertToModbusValue(const Structs::DataValue &value,
                                         const Structs::DataPoint &point,
                                         uint16_t &modbus_value) const {
-  // 🔥 역스케일링 적용
+  // 🔥 역스케일링 적용 (scaling_factor=0 방지)
   auto apply_reverse_scaling = [&](double val) -> uint16_t {
-    double reverse_scaled = (val - point.scaling_offset) / point.scaling_factor;
+    double reverse_scaled = val;
+    if (point.scaling_factor != 0.0) {
+      reverse_scaled = (val - point.scaling_offset) / point.scaling_factor;
+    }
     return static_cast<uint16_t>(
         std::max(0.0, std::min(65535.0, reverse_scaled)));
   };
 
   // data_type 문자열을 기반으로 변환
-  if (point.data_type == "INT16") {
-    if (std::holds_alternative<int16_t>(value)) {
-      modbus_value = apply_reverse_scaling(std::get<int16_t>(value));
-    } else if (std::holds_alternative<int>(value)) {
-      modbus_value = apply_reverse_scaling(std::get<int>(value));
-    } else {
-      return false;
-    }
-  } else if (point.data_type == "UINT16") {
-    if (std::holds_alternative<unsigned int>(value)) {
-      modbus_value = apply_reverse_scaling(std::get<unsigned int>(value));
-    } else if (std::holds_alternative<int>(value)) {
-      modbus_value = apply_reverse_scaling(std::get<int>(value));
-    } else {
-      return false;
-    }
+  // DataVariant = std::variant<bool, int16_t, uint16_t, int32_t, uint32_t,
+  //   int64_t, uint64_t, float, double, std::string>
+  // DataVariantToDouble로 safe 변환 후 역스케일링 적용
+  if (point.data_type == "INT16" || point.data_type == "UINT16") {
+    modbus_value =
+        apply_reverse_scaling(PulseOne::BasicTypes::DataVariantToDouble(value));
   } else if (point.data_type == "FLOAT") {
-    float float_val = 0.0f;
-    if (std::holds_alternative<float>(value)) {
+    // FLOAT(단정밀도)는 float로 꺼내고, 없으면 double 경유
+    float float_val;
+    if (std::holds_alternative<float>(value))
       float_val = std::get<float>(value);
-    } else if (std::holds_alternative<double>(value)) {
-      float_val = static_cast<float>(std::get<double>(value));
-    } else {
-      return false;
-    }
+    else
+      float_val =
+          static_cast<float>(PulseOne::BasicTypes::DataVariantToDouble(value));
     modbus_value = apply_reverse_scaling(float_val);
   } else if (point.data_type == "BOOL" || point.data_type == "COIL" ||
              point.data_type == "bool") {
-    if (std::holds_alternative<bool>(value)) {
-      modbus_value = std::get<bool>(value) ? 1 : 0;
-    } else if (std::holds_alternative<int>(value)) {
-      modbus_value = (std::get<int>(value) != 0) ? 1 : 0;
-    } else if (std::holds_alternative<double>(value)) {
-      modbus_value = (std::get<double>(value) != 0.0) ? 1 : 0;
-    } else {
-      return false;
-    }
+    modbus_value =
+        (PulseOne::BasicTypes::DataVariantToDouble(value) != 0.0) ? 1 : 0;
   } else {
     return false;
   }
@@ -1689,35 +1750,51 @@ ModbusDriver::ExtractValueFromBuffer(const std::vector<uint16_t> &buffer,
     if (point.data_type == "FLOAT32") {
       float f;
       std::memcpy(&f, &combined, sizeof(f));
-      return static_cast<double>(f);
+      double raw = static_cast<double>(f);
+      return raw * point.scaling_factor + point.scaling_offset;
     } else if (point.data_type == "INT32") {
-      return static_cast<double>(static_cast<int32_t>(combined));
+      double raw = static_cast<double>(static_cast<int32_t>(combined));
+      return raw * point.scaling_factor + point.scaling_offset;
     } else { // UINT32
-      return static_cast<double>(combined);
+      double raw = static_cast<double>(combined);
+      return raw * point.scaling_factor + point.scaling_offset;
     }
   }
   uint16_t reg = buffer[offset];
 
-  // 🔥 Bit Index 추출 (특정 비트맵 파싱용)
+  // 🔥 Bit Range 추출: bit_start~bit_end 범위를 하나의 정수값으로 추출
+  // 예: bit_start=0, bit_end=3 → 하위 4비트 → 0~15 값
+  if (point.protocol_params.count("bit_start") &&
+      point.protocol_params.count("bit_end")) {
+    try {
+      int bs = std::stoi(point.protocol_params.at("bit_start"));
+      int be = std::stoi(point.protocol_params.at("bit_end"));
+      if (bs >= 0 && be < 16 && bs <= be) {
+        // 마스크 생성: bs~be 비트만 추출
+        uint16_t mask = static_cast<uint16_t>(((1 << (be - bs + 1)) - 1) << bs);
+        uint16_t extracted = (reg & mask) >> bs;
+        double val = static_cast<double>(extracted);
+        return val * point.scaling_factor + point.scaling_offset;
+      }
+    } catch (...) {
+    }
+  }
+
+  // 🔥 Bit Index 추출: 단일 비트 → bool / 0 or 1
   if (point.protocol_params.count("bit_index")) {
     try {
       int bit_idx = std::stoi(point.protocol_params.at("bit_index"));
       if (bit_idx >= 0 && bit_idx < 16) {
         bool bit_val = (reg & (1 << bit_idx)) != 0;
-
-        // 데이터 타입이 bool로 명시된 경우 bool로 반환
         if (point.data_type == "BOOL" || point.data_type == "COIL" ||
             point.data_type == "bool") {
           return bit_val;
         } else {
-          // UINT16 등 수치형 타입 호환성을 위해 0.0 또는 1.0으로 반환 (스케일링
-          // 적용 가능)
           double numeric_val = bit_val ? 1.0 : 0.0;
           return numeric_val * point.scaling_factor + point.scaling_offset;
         }
       }
     } catch (...) {
-      // 오류 발생 시 일반 변환 로직으로 Fallback
     }
   }
 

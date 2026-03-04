@@ -68,7 +68,12 @@ fi
 # Platform dispatch
 # =============================================================================
 run_windows() {
-    echo "🪟 Windows: running deploy-windows.sh inside pulseone-windows-builder..."
+    echo "🪟 Windows: running deploy-windows.sh inside pulseone-win-builder..."
+    # 이미지 없으면 자동 빌드 (최초 1회)
+    if ! docker image inspect pulseone-win-builder > /dev/null 2>&1; then
+        echo "   Building pulseone-win-builder image (최초 1회)..."
+        docker build -t pulseone-win-builder -f "$PROJECT_ROOT/Dockerfile.windows-builder" "$PROJECT_ROOT"
+    fi
     docker run --rm \
         -v "$PROJECT_ROOT:/workspace" \
         -w /workspace \
@@ -76,7 +81,7 @@ run_windows() {
         -e SKIP_FRONTEND=true \
         -e SKIP_BUILD="$SKIP_BUILD" \
         -e HOST_TIMESTAMP="$HOST_TIMESTAMP" \
-        pulseone-windows-builder bash /workspace/deploy-windows.sh
+        pulseone-win-builder bash /workspace/deploy-windows.sh
 }
 
 run_linux() {

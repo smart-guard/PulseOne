@@ -410,35 +410,55 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               </div>
             )}
 
-            {/* Modbus 전용: Bit Index (비트맵 레지스터) */}
-            {(protocolType === 'MODBUS_TCP' || protocolType === 'MODBUS_RTU' || protocolType === 'MODBUS') && (
-              <div className="form-field">
-                <label>{t('devices:dpForm.bitIndex')}</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="15"
-                  value={
-                    typeof formData.protocol_params === 'object'
-                      ? (formData.protocol_params as any)?.bit_index ?? ''
-                      : ''
-                  }
-                  onChange={e => {
-                    const params = typeof formData.protocol_params === 'object'
-                      ? { ...(formData.protocol_params as any) }
-                      : {};
-                    if (e.target.value === '') {
+            {/* Modbus 전용: 비트 설정 (단일: "3" → bit_index, 범위: "0~3" → bit_start/bit_end) */}
+            {(protocolType === 'MODBUS_TCP' || protocolType === 'MODBUS_RTU' || protocolType === 'MODBUS') && (() => {
+              const BIT_UNSUPPORTED = ['string', 'datetime', 'unknown', 'json'];
+              const isString = BIT_UNSUPPORTED.includes(formData.data_type?.toLowerCase?.() ?? '');
+              return (
+                <div className="form-field" style={isString ? { opacity: 0.4, pointerEvents: 'none' } : undefined}>
+                  <label>
+                    비트 설정
+                    <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 400 }}>&nbsp;(단일: 3 / 범위: 0~3)</span>
+                    {isString && <span style={{ marginLeft: 8, fontSize: '10px', color: '#ef4444', fontWeight: 600 }}>String 타입에서 비활성</span>}
+                  </label>
+                  <input
+                    type="text"
+                    disabled={isString}
+                    value={(() => {
+                      const p = typeof formData.protocol_params === 'object' ? formData.protocol_params as any : {};
+                      if (p?.bit_start !== undefined) return `${p.bit_start}~${p.bit_end ?? ''}`;
+                      return p?.bit_index ?? '';
+                    })()}
+                    onChange={e => {
+                      const params = typeof formData.protocol_params === 'object'
+                        ? { ...(formData.protocol_params as any) }
+                        : {};
                       delete params.bit_index;
-                    } else {
-                      params.bit_index = e.target.value;
-                    }
-                    setFormData({ ...formData, protocol_params: params });
-                  }}
-                  placeholder={t('devices:dpForm.bitIndexPlaceholder')}
-                />
-                <span className="hint">{t('devices:dpForm.bitIndexHint')}</span>
-              </div>
-            )}
+                      delete params.bit_start;
+                      delete params.bit_end;
+                      const val = e.target.value.trim();
+                      if (val !== '') {
+                        const rangeMatch = val.match(/^(\d+)\s*~\s*(\d+)$/);
+                        if (rangeMatch) {
+                          params.bit_start = rangeMatch[1];
+                          params.bit_end = rangeMatch[2];
+                        } else if (/^\d+$/.test(val)) {
+                          params.bit_index = val;
+                        }
+                      }
+                      setFormData({ ...formData, protocol_params: params });
+                    }}
+                    placeholder={isString ? 'String 타입은 비트 설정 불가' : '비워두면 전체 레지스터 값 사용'}
+                  />
+                  {!isString && (
+                    <span className="hint">
+                      단일 비트: <strong>3</strong> (bit3만 추출, 0/1) &nbsp;|&nbsp;
+                      비트 범위: <strong>0~3</strong> (하위 4bit → 0~15값)
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             <div className="form-field">
               <label>{t('devices:dataPoint.dataType')}</label>
@@ -594,28 +614,39 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
 
         {activeFormTab === 'logging' && (
           <div className="form-stack">
+            {/* 타입별 로깅 제한 안내 */}
+            {['STRING', 'DATETIME', 'UNKNOWN', 'JSON'].includes((formData.data_type || '').toUpperCase()) && (
+              <div style={{ padding: '8px 12px', background: '#fef3c7', borderRadius: 6, fontSize: 12, color: '#92400e', marginBottom: 4 }}>
+                ⚠️ <strong>{formData.data_type}</strong> 타입은 데이터 이력 로깅을 지원하지 않습니다. 숫자/불리언 타입을 사용하세요.
+              </div>
+            )}
             <div className="form-field">
               <label className="checkbox-wrap">
                 <input
                   type="checkbox"
                   checked={formData.is_log_enabled !== false}
+                  disabled={['STRING', 'DATETIME', 'UNKNOWN', 'JSON'].includes((formData.data_type || '').toUpperCase())}
                   onChange={e => setFormData({ ...formData, is_log_enabled: e.target.checked })}
                 />
                 {t('devices:dpForm.enableLogging')}
               </label>
             </div>
 
-            {formData.is_log_enabled && (
+            {formData.is_log_enabled && !['STRING', 'DATETIME', 'UNKNOWN', 'JSON'].includes((formData.data_type || '').toUpperCase()) && (
               <div className="form-grid-2">
                 <div className="form-field">
-                  <label>{t('devices:dpForm.loggingInterval')}</label>
+                  <label>{t('devices:dpForm.loggingInterval')} (ms)</label>
                   <input
                     type="number"
                     value={formData.log_interval_ms ?? 0}
-                    onChange={e => setFormData({ ...formData, log_interval_ms: parseInt(e.target.value) })}
+                    onChange={e => setFormData({ ...formData, log_interval_ms: parseInt(e.target.value) || 0 })}
                     min="0"
                   />
-                  <span className="hint">{t('devices:dpForm.loggingIntervalHint')}</span>
+                  <span className="hint">
+                    {(formData.log_interval_ms ?? 0) === 0
+                      ? '✅ 0 = 값이 변경될 때마다 저장 (COV)'
+                      : `⏱ ${formData.log_interval_ms}ms 주기로 저장`}
+                  </span>
                 </div>
                 <div className="form-field">
                   <label>{t('devices:dpForm.loggingDeadband')}</label>
@@ -623,75 +654,113 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                     type="number"
                     step="0.01"
                     value={formData.log_deadband ?? 0}
-                    onChange={e => setFormData({ ...formData, log_deadband: parseFloat(e.target.value) })}
+                    onChange={e => setFormData({ ...formData, log_deadband: parseFloat(e.target.value) || 0 })}
+                    min="0"
                   />
-                  <span className="hint">{t('devices:dpForm.loggingDeadbandHint')}</span>
+                  <span className="hint">
+                    {(formData.log_deadband ?? 0) === 0
+                      ? '0 = 모든 변화를 저장'
+                      : `이전 값과 ${formData.log_deadband} 이상 차이날 때만 저장`}
+                  </span>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {activeFormTab === 'alarm' && (
-          <div className="form-stack">
-            <div className="form-field">
-              <label className="checkbox-wrap">
-                <input
-                  type="checkbox"
-                  checked={formData.is_alarm_enabled === true}
-                  onChange={e => setFormData({ ...formData, is_alarm_enabled: e.target.checked })}
-                />
-                {t('devices:dpForm.enableAlarm')}
-              </label>
+        {activeFormTab === 'alarm' && (() => {
+          const disabledTypes = ['STRING', 'DATETIME', 'UNKNOWN', 'JSON', 'BOOL'];
+          const isDisabledType = disabledTypes.includes((formData.data_type || '').toUpperCase());
+          const highVal = formData.high_alarm_limit;
+          const lowVal = formData.low_alarm_limit;
+          const crossError = highVal != null && lowVal != null &&
+            Number(highVal) <= Number(lowVal);
+          return (
+            <div className="form-stack">
+              {isDisabledType && (
+                <div style={{ padding: '8px 12px', background: '#fef3c7', borderRadius: 6, fontSize: 12, color: '#92400e', marginBottom: 4 }}>
+                  ⚠️ <strong>{formData.data_type}</strong> 타입은 상/하한 알람을 지원하지 않습니다.
+                  {(formData.data_type || '').toUpperCase() === 'BOOL'
+                    ? ' BOOL 타입 알람은 알람 규칙(Alarm Rules) 메뉴에서 디지털 조건으로 설정하세요.'
+                    : ' 숫자 타입(INT16, FLOAT32 등)을 선택하세요.'}
+                </div>
+              )}
+              <div className="form-field">
+                <label className="checkbox-wrap">
+                  <input
+                    type="checkbox"
+                    checked={formData.is_alarm_enabled === true}
+                    disabled={isDisabledType}
+                    onChange={e => setFormData({ ...formData, is_alarm_enabled: e.target.checked })}
+                  />
+                  {t('devices:dpForm.enableAlarm')}
+                </label>
+              </div>
+
+              {formData.is_alarm_enabled && !isDisabledType && (
+                <div className="form-grid-2">
+                  <div className="form-field">
+                    <label>{t('devices:dpForm.alarmPriority')}</label>
+                    <select
+                      value={formData.alarm_priority || 'medium'}
+                      onChange={e => setFormData({ ...formData, alarm_priority: e.target.value as any })}
+                    >
+                      <option value="low">🟢 낮음 (Low)</option>
+                      <option value="medium">🟡 보통 (Medium)</option>
+                      <option value="high">🟠 높음 (High)</option>
+                      <option value="critical">🔴 위험 (Critical)</option>
+                    </select>
+                    <span className="hint">알람 발생 시 표시 우선순위 및 알림 채널에 영향</span>
+                  </div>
+                  <div className="form-field">
+                    <label>{t('devices:dpForm.alarmDeadband')}</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.alarm_deadband ?? 0}
+                      onChange={e => setFormData({ ...formData, alarm_deadband: parseFloat(e.target.value) || 0 })}
+                      min="0"
+                    />
+                    <span className="hint">
+                      {(formData.alarm_deadband ?? 0) === 0
+                        ? '0 = 임계값 초과 즉시 알람'
+                        : `임계값에서 ${formData.alarm_deadband} 이상 회복해야 알람 해제 (채터링 방지)`}
+                    </span>
+                  </div>
+                  <div className="form-field">
+                    <label>상한값 (High Limit)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.high_alarm_limit ?? ''}
+                      onChange={e => setFormData({ ...formData, high_alarm_limit: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                      placeholder="제한 없음"
+                      style={crossError ? { borderColor: '#dc2626' } : undefined}
+                    />
+                    <span className="hint" style={{ color: crossError ? '#dc2626' : undefined }}>
+                      {crossError ? '⚠️ 상한값은 하한값보다 커야 합니다' : '값이 이 값을 초과하면 알람 발생'}
+                    </span>
+                  </div>
+                  <div className="form-field">
+                    <label>하한값 (Low Limit)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.low_alarm_limit ?? ''}
+                      onChange={e => setFormData({ ...formData, low_alarm_limit: e.target.value === '' ? undefined : parseFloat(e.target.value) })}
+                      placeholder="제한 없음"
+                      style={crossError ? { borderColor: '#dc2626' } : undefined}
+                    />
+                    <span className="hint" style={{ color: crossError ? '#dc2626' : undefined }}>
+                      {crossError ? '⚠️ 하한값은 상한값보다 작아야 합니다' : '값이 이 값 미만이면 알람 발생'}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
+          );
+        })()}
 
-            {formData.is_alarm_enabled && (
-              <div className="form-grid-2">
-                <div className="form-field">
-                  <label>{t('devices:dpForm.alarmPriority')}</label>
-                  <select
-                    value={formData.alarm_priority || 'medium'}
-                    onChange={e => setFormData({ ...formData, alarm_priority: e.target.value as any })}
-                  >
-                    <option value="low">{t('common:low')}</option>
-                    <option value="medium">{t('common:medium')}</option>
-                    <option value="high">{t('common:high')}</option>
-                    <option value="critical">{t('common:critical')}</option>
-                  </select>
-                </div>
-                <div className="form-field">
-                  <label>{t('devices:dpForm.alarmDeadband')}</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.alarm_deadband ?? 0}
-                    onChange={e => setFormData({ ...formData, alarm_deadband: parseFloat(e.target.value) })}
-                  />
-                </div>
-                <div className="form-field">
-                  <label>{t('devices:dpForm.highLimit')}</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.high_alarm_limit ?? ''}
-                    onChange={e => setFormData({ ...formData, high_alarm_limit: parseFloat(e.target.value) })}
-                    placeholder={t('devices:dpForm.noLimit')}
-                  />
-                </div>
-                <div className="form-field">
-                  <label>{t('devices:dpForm.lowLimit')}</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.low_alarm_limit ?? ''}
-                    onChange={e => setFormData({ ...formData, low_alarm_limit: parseFloat(e.target.value) })}
-                    placeholder={t('devices:dpForm.noLimit')}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     );
   };

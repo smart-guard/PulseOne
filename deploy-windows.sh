@@ -264,6 +264,16 @@ if [ "$NO_PACKAGE" = "false" ]; then
     echo "📥 setup_assets 다운로드 중 (오프라인/에어갭 지원)..."
     cd "$SETUP_CACHE"
 
+    VCREDIST_EXE="vc_redist.x64.exe"
+    if [ ! -f "$VCREDIST_EXE" ]; then
+        echo "   Downloading MSVC Redistributable (vc_redist.x64.exe)..."
+        curl -fsSL -o "$VCREDIST_EXE" \
+            "https://aka.ms/vs/17/release/vc_redist.x64.exe" || \
+            echo "   ⚠️  vc_redist.x64.exe 다운로드 실패"
+    else
+        echo "   ✅ vc_redist.x64.exe (cached)"
+    fi
+
     NODE_MSI="node-v22.13.1-x64.msi"
     if [ ! -f "$NODE_MSI" ]; then
         echo "   Downloading Node.js..."

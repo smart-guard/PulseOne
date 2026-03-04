@@ -15,6 +15,7 @@ interface BulkDataPoint extends Partial<DataPoint> {
     isValid: boolean;
     errors: string[];
     tempId: number;
+    register_type?: string; // Modbus 전용: HR/IR/CO/DI (UI 상태 필드, 전송 시 address_string으로 변환)
 }
 
 interface DeviceDataPointsBulkModalProps {
@@ -53,7 +54,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         unit: '',
         scaling_factor: 1,
         scaling_offset: 0,
-        protocol_params: {}
+        protocol_params: {},
+        register_type: isModbus ? 'HR' : undefined  // Modbus: HR(FC3)/IR(FC4)/CO(FC1)/DI(FC2)
     });
 
     const STORAGE_KEY = `bulk_draft_device_${deviceId}`;
@@ -76,15 +78,37 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
     const [showBitSplitter, setShowBitSplitter] = useState(false);
     const [bitSplitConfig, setBitSplitConfig] = useState({
         address: '',
+        addressEnd: '',          // 주소 범위 끝 (빈값이면 단일 주소)
+        useAddressRange: false,  // 범위 모드 여부
         namePrefix: '',
         bitStart: 0,
         bitEnd: 15,
         accessMode: 'read',
-        descPrefix: ''
+        descPrefix: '',
+        mode: 'individual' as 'individual' | 'group' | 'custom',
+        numValues: 4,
+        registerBits: 16 as 16 | 32,
+        customRanges: '0-3, 4-7, 8-11, 12-15'
     });
+    const [selectedRows, setSelectedRows] = useState<Set<string | number>>(new Set());
+
+    // 비트 범위 파싱: "0-3, 4-7" → [{start:0, end:3}, {start:4, end:7}]
+    const parseBitRanges = (raw: string, maxBits: number): Array<{ start: number, end: number, error?: string }> => {
+        if (!raw.trim()) return [];
+        return raw.split(',').map(part => {
+            const p = part.trim();
+            const m = p.match(/^(\d+)\s*[-~]\s*(\d+)$/);
+            if (!m) return { start: -1, end: -1, error: `잘못된 형식: "${p}" (예: 0-3)` };
+            const s = parseInt(m[1]), e = parseInt(m[2]);
+            if (s < 0 || e >= maxBits) return { start: s, end: e, error: `범위 초과: ${s}-${e} (0~${maxBits - 1})` };
+            if (s > e) return { start: s, end: e, error: `시작>끝: ${s}-${e}` };
+            return { start: s, end: e };
+        });
+    };
 
     // 테이블 컨테이너 참조 (스크롤 제어 등)
     const tableContainerRef = useRef<HTMLDivElement>(null);
+    const lastCheckedIdxRef = useRef<number>(-1);
 
     // LocalStorage 저장
     const saveToStorage = useCallback((data: BulkDataPoint[]) => {
@@ -354,27 +378,32 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         const validModes = ['read', 'write', 'read_write'];
         if (!validModes.includes(point.access_mode || '')) errors.push('Invalid access mode');
 
-        // DB 내 중복 체크 — bit_index가 설정돼 있으면 허용 (같은 레지스터 비트 분리)
-        const hasBitIndex = !!(point.protocol_params as any)?.bit_index;
-        if (point.address && !hasBitIndex && existingAddresses.includes(point.address)) {
-            errors.push('Address already exists (DB)');
+        // DB 내 중복 체크 — 모든 포인트(비트 포함) 대상. 빨간셀로 표시, 등록 시 자동 스킵.
+        if (point.address && existingAddresses.includes(point.address)) {
+            errors.push(t('bulk.errDuplicateAddr', { ns: 'devices', defaultValue: 'Address already exists (DB)' }));
         }
 
         // 현재 입력 목록 내 중복 체크
-        // bit_index가 있으면 (address + bit_index) 조합으로 비교, 없으면 address만 비교
+        // bit_index/bit_start가 있으면 (address + bit) 조합으로 비교, 없으면 address만 비교
         if (allPoints && point.address) {
             const sameKey = allPoints.filter(p => {
                 if (!(p.name || p.address)) return false;
                 if (p.address !== point.address) return false;
-                const pBit = (p.protocol_params as any)?.bit_index;
-                const thisBit = (point.protocol_params as any)?.bit_index;
-                // 둘 다 bit_index가 있으면 같은 bit만 중복 처리
-                if (pBit !== undefined && thisBit !== undefined) return pBit === thisBit;
-                // 둘 다 없으면 주소만 비교
-                return true;
+                const pBitIdx = (p.protocol_params as any)?.bit_index;
+                const thisBitIdx = (point.protocol_params as any)?.bit_index;
+                const pBitStart = (p.protocol_params as any)?.bit_start;
+                const thisBitStart = (point.protocol_params as any)?.bit_start;
+                // 둘 다 단일비트 → 같은 bit_index만 중복
+                if (pBitIdx !== undefined && thisBitIdx !== undefined) return pBitIdx === thisBitIdx;
+                // 둘 다 범위비트 → 같은 bit_start만 중복
+                if (pBitStart !== undefined && thisBitStart !== undefined) return pBitStart === thisBitStart;
+                // 비트 없는 것끼리 → 주소만 비교
+                if (pBitIdx === undefined && thisBitIdx === undefined && pBitStart === undefined && thisBitStart === undefined) return true;
+                // 비트 있는 것과 없는 것 → 서로 다른 key로 간주
+                return false;
             }).length;
             if (sameKey > 1) {
-                errors.push('Duplicate address in list');
+                errors.push(t('bulk.errDuplicateInList', { ns: 'devices', defaultValue: 'Duplicate address in list' }));
             }
         }
 
@@ -402,15 +431,27 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         pushHistory(revalidated);
     };
 
-    // bit_index 업데이트 헬퍼 (protocol_params 내부 중첩)
-    const updateBitIndex = (index: number, value: string) => {
+    // 비트 설정 업데이트 헬퍼 (단일: "3" → bit_index, 범위: "0~3" → bit_start/bit_end)
+    const updateBitSetting = (index: number, value: string) => {
         const next = [...points];
         const params = { ...(next[index].protocol_params || {}) };
-        if (value === '' || value === null || value === undefined) {
-            delete params.bit_index;
-        } else {
-            params.bit_index = value;
+        // 기존 비트 관련 키 모두 초기화
+        delete params.bit_index;
+        delete params.bit_start;
+        delete params.bit_end;
+
+        if (value && value.trim() !== '') {
+            const rangeMatch = value.match(/^(\d+)\s*~\s*(\d+)$/);
+            if (rangeMatch) {
+                // 범위 형식: "0~3" → bit_start/bit_end
+                params.bit_start = rangeMatch[1];
+                params.bit_end = rangeMatch[2];
+            } else if (/^\d+$/.test(value.trim())) {
+                // 단일 숫자: "3" → bit_index
+                params.bit_index = value.trim();
+            }
         }
+
         const updated = { ...next[index], protocol_params: params };
         next[index] = updated;
         const revalidated = next.map(p => validatePoint(p, next));
@@ -420,35 +461,90 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
 
     // 비트 분할 자동 생성
     const handleBitSplit = () => {
-        const { address, namePrefix, bitStart, bitEnd, accessMode, descPrefix } = bitSplitConfig;
+        const { address, addressEnd, useAddressRange, namePrefix, accessMode, descPrefix, mode, registerBits, customRanges } = bitSplitConfig;
         if (!address.trim()) {
-            confirm({ title: t('bulk.notice', { defaultValue: '알림' }), message: t('bulk.enterBaseAddress', { defaultValue: '기본 레지스터 주소를 입력해주세요.' }), confirmButtonType: 'warning', showCancelButton: false });
+            confirm({ title: t('bulk.notice', { ns: 'devices' }), message: t('bulk.errAddressRequired', { ns: 'devices' }), confirmButtonType: 'warning', showCancelButton: false });
             return;
         }
-        const start = Math.max(0, Math.min(15, Number(bitStart)));
-        const end = Math.max(start, Math.min(15, Number(bitEnd)));
-        const prefix = namePrefix.trim() || address.trim();
+
+        // 주소 범위 계산
+        const addrStart = parseInt(address.trim(), 10);
+        const addrEnd = useAddressRange && addressEnd.trim() ? parseInt(addressEnd.trim(), 10) : addrStart;
+        if (isNaN(addrStart) || isNaN(addrEnd)) {
+            confirm({ title: t('bulk.inputError', { ns: 'devices' }), message: t('bulk.errAddressNotNumber', { ns: 'devices' }), confirmButtonType: 'warning', showCancelButton: false });
+            return;
+        }
+        if (addrEnd < addrStart) {
+            confirm({ title: t('bulk.inputError', { ns: 'devices' }), message: t('bulk.errEndBeforeStart', { ns: 'devices' }), confirmButtonType: 'warning', showCancelButton: false });
+            return;
+        }
+        const addrCount = addrEnd - addrStart + 1;
+        if (addrCount > 500) {
+            confirm({ title: t('bulk.warning', { ns: 'devices' }), message: t('bulk.errTooManyAddresses', { ns: 'devices', count: addrCount }), confirmButtonType: 'warning', showCancelButton: false });
+            return;
+        }
+
+        // 비트 범위 파싱
+        const ranges = parseBitRanges(customRanges, registerBits);
+        const errors = ranges.filter(r => r.error);
+        if (ranges.length === 0) {
+            confirm({ title: t('bulk.notice', { ns: 'devices' }), message: t('bulk.errBitRangeRequired', { ns: 'devices' }), confirmButtonType: 'warning', showCancelButton: false });
+            return;
+        }
+        if (errors.length > 0) {
+            confirm({ title: t('bulk.inputError', { ns: 'devices' }), message: errors.map(e => e.error).join('\n'), confirmButtonType: 'warning', showCancelButton: false });
+            return;
+        }
 
         const newRows: BulkDataPoint[] = [];
-        for (let bit = start; bit <= end; bit++) {
-            newRows.push(validatePoint({
-                ...createEmptyRow(),
-                name: `${prefix}_Bit${bit}`,
-                address: address.trim(),
-                data_type: 'boolean' as any,
-                access_mode: (accessMode as any) || 'read',
-                description: descPrefix.trim() ? `${descPrefix.trim()} Bit${bit}` : `FC03 ${address.trim()} Bit${bit}`,
-                protocol_params: { bit_index: String(bit) },
-            }));
+
+        // 각 주소에 대해 비트 패턴 생성
+        for (let addr = addrStart; addr <= addrEnd; addr++) {
+            const addrStr = String(addr);
+            const pfx = namePrefix.trim() || addrStr;
+
+            if (mode === 'individual') {
+                // boolean: 각 범위의 비트를 개별 bool 포인트로 (bit_index)
+                ranges.forEach((r) => {
+                    for (let bit = r.start; bit <= r.end; bit++) {
+                        newRows.push(validatePoint({
+                            ...createEmptyRow(),
+                            name: `${pfx}_Bit${bit}`,
+                            address: addrStr,
+                            data_type: 'boolean' as any,
+                            access_mode: (accessMode as any) || 'read',
+                            description: descPrefix.trim()
+                                ? `${descPrefix.trim()} ${addrStr} Bit${bit}`
+                                : `${addrStr} bit${bit} (0/1)`,
+                            protocol_params: { bit_index: String(bit) },
+                        }));
+                    }
+                });
+            } else {
+                // number(group): 각 범위를 정수값 포인트 1개로 (bit_start/bit_end)
+                ranges.forEach((r, i) => {
+                    const bitsLen = r.end - r.start + 1;
+                    const maxVal = (1 << bitsLen) - 1;
+                    newRows.push(validatePoint({
+                        ...createEmptyRow(),
+                        name: `${pfx}_V${i + 1}`,
+                        address: addrStr,
+                        data_type: 'number' as any,
+                        access_mode: (accessMode as any) || 'read',
+                        description: descPrefix.trim()
+                            ? `${descPrefix.trim()} ${addrStr} V${i + 1}(bit${r.start}~${r.end})`
+                            : `${addrStr} bit${r.start}~${r.end} (0~${maxVal})`,
+                        protocol_params: { bit_start: String(r.start), bit_end: String(r.end) },
+                    }));
+                });
+            }
         }
 
         setPoints(prev => {
             const hasData = prev.some(p => p.name || p.address);
             const base = hasData ? [...prev] : [];
-            // 빈 trailing 행 제거 후 새 행 추가
             const trimmed = base.filter(p => p.name || p.address);
             const next = [...trimmed, ...newRows];
-            // 최소 20행 유지
             while (next.length < 20) next.push(createEmptyRow());
             const revalidated = next.map(p => validatePoint(p, next));
             pushHistory(revalidated);
@@ -456,7 +552,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         });
 
         setShowBitSplitter(false);
-        setBitSplitConfig(prev => ({ ...prev, address: '', namePrefix: '' })); // 주소/이름만 초기화
+        setBitSplitConfig(prev => ({ ...prev, address: '', addressEnd: '', namePrefix: '' }));
     };
 
     const addRow = () => {
@@ -658,7 +754,13 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                     unit: cols[isMqtt ? 6 : typeCol + 3]?.trim() || '',
                     scaling_factor: cols[isMqtt ? 7 : typeCol + 4] ? parseFloat(cols[isMqtt ? 7 : typeCol + 4]) : 1,
                     scaling_offset: cols[isMqtt ? 8 : typeCol + 5] ? parseFloat(cols[isMqtt ? 8 : typeCol + 5]) : 0,
-                    protocol_params: (!isMqtt && bitIndex !== '') ? { bit_index: bitIndex } : {},
+                    protocol_params: (() => {
+                        if (isMqtt || bitIndex === '') return {};
+                        const rangeMatch = bitIndex.match(/^(\d+)\s*~\s*(\d+)$/);
+                        if (rangeMatch) return { bit_start: rangeMatch[1], bit_end: rangeMatch[2] };
+                        if (/^\d+$/.test(bitIndex.trim())) return { bit_index: bitIndex.trim() };
+                        return {};
+                    })(),
                 };
 
                 const validated = validatePoint(newPointData, next);
@@ -698,20 +800,45 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             return;
         }
 
-        const errors = validPoints.filter(p => !p.isValid);
-        if (errors.length > 0) {
+        // 중복(DB) 포인트와 기타 오류 포인트 분리
+        const DUP_ADDR = t('bulk.errDuplicateAddr', { ns: 'devices', defaultValue: 'Address already exists (DB)' });
+        const DUP_LIST = t('bulk.errDuplicateInList', { ns: 'devices', defaultValue: 'Duplicate address in list' });
+        const duplicatePoints = validPoints.filter(p =>
+            p.errors?.some(e => e === DUP_ADDR || e === DUP_LIST)
+        );
+        const otherErrorPoints = validPoints.filter(p =>
+            !p.isValid && !p.errors?.every(e => e === DUP_ADDR || e === DUP_LIST)
+        );
+
+        // 중복 이외의 다른 오류가 있으면 막음
+        if (otherErrorPoints.length > 0) {
             confirm({
                 title: t('bulk.validationError', { defaultValue: '유효성 오류' }),
-                message: `${errors.length} ${t('bulk.itemsHaveErrors', { defaultValue: '개 항목에 오류가 있습니다.' })}\n${t('bulk.checkRedCells', { defaultValue: '빨간색으로 표시된 셀을 확인해주세요.' })}`,
+                message: `${otherErrorPoints.length} ${t('bulk.itemsHaveErrors', { defaultValue: '개 항목에 오류가 있습니다.' })}\n${t('bulk.checkRedCells', { defaultValue: '빨간색으로 표시된 셀을 확인해주세요.' })}`,
                 confirmButtonType: 'danger',
                 showCancelButton: false
             });
             return;
         }
 
+        // 등록 가능한 포인트 (중복 제외)
+        const toRegister = validPoints.filter(p => p.isValid);
+        const skipCount = duplicatePoints.length;
+
+        if (toRegister.length === 0) {
+            confirm({
+                title: t('bulk.noData', { defaultValue: '데이터 없음' }),
+                message: t('bulk.allDuplicateMsg', { ns: 'devices', count: skipCount }),
+                confirmButtonType: 'warning',
+                showCancelButton: false
+            });
+            return;
+        }
+
+        const skipMsg = skipCount > 0 ? `\n${t('bulk.confirmSkipMsg', { ns: 'devices', count: skipCount })}` : '';
         const isConfirmed = await confirm({
             title: t('bulk.confirmBulkRegisterTitle', { defaultValue: '대량 등록 확인' }),
-            message: `${validPoints.length} ${t('bulk.confirmBulkRegisterMsg', { defaultValue: '개 포인트를 이 디바이스에 등록하시걌습니까?' })}`,
+            message: `${t('bulk.confirmRegisterMsg', { ns: 'devices', count: toRegister.length })}${skipMsg}`,
             confirmText: t('bulk.register', { defaultValue: '등록' }),
             confirmButtonType: 'primary'
         });
@@ -722,15 +849,39 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
 
         try {
             setIsProcessing(true);
-            const payload = validPoints.map(({ isValid, errors, tempId, ...rest }) => rest);
+            const payload = toRegister.map(({ isValid, errors, tempId, ...rest }) => {
+                // Modbus: register_type → address_string 자동 생성 (예: HR:100)
+                const regType = (rest as any).register_type;
+                if (isModbus && regType && rest.address !== undefined && rest.address !== '') {
+                    const addrNum = Number(rest.address);
+                    // legacy 5자리 주소(40001~)가 아닐 때만 address_string 생성
+                    if (!isNaN(addrNum) && addrNum < 40001) {
+                        (rest as any).address_string = `${regType}:${addrNum}`;
+                    }
+                }
+                // register_type은 DataPoint 스키마에 없는 임시 필드이므로 제거
+                const { register_type, ...payload } = rest as any;
+                return payload;
+            });
             if (onImport) {
                 onImport(payload);
                 localStorage.removeItem(STORAGE_KEY);
                 onClose();
             } else if (onSave) {
                 await onSave(payload);
-                localStorage.removeItem(STORAGE_KEY); // 저장 성공 시 임시 데이터 삭제
+                localStorage.removeItem(STORAGE_KEY);
                 onClose();
+            }
+            // 스킵 있었으면 완료 후 알림
+            if (skipCount > 0) {
+                setTimeout(() => {
+                    confirm({
+                        title: t('bulk.registerComplete', { ns: 'devices' }),
+                        message: `${t('bulk.registerCompleteMsg', { ns: 'devices', success: toRegister.length })}\n${t('bulk.skipNoticeMsg', { ns: 'devices', count: skipCount })}`,
+                        confirmButtonType: 'primary',
+                        showCancelButton: false
+                    });
+                }, 300);
             }
         } catch (e) {
             console.error(e);
@@ -782,38 +933,84 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
 
                 <main id="bulk-main">
                     <div id="grid-outer-container">
-                        {/* 1. Header Area (Fixed) */}
-                        <div className="grid-header-wrapper">
-                            <div className="header-scroll-stiff">
-                                <table className="excel-table-fixed">
-                                    <thead>
-                                        <tr>
-                                            <th className="col-idx">#</th>
-                                            <th className="col-name">{t('bulk.colName', { ns: 'devices' })}</th>
-                                            <th className="col-addr">{protocolType === 'MQTT' ? 'Sub-Topic *' : t('bulk.colAddress', { ns: 'devices' })}</th>
-                                            {protocolType === 'MQTT' && <th className="col-key">{t('labels.jsonKey', { ns: 'devices' })}</th>}
-                                            {isModbus && <th className="col-bit" title="Bit extraction index (0–15) for Modbus register bit-split">{t('bulk.colBit', { ns: 'devices' })}</th>}
-                                            <th className="col-type">{t('modal.dpDiffType', { ns: 'devices' })}</th>
-                                            <th className="col-mode">{t('modal.dpDiffAccess', { ns: 'devices' })}</th>
-                                            <th className="col-desc">{t('dpTab.description', { ns: 'devices' })}</th>
-                                            <th className="col-unit">{t('dpModal.unit', { ns: 'devices' })}</th>
-                                            <th className="col-scale">{t('dpTab.scale', { ns: 'devices' })}</th>
-                                            <th className="col-offset">{t('modal.dpDiffOffset', { ns: 'devices' })}</th>
-                                            <th className="col-actions">{t('delete', { ns: 'common' })}</th>
-                                        </tr>
-                                    </thead>
-                                </table>
-                                {/* Manual gutter for scrollbar alignment */}
-                                <div className="header-gutter"></div>
-                            </div>
-                        </div>
-
-                        {/* 2. Body Area (Scrollable) */}
+                        {/* 헤더 + 바디를 하나의 스크롤 컨테이너 안에 통합 */}
                         <div id="grid-body-scroll-area" ref={tableContainerRef} className="custom-scrollbar">
                             <table className="excel-table-fixed">
+                                <thead>
+                                    <tr>
+                                        <th className="col-chk" style={{ width: 36, textAlign: 'center' }}>
+                                            <input type="checkbox"
+                                                checked={selectedRows.size > 0 && points.filter(p => p.name || p.address).every(p => selectedRows.has(p.tempId))}
+                                                onChange={e => {
+                                                    if (e.target.checked) {
+                                                        setSelectedRows(new Set(points.filter(p => p.name || p.address).map(p => p.tempId)));
+                                                    } else {
+                                                        setSelectedRows(new Set());
+                                                    }
+                                                }}
+                                                style={{ cursor: 'pointer' }}
+                                                title="전체 선택"
+                                            />
+                                        </th>
+                                        <th className="col-idx">#</th>
+                                        <th className="col-name">{t('bulk.colName', { ns: 'devices' })}</th>
+                                        <th className="col-addr">{protocolType === 'MQTT' ? 'Sub-Topic *' : t('bulk.colAddress', { ns: 'devices' })}</th>
+                                        {protocolType === 'MQTT' && <th className="col-key">{t('labels.jsonKey', { ns: 'devices' })}</th>}
+                                        {isModbus && <th className="col-regtype" title="Modbus 레지스터 타입 (HR=Holding FC3, IR=Input FC4, CO=Coil FC1, DI=Discrete FC2)">레지스터</th>}
+                                        {isModbus && <th className="col-bit" title="Bit extraction index (0–15) for Modbus register bit-split">{t('bulk.colBit', { ns: 'devices' })}</th>}
+                                        <th className="col-type">{t('modal.dpDiffType', { ns: 'devices' })}</th>
+                                        <th className="col-mode">{t('modal.dpDiffAccess', { ns: 'devices' })}</th>
+                                        <th className="col-desc">{t('dpTab.description', { ns: 'devices' })}</th>
+                                        <th className="col-unit">{t('dpModal.unit', { ns: 'devices' })}</th>
+                                        <th className="col-scale">{t('dpTab.scale', { ns: 'devices' })}</th>
+                                        <th className="col-offset">{t('modal.dpDiffOffset', { ns: 'devices' })}</th>
+                                        <th className="col-actions">{t('delete', { ns: 'common' })}</th>
+                                    </tr>
+                                </thead>
                                 <tbody>
                                     {points.map((point, idx) => (
-                                        <tr key={point.tempId} data-row-index={idx}>
+                                        <tr key={point.tempId} data-row-index={idx}
+                                            style={selectedRows.has(point.tempId) ? { background: '#eff6ff' } : undefined}>
+                                            <td className="col-chk" style={{ textAlign: 'center', width: 36 }}>
+                                                <input type="checkbox"
+                                                    checked={selectedRows.has(point.tempId)}
+                                                    onClick={e => {
+                                                        const isShift = (e as React.MouseEvent).shiftKey;
+                                                        const isCtrl = (e as React.MouseEvent).ctrlKey || (e as React.MouseEvent).metaKey;
+                                                        const currentlyChecked = selectedRows.has(point.tempId);
+                                                        if (isShift && lastCheckedIdxRef.current >= 0) {
+                                                            // Shift: 마지막 클릭~현재 사이 범위 선택
+                                                            const from = Math.min(lastCheckedIdxRef.current, idx);
+                                                            const to = Math.max(lastCheckedIdxRef.current, idx);
+                                                            setSelectedRows(prev => {
+                                                                const next = new Set(prev);
+                                                                for (let i = from; i <= to; i++) next.add(points[i].tempId);
+                                                                return next;
+                                                            });
+                                                        } else if (isCtrl) {
+                                                            // Ctrl: 개별 토글
+                                                            setSelectedRows(prev => {
+                                                                const next = new Set(prev);
+                                                                if (currentlyChecked) next.delete(point.tempId);
+                                                                else next.add(point.tempId);
+                                                                return next;
+                                                            });
+                                                            lastCheckedIdxRef.current = idx;
+                                                        } else {
+                                                            // 일반 클릭
+                                                            setSelectedRows(prev => {
+                                                                const next = new Set(prev);
+                                                                if (currentlyChecked) next.delete(point.tempId);
+                                                                else next.add(point.tempId);
+                                                                return next;
+                                                            });
+                                                            lastCheckedIdxRef.current = idx;
+                                                        }
+                                                    }}
+                                                    onChange={() => {/* onClick 에서 처리 */ }}
+                                                    style={{ cursor: 'pointer' }}
+                                                />
+                                            </td>
                                             <td className="col-idx bg-gray-50">{idx + 1}</td>
                                             <td className={`col-name ${!point.isValid && !point.name ? 'cell-error' : ''}`}>
                                                 <input
@@ -849,19 +1046,42 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                 </td>
                                             )}
                                             {isModbus && (
-                                                <td className="col-bit" title="Bit index 0–15 (Modbus 레지스터 비트 추출)">
-                                                    <input
-                                                        type="number"
-                                                        className="excel-input text-right"
-                                                        min={0}
-                                                        max={15}
-                                                        value={(point.protocol_params as any)?.bit_index ?? ''}
-                                                        onChange={e => updateBitIndex(idx, e.target.value)}
-                                                        onKeyDown={e => handleKeyDown(e, idx, 2)}
-                                                        placeholder="-"
-                                                    />
+                                                <td className="col-regtype">
+                                                    <select
+                                                        className="excel-select"
+                                                        value={(point as any).register_type ?? 'HR'}
+                                                        onChange={e => updatePoint(idx, 'register_type' as any, e.target.value)}
+                                                        title="HR=Holding(FC3) | IR=Input(FC4) | CO=Coil(FC1) | DI=Discrete(FC2)"
+                                                    >
+                                                        <option value="HR">HR (FC3)</option>
+                                                        <option value="IR">IR (FC4)</option>
+                                                        <option value="CO">CO (FC1)</option>
+                                                        <option value="DI">DI (FC2)</option>
+                                                    </select>
                                                 </td>
                                             )}
+                                            {isModbus && (() => {
+                                                const BIT_UNSUPPORTED = ['string', 'datetime', 'unknown', 'json'];
+                                                const bitDisabled = BIT_UNSUPPORTED.includes((point.data_type as string)?.toLowerCase?.() ?? '');
+                                                return (
+                                                    <td className="col-bit" title={bitDisabled ? t('bulk.bitColDisabledTitle', { ns: 'devices' }) : t('bulk.bitColTitle', { ns: 'devices' })}
+                                                        style={bitDisabled ? { opacity: 0.35, pointerEvents: 'none', background: '#f8fafc' } : undefined}>
+                                                        <input
+                                                            type="text"
+                                                            className="excel-input text-center font-mono"
+                                                            disabled={bitDisabled}
+                                                            value={
+                                                                (point.protocol_params as any)?.bit_start !== undefined
+                                                                    ? `${(point.protocol_params as any).bit_start}~${(point.protocol_params as any).bit_end ?? ''}`
+                                                                    : (point.protocol_params as any)?.bit_index ?? ''
+                                                            }
+                                                            onChange={e => updateBitSetting(idx, e.target.value)}
+                                                            onKeyDown={e => handleKeyDown(e, idx, 2)}
+                                                            placeholder={bitDisabled ? '-' : t('bulk.bitPlaceholder', { ns: 'devices' })}
+                                                        />
+                                                    </td>
+                                                );
+                                            })()}
                                             <td className="col-type">
                                                 <select
                                                     className="excel-select"
@@ -872,6 +1092,21 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                     <option value="number">number</option>
                                                     <option value="boolean">boolean</option>
                                                     <option value="string">string</option>
+                                                    <optgroup label="──────────" />
+                                                    <option value="INT16">INT16 (2 bytes)</option>
+                                                    <option value="UINT16">UINT16 (2 bytes)</option>
+                                                    <option value="FLOAT32">FLOAT32 (4 bytes)</option>
+                                                    <option value="BOOL">BOOL (1 bit)</option>
+                                                    <optgroup label="32/64-bit" />
+                                                    <option value="INT32">INT32 (4 bytes)</option>
+                                                    <option value="UINT32">UINT32 (4 bytes)</option>
+                                                    <option value="FLOAT64">FLOAT64 (8 bytes)</option>
+                                                    <option value="INT64">INT64 (8 bytes)</option>
+                                                    <optgroup label="기타" />
+                                                    <option value="INT8">INT8 (1 byte)</option>
+                                                    <option value="UINT8">UINT8 (1 byte)</option>
+                                                    <option value="DATETIME">DATETIME</option>
+                                                    <option value="UNKNOWN">Unknown</option>
                                                 </select>
                                             </td>
                                             <td className="col-mode">
@@ -981,6 +1216,30 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                             <button className="reset-btn" onClick={handleReset} title="Reset all input data">
                                 <i className="fas fa-trash-alt"></i> {t('bulk.reset', { ns: 'devices' })}
                             </button>
+                            {selectedRows.size > 0 && (
+                                <button
+                                    onClick={() => {
+                                        setPoints(prev => {
+                                            const next = prev.filter(p => !selectedRows.has(p.tempId));
+                                            const filled = next.filter(p => p.name || p.address);
+                                            while (filled.length < 20) filled.push(createEmptyRow());
+                                            const revalidated = filled.map(p => validatePoint(p, filled));
+                                            pushHistory(revalidated);
+                                            return revalidated;
+                                        });
+                                        setSelectedRows(new Set());
+                                    }}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                        padding: '7px 14px', borderRadius: 8, border: '1px solid #fca5a5',
+                                        background: '#fef2f2', color: '#dc2626',
+                                        fontSize: '13px', fontWeight: 600, cursor: 'pointer'
+                                    }}
+                                    title={`선택한 ${selectedRows.size}개 행 삭제`}
+                                >
+                                    <i className="fas fa-minus-circle"></i> 선택 삭제 ({selectedRows.size})
+                                </button>
+                            )}
                         </div>
                         {showTemplateSelector && (
                             <div className="template-selector-bubble">
@@ -1023,56 +1282,64 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                 </div>
                                 {/* 본문 */}
                                 <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                    <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>
-                                        Modbus 레지스터 1개를 Bit0~Bit15로 분할하여 행을 자동 생성합니다.<br />
-                                        생성된 각 행에 <code style={{ background: '#f1f5f9', padding: '0 3px', borderRadius: 3 }}>bit_index</code>가 자동으로 설정됩니다.
-                                    </p>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                                        <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
-                                            기준 주소 (Address) *
-                                            <input
-                                                type="text"
-                                                value={bitSplitConfig.address}
+
+                                    {/* ── 주소 (단일/범위) ── */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>기준 주소 (Address) *</span>
+                                            <label style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                                                <input type="checkbox" checked={bitSplitConfig.useAddressRange}
+                                                    onChange={e => setBitSplitConfig(p => ({ ...p, useAddressRange: e.target.checked }))}
+                                                    style={{ cursor: 'pointer' }} />
+                                                주소 범위
+                                            </label>
+                                        </div>
+                                        {bitSplitConfig.useAddressRange ? (
+                                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                                <input type="text" value={bitSplitConfig.address}
+                                                    onChange={e => setBitSplitConfig(p => ({ ...p, address: e.target.value }))}
+                                                    placeholder="시작 예: 40001"
+                                                    style={{ flex: 1, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12, fontFamily: 'monospace' }}
+                                                />
+                                                <span style={{ fontSize: 12, color: '#94a3b8' }}>~</span>
+                                                <input type="text" value={bitSplitConfig.addressEnd}
+                                                    onChange={e => setBitSplitConfig(p => ({ ...p, addressEnd: e.target.value }))}
+                                                    placeholder="끝 예: 40010"
+                                                    style={{ flex: 1, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12, fontFamily: 'monospace' }}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <input type="text" value={bitSplitConfig.address}
                                                 onChange={e => setBitSplitConfig(p => ({ ...p, address: e.target.value }))}
                                                 placeholder="예: 40001"
-                                                style={{ display: 'block', width: '100%', marginTop: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12, fontFamily: 'monospace' }}
+                                                style={{ width: '100%', padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12, fontFamily: 'monospace' }}
                                             />
-                                        </label>
+                                        )}
+                                        {bitSplitConfig.useAddressRange && bitSplitConfig.address && bitSplitConfig.addressEnd && (() => {
+                                            const s = parseInt(bitSplitConfig.address, 10);
+                                            const e = parseInt(bitSplitConfig.addressEnd, 10);
+                                            if (!isNaN(s) && !isNaN(e) && e >= s) {
+                                                return <span style={{ fontSize: 11, color: '#0f766e' }}>✅ {e - s + 1}개 주소 생성 예정</span>;
+                                            }
+                                            return <span style={{ fontSize: 11, color: '#dc2626' }}>⚠ 끝 주소가 시작보다 크거나 같아야 합니다</span>;
+                                        })()}
+                                    </div>
+
+                                    {/* ── 이름접두사 / 권한 / 설명 ── */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                                         <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
-                                            이름 접두사 (Name Prefix)
-                                            <input
-                                                type="text"
-                                                value={bitSplitConfig.namePrefix}
+                                            이름 접두사
+                                            <input type="text" value={bitSplitConfig.namePrefix}
                                                 onChange={e => setBitSplitConfig(p => ({ ...p, namePrefix: e.target.value }))}
                                                 placeholder="비우면 주소 사용"
                                                 style={{ display: 'block', width: '100%', marginTop: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}
                                             />
                                         </label>
                                         <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
-                                            시작 비트 (0~15)
-                                            <input
-                                                type="number" min={0} max={15}
-                                                value={bitSplitConfig.bitStart}
-                                                onChange={e => setBitSplitConfig(p => ({ ...p, bitStart: Number(e.target.value) }))}
-                                                style={{ display: 'block', width: '100%', marginTop: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}
-                                            />
-                                        </label>
-                                        <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
-                                            끝 비트 (0~15)
-                                            <input
-                                                type="number" min={0} max={15}
-                                                value={bitSplitConfig.bitEnd}
-                                                onChange={e => setBitSplitConfig(p => ({ ...p, bitEnd: Number(e.target.value) }))}
-                                                style={{ display: 'block', width: '100%', marginTop: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}
-                                            />
-                                        </label>
-                                        <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
                                             Access Mode
-                                            <select
-                                                value={bitSplitConfig.accessMode}
+                                            <select value={bitSplitConfig.accessMode}
                                                 onChange={e => setBitSplitConfig(p => ({ ...p, accessMode: e.target.value }))}
-                                                style={{ display: 'block', width: '100%', marginTop: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}
-                                            >
+                                                style={{ display: 'block', width: '100%', marginTop: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}>
                                                 <option value="read">read</option>
                                                 <option value="write">write</option>
                                                 <option value="read_write">read_write</option>
@@ -1080,23 +1347,149 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                         </label>
                                         <label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
                                             설명 접두사
-                                            <input
-                                                type="text"
-                                                value={bitSplitConfig.descPrefix}
+                                            <input type="text" value={bitSplitConfig.descPrefix}
                                                 onChange={e => setBitSplitConfig(p => ({ ...p, descPrefix: e.target.value }))}
                                                 placeholder="예: FC03 40001"
                                                 style={{ display: 'block', width: '100%', marginTop: 4, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}
                                             />
                                         </label>
                                     </div>
-                                    <div style={{ fontSize: 11, color: '#64748b', background: '#f8fafc', borderRadius: 6, padding: '6px 10px' }}>
-                                        생성 예시: <code style={{ fontFamily: 'monospace' }}>{(bitSplitConfig.namePrefix || bitSplitConfig.address || 'prefix')}_Bit{bitSplitConfig.bitStart}</code> ~ <code style={{ fontFamily: 'monospace' }}>{(bitSplitConfig.namePrefix || bitSplitConfig.address || 'prefix')}_Bit{bitSplitConfig.bitEnd}</code> ({bitSplitConfig.bitEnd - bitSplitConfig.bitStart + 1}행)
+
+                                    {/* ── 레지스터 크기 ── */}
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                        <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', lineHeight: '30px' }}>레지스터 크기:</span>
+                                        {([16, 32] as const).map(b => (
+                                            <button key={b} onClick={() => setBitSplitConfig(p => ({ ...p, registerBits: b }))}
+                                                style={{
+                                                    padding: '4px 14px', border: '1px solid', borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                                    borderColor: bitSplitConfig.registerBits === b ? '#0f766e' : '#cbd5e1',
+                                                    background: bitSplitConfig.registerBits === b ? '#f0fdfa' : '#f8fafc',
+                                                    color: bitSplitConfig.registerBits === b ? '#0f766e' : '#64748b'
+                                                }}>
+                                                {b}bit (0~{b - 1})
+                                            </button>
+                                        ))}
                                     </div>
-                                    <button
-                                        onClick={handleBitSplit}
-                                        style={{ padding: '9px 0', background: '#1d4ed8', color: 'white', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer', width: '100%', marginTop: 2 }}
-                                    >
-                                        <i className="fas fa-magic" style={{ marginRight: 6 }}></i> 비트 행 자동 생성
+
+                                    {/* ── 비트 범위 입력 (핵심) ── */}
+                                    {(() => {
+                                        const parsed = parseBitRanges(bitSplitConfig.customRanges, bitSplitConfig.registerBits);
+                                        const hasError = parsed.some(r => r.error);
+                                        const isBool = bitSplitConfig.mode === 'individual';
+                                        return (
+                                            <div style={{ background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                {/* 범위 입력 필드 */}
+                                                <label style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>
+                                                    비트 범위 <span style={{ fontWeight: 400, color: '#94a3b8', fontSize: 11 }}>콤마(,)로 구분 · 대시(-)로 범위</span>
+                                                    <input type="text"
+                                                        value={bitSplitConfig.customRanges}
+                                                        onChange={e => setBitSplitConfig(p => ({ ...p, customRanges: e.target.value }))}
+                                                        placeholder="예: 0-3, 4-7, 8-11, 12-15"
+                                                        style={{
+                                                            display: 'block', width: '100%', marginTop: 4, padding: '7px 10px',
+                                                            border: `1.5px solid ${hasError ? '#fca5a5' : '#cbd5e1'}`,
+                                                            borderRadius: 6, fontSize: 13, fontFamily: 'monospace',
+                                                            background: hasError ? '#fff5f5' : 'white'
+                                                        }}
+                                                    />
+                                                </label>
+
+                                                {/* 빠른 채우기 */}
+                                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                                    {([
+                                                        { label: t('bulk.quickFill2', { ns: 'devices' }), n: 2 },
+                                                        { label: t('bulk.quickFill4', { ns: 'devices' }), n: 4 },
+                                                        { label: t('bulk.quickFill8', { ns: 'devices' }), n: 8 },
+                                                        { label: t('bulk.quickFillBitwise', { ns: 'devices' }), n: bitSplitConfig.registerBits },
+                                                    ]).map(q => {
+                                                        const sz = Math.floor(bitSplitConfig.registerBits / q.n);
+                                                        const val = q.n === bitSplitConfig.registerBits
+                                                            ? Array.from({ length: q.n }, (_, i) => `${i}-${i}`).join(', ')
+                                                            : Array.from({ length: q.n }, (_, i) => `${i * sz}-${(i + 1) * sz - 1}`).join(', ');
+                                                        return (
+                                                            <button key={q.label}
+                                                                onClick={() => setBitSplitConfig(p => ({ ...p, customRanges: val }))}
+                                                                style={{
+                                                                    padding: '3px 10px', fontSize: 10, fontWeight: 600,
+                                                                    border: '1px solid #cbd5e1', borderRadius: 4,
+                                                                    background: '#f1f5f9', color: '#475569', cursor: 'pointer'
+                                                                }}>
+                                                                {q.label}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                {/* 값 타입 */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{t('bulk.valueTypeLabel', { ns: 'devices' })}:</span>
+                                                    <button onClick={() => setBitSplitConfig(p => ({ ...p, mode: 'individual' }))}
+                                                        style={{
+                                                            padding: '3px 12px', border: '1.5px solid', borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                                            borderColor: isBool ? '#1d4ed8' : '#e2e8f0',
+                                                            background: isBool ? '#eff6ff' : '#f8fafc',
+                                                            color: isBool ? '#1d4ed8' : '#94a3b8'
+                                                        }}>
+                                                        boolean (0/1)
+                                                    </button>
+                                                    <button onClick={() => setBitSplitConfig(p => ({ ...p, mode: 'group' }))}
+                                                        style={{
+                                                            padding: '3px 12px', border: '1.5px solid', borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                                            borderColor: !isBool ? '#7c3aed' : '#e2e8f0',
+                                                            background: !isBool ? '#f5f3ff' : '#f8fafc',
+                                                            color: !isBool ? '#7c3aed' : '#94a3b8'
+                                                        }}>
+                                                        number (0~N)
+                                                    </button>
+                                                    <span style={{ fontSize: 10, color: '#94a3b8' }}>
+                                                        {isBool ? t('bulk.valueTypeBoolDesc', { ns: 'devices' }) : t('bulk.valueTypeNumDesc', { ns: 'devices' })}
+                                                    </span>
+                                                </div>
+
+                                                {/* 유효성 미리보기 */}
+                                                <div style={{
+                                                    fontSize: 11, padding: '5px 8px', borderRadius: 5,
+                                                    background: hasError ? '#fef2f2' : '#f0fdf4',
+                                                    color: hasError ? '#dc2626' : '#166534',
+                                                    borderLeft: `3px solid ${hasError ? '#fca5a5' : '#86efac'}`
+                                                }}>
+                                                    {parsed.length === 0 ? <span style={{ color: '#94a3b8' }}>{t('bulk.previewEnterRange', { ns: 'devices' })}</span> :
+                                                        hasError
+                                                            ? parsed.filter(r => r.error).map((r, i) => <div key={i}>⚠ {r.error}</div>)
+                                                            : <>
+                                                                ✅ {isBool
+                                                                    ? t('bulk.previewBoolPoints', { ns: 'devices', count: parsed.reduce((s, r) => s + r.end - r.start + 1, 0) })
+                                                                    : t('bulk.previewNumPoints', { ns: 'devices', count: parsed.length })}
+                                                                <br />
+                                                                {(() => {
+                                                                    const SHOW = 4;
+                                                                    const items = isBool
+                                                                        ? parsed.flatMap(r =>
+                                                                            r.start === r.end
+                                                                                ? [`Bit${r.start}`]
+                                                                                : [`Bit${r.start}~${r.end}`])
+                                                                        : parsed.map((r, i) =>
+                                                                            `V${i + 1}(bit${r.start}~${r.end}→0~${(1 << (r.end - r.start + 1)) - 1})`);
+                                                                    const visible = items.slice(0, SHOW);
+                                                                    const rest = items.length - SHOW;
+                                                                    return <>
+                                                                        {visible.map((txt, i) => <span key={i} style={{ marginRight: 6 }}>{txt}</span>)}
+                                                                        {rest > 0 && <span style={{ color: '#94a3b8' }}>{t('bulk.previewMore', { ns: 'devices', count: rest })}</span>}
+                                                                    </>;
+                                                                })()}
+                                                            </>}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    <button onClick={handleBitSplit}
+                                        style={{
+                                            padding: '9px 0',
+                                            background: bitSplitConfig.mode === 'individual' ? '#1d4ed8' : '#7c3aed',
+                                            color: 'white', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: 'pointer', width: '100%'
+                                        }}>
+                                        <i className="fas fa-magic" style={{ marginRight: 6 }} /> 자동 생성
                                     </button>
                                 </div>
                             </div>
@@ -1240,24 +1633,19 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                     overflow: hidden;
                     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
                 }
-                .grid-header-wrapper {
-                    flex-shrink: 0;
-                    background: #f1f5f9;
-                    border-bottom: 2px solid #cbd5e1;
-                }
-                .header-scroll-stiff {
-                    display: flex;
-                    width: 100%;
-                }
-                .header-gutter {
-                    width: 10px; /* Exact match of custom scrollbar width */
-                    background: #f1f5f9;
-                    border-bottom: none;
-                }
+                /* 헤더/바디 통합 스크롤 구조 */
                 #grid-body-scroll-area {
                     flex: 1;
-                    overflow-y: scroll; /* Force scrollbar to always exist for alignment */
+                    overflow-y: auto;
+                    overflow-x: auto;
                     background: white;
+                }
+                .excel-table-fixed thead {
+                    position: sticky;
+                    top: 0;
+                    z-index: 2;
+                    background: #f1f5f9;
+                    border-bottom: 2px solid #cbd5e1;
                 }
 
                 /* Table Styling */
@@ -1293,7 +1681,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                 .col-mode { width: 110px; }
                 .col-desc { width: 280px; }
                 .col-unit { width: 90px; }
-                .col-bit { width: 65px; text-align: center; }
+                .col-bit { width: 85px; text-align: center; }
                 .col-scale { width: 85px; }
                 .col-offset { width: 85px; }
                 .col-actions { width: 50px; text-align: center; border-right: none !important; }

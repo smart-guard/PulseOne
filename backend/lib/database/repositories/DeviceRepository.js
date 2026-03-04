@@ -1157,10 +1157,12 @@ class DeviceRepository extends BaseRepository {
             max_value: dp.max_value !== undefined ? dp.max_value : 0.0,
             log_enabled: (dp.is_log_enabled !== false && dp.log_enabled !== false) ? 1 : 0,
             log_interval_ms: dp.log_interval_ms !== undefined ? dp.log_interval_ms : 0,
+            log_deadband: dp.log_deadband !== undefined ? dp.log_deadband : 0.0,
             // 알람 필드
             alarm_enabled: (dp.is_alarm_enabled || dp.alarm_enabled) ? 1 : 0,
-            high_alarm_limit: dp.high_alarm_limit,
-            low_alarm_limit: dp.low_alarm_limit,
+            alarm_priority: dp.alarm_priority || 'medium',
+            high_alarm_limit: dp.high_alarm_limit !== undefined && dp.high_alarm_limit !== '' ? dp.high_alarm_limit : null,
+            low_alarm_limit: dp.low_alarm_limit !== undefined && dp.low_alarm_limit !== '' ? dp.low_alarm_limit : null,
             alarm_deadband: dp.alarm_deadband || 0.0,
             updated_at: this.knex.raw("datetime('now', 'localtime')")
         };

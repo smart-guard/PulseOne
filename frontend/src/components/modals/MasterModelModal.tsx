@@ -113,11 +113,18 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
     };
 
     // Helper: Overlap Calculation for Validation
+    // 비트 포인트(protocol_params에 bit_index/bit_start가 있는 경우)는
+    // 같은 레지스터를 여러 포인트가 공유하는 것이 정상이므로 겹침 체크에서 제외
     const overlapIndices = useMemo(() => {
         const intervals: { start: number; end: number; index: number }[] = [];
         dataPoints.forEach((p, idx) => {
             const addr = Number(p.address);
             if (!isNaN(addr) && p.address !== '' && p.address !== undefined) {
+                // 비트 포인트는 겹침 체크 제외 (같은 레지스터를 의도적으로 공유)
+                const pp = p.protocol_params as any;
+                if (pp && (pp.bit_index !== undefined || pp.bit_start !== undefined)) {
+                    return;
+                }
                 const size = (p.data_type === 'UINT32' || p.data_type === 'INT32' || p.data_type === 'FLOAT32') ? 2 : 1;
                 intervals.push({ start: addr, end: addr + size - 1, index: idx });
             }
@@ -476,6 +483,13 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
             <DeviceDataPointsBulkModal
                 isOpen={isBulkModalOpen}
                 onClose={() => setIsBulkModalOpen(false)}
+                existingAddresses={dataPoints.map(p => {
+                    const pp = p.protocol_params as any;
+                    if (pp?.bit_index !== undefined) return `${p.address}:bit${pp.bit_index}`;
+                    if (pp?.bit_start !== undefined) return `${p.address}:bit${pp.bit_start}-${pp.bit_end}`;
+                    return String(p.address);
+                }).filter(Boolean)}
+                protocolType={propsProtocols.find(p => p.id === formData.protocol_id)?.protocol_type}
                 onImport={(newPoints) => {
                     const formattedPoints = newPoints.map(p => ({
                         ...p,

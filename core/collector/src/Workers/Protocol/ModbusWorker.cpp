@@ -60,6 +60,12 @@ std::future<bool> ModbusWorker::Start() {
       ChangeState(WorkerState::RECONNECTING);
     }
 
+    // 포인트별 폴링 그룹 분류 (고속/저속)
+    {
+      std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
+      BuildPollingGroups(data_points_);
+    }
+
     // 폴링 스레드 시작
     polling_thread_running_ = true;
     polling_thread_ = std::make_unique<std::thread>(
@@ -254,86 +260,199 @@ bool ModbusWorker::InitializeModbusDriver() {
   return true;
 }
 
+// =============================================================================
+// BuildPollingGroups — data_points_를 두 그룹으로 분류
+//
+// 분류 기준:
+//   fast_points_: polling_interval_ms가 설정되어 있고 (> 0),
+//                 장치 기본 주기보다 짧은 포인트
+//                 → DB 기본값(1000ms)이 device_interval과 같으면 slow로 분류
+//
+//   slow_points_: 그 외 (장치 기본 주기로 폴링)
+// =============================================================================
+void ModbusWorker::BuildPollingGroups(const std::vector<DataPoint> &points) {
+  std::lock_guard<std::mutex> grp_lock(polling_groups_mutex_);
+  fast_points_.clear();
+  slow_points_.clear();
+
+  uint32_t device_interval = static_cast<uint32_t>(
+      device_info_.polling_interval_ms > 0 ? device_info_.polling_interval_ms
+                                           : 1000);
+
+  for (const auto &dp : points) {
+    if (!dp.is_enabled)
+      continue;
+
+    // 포인트에 유효한 개별 주기가 있고, 장치 기본 주기보다 짧을 때만 fast
+    if (dp.polling_interval_ms > 0 &&
+        dp.polling_interval_ms < device_interval) {
+      fast_points_.push_back(dp);
+    } else {
+      slow_points_.push_back(dp);
+    }
+  }
+
+  LogMessage(
+      LogLevel::INFO,
+      "[DualPolling] 분류 완료: 고속(fast)=" +
+          std::to_string(fast_points_.size()) + "포인트, 저속(slow)=" +
+          std::to_string(slow_points_.size()) + "포인트" +
+          (fast_points_.empty() ? " [fast 없음 → 단일 기본 주기로 운영]" : ""));
+}
+
+// =============================================================================
+// ReloadDataPoints — 런타임 포인트 재로드 시 fast/slow 그룹도 재분류
+//
+// BaseDeviceWorker::ReloadDataPoints는 data_points_만 교체하므로,
+// ModbusWorker에서 반드시 override하여 BuildPollingGroups를 재호출해야 함.
+// 재호출하지 않으면 fast_points_ / slow_points_가 이전 포인트 기준으로 남아
+// 잘못된 폴링 주기가 계속 적용됨.
+// =============================================================================
+void ModbusWorker::ReloadDataPoints(const std::vector<DataPoint> &new_points) {
+  // 1) BaseDeviceWorker: data_points_ 교체 + 락 처리
+  BaseDeviceWorker::ReloadDataPoints(new_points);
+
+  // 2) fast/slow 그룹 재분류 (data_points_mutex_ 보유 상태에서 호출)
+  {
+    std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
+    BuildPollingGroups(data_points_);
+  }
+
+  // 로그: polling_groups_mutex_ 보호
+  {
+    std::lock_guard<std::mutex> grp_lock(polling_groups_mutex_);
+    LogMessage(LogLevel::INFO,
+               "[DualPolling] ReloadDataPoints: fast=" +
+                   std::to_string(fast_points_.size()) +
+                   ", slow=" + std::to_string(slow_points_.size()));
+  }
+}
+
+// =============================================================================
+// PollingThreadFunction — 이중 폴링 루프
+//
+// 매 루프:
+//   1) fast_points_ 전체 읽기   (polling_interval_ms 기준 elapsed 체크)
+//   2) slow_loop_counter_가 slow_ratio에 도달하면 slow_points_ 읽기
+//
+// fast_interval  = 고속 포인트 중 가장 짧은 polling_interval_ms (없으면 장치
+// 기본값) slow_interval  = 장치 기본 polling_interval_ms (없으면 5000ms)
+// slow_ratio     = slow_interval / fast_interval  (정수 반올림)
+// =============================================================================
 void ModbusWorker::PollingThreadFunction() {
-  LogMessage(LogLevel::INFO, "Modbus Polling thread started (Optimized)");
+  LogMessage(LogLevel::INFO, "Modbus Polling thread started (Dual-Speed)");
+
+  // 장치 기본 폴링 주기
+  int device_interval_ms = device_info_.polling_interval_ms > 0
+                               ? device_info_.polling_interval_ms
+                               : 1000;
+
+  slow_loop_counter_ = 0;
 
   while (polling_thread_running_) {
-    auto start_time = system_clock::now();
+    auto loop_start = system_clock::now();
+
+    // ── 루프마다 fast/slow 상태 최신으로 읽기 (ReloadDataPoints 대응) ──────
+    uint32_t fast_interval_ms = static_cast<uint32_t>(device_interval_ms);
+    bool has_fast_group = false;
+    uint64_t slow_ratio = 1;
+    {
+      std::lock_guard<std::mutex> grp_lock(polling_groups_mutex_);
+      has_fast_group = !fast_points_.empty();
+      if (has_fast_group) {
+        for (const auto &fp : fast_points_) {
+          if (fp.polling_interval_ms > 0 &&
+              fp.polling_interval_ms < fast_interval_ms)
+            fast_interval_ms = fp.polling_interval_ms;
+        }
+        slow_ratio =
+            static_cast<uint64_t>(device_interval_ms) / fast_interval_ms;
+        if (slow_ratio < 1)
+          slow_ratio = 1;
+      }
+      // has_fast_group == false: slow_ratio=1, fast_interval_ms=device_interval
+    }
 
     if (GetState() == WorkerState::RUNNING && modbus_driver_ &&
         modbus_driver_->IsConnected()) {
-      std::vector<DataPoint> points_to_read;
-      {
-        std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
-        // Collect enabled points
-        for (const auto &dp : data_points_) {
-          if (dp.is_enabled)
-            points_to_read.push_back(dp);
+
+      // ── [1] fast 그룹 읽기 (fast 포인트가 있을 때만)
+      if (has_fast_group) {
+        std::vector<DataPoint> fast_to_read;
+        {
+          std::lock_guard<std::mutex> grp_lock(polling_groups_mutex_);
+          for (const auto &fp : fast_points_) {
+            if (fp.is_enabled)
+              fast_to_read.push_back(fp);
+          }
+        }
+        if (!fast_to_read.empty()) {
+          std::vector<TimestampedValue> results;
+          bool success = modbus_driver_->ReadValues(fast_to_read, results);
+          if (success && !results.empty()) {
+            SendValuesToPipelineWithLogging(results, "FastPolling", 0);
+            UpdateCommunicationResult(
+                true, "", 0,
+                duration_cast<milliseconds>(system_clock::now() - loop_start));
+          } else if (!success) {
+            HandleConnectionError("Fast-group Modbus polling failed");
+          }
         }
       }
 
-      if (!points_to_read.empty()) {
-        std::vector<TimestampedValue> results;
-        // Driver handles optimization (grouping/batching)
-        bool success = modbus_driver_->ReadValues(points_to_read, results);
+      // ── [2] slow 그룹 읽기 (slow_ratio 루프마다 1회)
+      ++slow_loop_counter_;
+      if (slow_loop_counter_ >= slow_ratio) {
+        slow_loop_counter_ = 0;
 
-        if (success) {
-          // packet_logging: COMMUNICATION 카테고리가 TRACE 이하면 기록
-          if (static_cast<int>(LogManager::getInstance().getCategoryLogLevel(
-                  DriverLogCategory::COMMUNICATION)) <=
-              static_cast<int>(LogLevel::TRACE)) {
-            for (const auto &tv : results) {
-              // RAW: point_id + raw_value (스케일 전), DECODED: scaled value +
-              // source
-              std::string raw_str = "point_id=" + std::to_string(tv.point_id) +
-                                    " raw=" + std::to_string(tv.raw_value);
-              std::string decoded_str = "value=";
-              std::visit(
-                  [&decoded_str](const auto &v) {
-                    using T = std::decay_t<decltype(v)>;
-                    if constexpr (std::is_same_v<T, bool>)
-                      decoded_str += (v ? "true" : "false");
-                    else if constexpr (std::is_same_v<T, std::string>)
-                      decoded_str += v;
-                    else
-                      decoded_str += std::to_string(v);
-                  },
-                  tv.value);
-              if (!tv.source.empty())
-                decoded_str += " name=" + tv.source;
-              LogManager::getInstance().logPacket("Modbus", device_info_.name,
-                                                  raw_str, decoded_str);
-            }
+        std::vector<DataPoint> slow_to_read;
+        {
+          std::lock_guard<std::mutex> grp_lock(polling_groups_mutex_);
+          for (const auto &sp : slow_points_) {
+            if (sp.is_enabled)
+              slow_to_read.push_back(sp);
           }
-          // Send to pipeline
-          if (!results.empty()) {
-            SendValuesToPipelineWithLogging(results, "Polling", 0);
-          }
-          UpdateCommunicationResult(
-              true, "", 0,
-              duration_cast<milliseconds>(system_clock::now() - start_time));
-        } else {
-          std::string err = "Failed to read values";
-          UpdateCommunicationResult(
-              false, err, -1,
-              duration_cast<milliseconds>(system_clock::now() - start_time));
+        }
 
-          // 🔥 연결 실패 시 BaseDeviceWorker의 재연결 로직 트리거
-          HandleConnectionError("Modbus polling failed: " + err);
+        // slow도 fast도 없으면 → 전체 data_points_ 폴링 (기존 동작 유지)
+        if (slow_to_read.empty() && !has_fast_group) {
+          std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
+          for (const auto &dp : data_points_) {
+            if (dp.is_enabled)
+              slow_to_read.push_back(dp);
+          }
+        }
+
+        if (!slow_to_read.empty()) {
+          auto slow_start = system_clock::now();
+          std::vector<TimestampedValue> results;
+          bool success = modbus_driver_->ReadValues(slow_to_read, results);
+          if (success && !results.empty()) {
+            SendValuesToPipelineWithLogging(results, "SlowPolling", 0);
+            LogMessage(LogLevel::DEBUG,
+                       "[DualPolling] Slow 읽기: " +
+                           std::to_string(results.size()) + "포인트, " +
+                           std::to_string(duration_cast<milliseconds>(
+                                              system_clock::now() - slow_start)
+                                              .count()) +
+                           "ms");
+          } else if (!success) {
+            HandleConnectionError("Slow-group Modbus polling failed");
+          }
         }
       }
+
     } else {
-      // Reconnection logic is handled by ReconnectionThread or
-      // EstablishConnection
+      // 연결 안 된 상태 — ReconnectionThread가 처리
     }
 
-    // Simple sleep for interval (Using device default or min interval)
-    // Ideally should respect per-point interval, but for simplification we poll
-    // all at lowest interval or loop.
-    int interval = device_info_.polling_interval_ms > 0
-                       ? device_info_.polling_interval_ms
-                       : 1000;
-    std::this_thread::sleep_for(milliseconds(interval));
+    // ── 루프 주기 맞추기
+    auto elapsed =
+        duration_cast<milliseconds>(system_clock::now() - loop_start);
+    auto sleep_ms = milliseconds(fast_interval_ms) - elapsed;
+    if (sleep_ms.count() > 0) {
+      std::this_thread::sleep_for(sleep_ms);
+    }
   }
 
   LogMessage(LogLevel::INFO, "Modbus Polling thread stopped");
@@ -394,8 +513,11 @@ bool ModbusWorker::ParseModbusAddress(const DataPoint &data_point,
     register_type = ModbusRegisterType::DISCRETE_INPUT;
     address = static_cast<uint16_t>(raw_address - 10001);
   } else {
-    register_type = ModbusRegisterType::COIL;
-    address = static_cast<uint16_t>(raw_address - 1);
+    // 소주소(1~9999): 기본값을 Holding Register(FC3)로 설정
+    // (이전: Coil(FC1). 산업 현장에서 HR이 압도적으로 많이 사용됨)
+    // Coil이 필요하면 UI에서 CO 선택 → address_string="CO:N" 으로 명시적 지정
+    register_type = ModbusRegisterType::HOLDING_REGISTER;
+    address = static_cast<uint16_t>(raw_address > 0 ? raw_address - 1 : 0);
   }
   return true;
 }
@@ -413,7 +535,7 @@ ModbusWorker::ConvertRegistersToValue(const std::vector<uint16_t> &registers,
   if (registers.empty())
     return 0.0;
 
-  // Bit Index support (0-15)
+  // Bit Index support (0-15): single bit extraction
   std::string bit_idx_str =
       GetPropertyValue(point.protocol_params, "bit_index", "");
   if (!bit_idx_str.empty()) {
@@ -424,6 +546,27 @@ ModbusWorker::ConvertRegistersToValue(const std::vector<uint16_t> &registers,
       }
     } catch (const std::exception &e) {
       // Ignore invalid bit_index
+    }
+  }
+
+  // Bit Range support (bit_start ~ bit_end): multi-bit extraction
+  // e.g. bit_start=0, bit_end=3  → extracts bits [3:0] as integer (0~15)
+  std::string bit_start_str =
+      GetPropertyValue(point.protocol_params, "bit_start", "");
+  std::string bit_end_str =
+      GetPropertyValue(point.protocol_params, "bit_end", "");
+  if (!bit_start_str.empty() && !bit_end_str.empty()) {
+    try {
+      int bit_start = std::stoi(bit_start_str);
+      int bit_end = std::stoi(bit_end_str);
+      if (bit_start >= 0 && bit_end < 16 && bit_start <= bit_end) {
+        int bit_count = bit_end - bit_start + 1;
+        uint16_t mask = static_cast<uint16_t>((1u << bit_count) - 1u);
+        uint16_t extracted = (registers[0] >> bit_start) & mask;
+        return static_cast<double>(extracted);
+      }
+    } catch (const std::exception &e) {
+      // Ignore invalid bit_start/bit_end
     }
   }
 

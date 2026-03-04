@@ -926,7 +926,7 @@ const Dashboard: React.FC = () => {
             marginBottom: '4px',
             letterSpacing: '-0.025em'
           }}>
-            Operations Dashboard
+            {t('dashboard:header.title')}
           </h1>
           <div style={{
             fontSize: '15px',
@@ -935,7 +935,7 @@ const Dashboard: React.FC = () => {
             alignItems: 'center',
             gap: '12px'
           }}>
-            <span>PulseOne Real-time Operations & Data Monitoring</span>
+            <span>{t('dashboard:header.subtitle')}</span>
             <span style={{
               padding: '4px 10px',
               borderRadius: '20px',

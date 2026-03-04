@@ -374,7 +374,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
-                <label>{t('dpModal2.bitIndex', { ns: 'devices' })}</label>
+                <label>{t('dpModal2.bitIndex', { ns: 'devices' })} <span style={{ color: '#94a3b8', fontSize: '11px' }}>단일 비트 (0~15)</span></label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.protocol_params?.bit_index ?? 'N/A'}</div>
                 ) : (
@@ -383,12 +383,15 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                     min="0"
                     max="15"
                     value={formData.protocol_params?.bit_index || ''}
+                    disabled={!!(formData.protocol_params?.bit_start !== undefined || formData.protocol_params?.bit_end !== undefined)}
                     onChange={(e) => {
                       const value = e.target.value;
                       const newParams = { ...formData.protocol_params };
                       if (value === '') {
-                        delete newParams.bit_index; // 빈 값이면 삭제
+                        delete newParams.bit_index;
                       } else {
+                        delete newParams.bit_start;
+                        delete newParams.bit_end;
                         newParams.bit_index = value;
                       }
                       updateField('protocol_params', newParams);
@@ -397,6 +400,55 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                   />
                 )}
               </div>
+
+              <div className="form-group">
+                <label>비트 묶음 (bit_start ~ bit_end) <span style={{ color: '#94a3b8', fontSize: '11px' }}>범위를 하나의 정수값으로</span></label>
+                {mode === 'view' ? (
+                  <div className="form-value">
+                    {dataPoint?.protocol_params?.bit_start !== undefined
+                      ? `bit${dataPoint.protocol_params.bit_start} ~ bit${dataPoint.protocol_params.bit_end} (0~${(1 << (Number(dataPoint.protocol_params.bit_end) - Number(dataPoint.protocol_params.bit_start) + 1)) - 1})`
+                      : 'N/A'}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      type="number" min="0" max="15"
+                      placeholder="시작 (0~15)"
+                      disabled={!!(formData.protocol_params?.bit_index)}
+                      value={formData.protocol_params?.bit_start ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const newParams = { ...formData.protocol_params };
+                        if (v === '') { delete newParams.bit_start; }
+                        else { delete newParams.bit_index; newParams.bit_start = v; }
+                        updateField('protocol_params', newParams);
+                      }}
+                      style={{ width: '50%' }}
+                    />
+                    <span>~</span>
+                    <input
+                      type="number" min="0" max="15"
+                      placeholder="끝 (0~15)"
+                      disabled={!!(formData.protocol_params?.bit_index)}
+                      value={formData.protocol_params?.bit_end ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const newParams = { ...formData.protocol_params };
+                        if (v === '') { delete newParams.bit_end; }
+                        else { delete newParams.bit_index; newParams.bit_end = v; }
+                        updateField('protocol_params', newParams);
+                      }}
+                      style={{ width: '50%' }}
+                    />
+                    {formData.protocol_params?.bit_start !== undefined && formData.protocol_params?.bit_end !== undefined && (
+                      <span style={{ fontSize: 10, color: '#7c3aed', whiteSpace: 'nowrap' }}>
+                        0~{(1 << (Number(formData.protocol_params.bit_end) - Number(formData.protocol_params.bit_start) + 1)) - 1}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
 
               <div className="form-group">
                 <label>{t('labels.accessMode', { ns: 'devices' })}</label>
