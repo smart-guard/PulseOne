@@ -71,9 +71,10 @@ bool EdgeServerRepository::save(EdgeServerEntity &entity) {
     bool success = db_layer.executeUpsert("edge_servers", data, primary_keys);
 
     if (success && entity.getId() <= 0) {
-      auto id_result = db_layer.executeQuery(SQL::Common::GET_LAST_INSERT_ID);
-      if (!id_result.empty()) {
-        entity.setId(std::stoi(id_result[0].at("id")));
+      // DB 타입별 자동 분기 (SQLite/PG/MySQL/MariaDB/MSSQL)
+      int64_t new_id = db_layer.getLastInsertId();
+      if (new_id > 0) {
+        entity.setId(static_cast<int>(new_id));
       }
     }
     return success;

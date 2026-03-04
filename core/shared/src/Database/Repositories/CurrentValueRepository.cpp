@@ -426,6 +426,19 @@ size_t CurrentValueRepository::saveBatch(
   if (entities.empty())
     return 0;
 
+  // SQL 이스케이프 헬퍼: ' → '' (SQLite 표준)
+  // MQTT 등 문자열 포인트 값에 홑따옴표가 포함돼도 SQL이 깨지지 않도록 방어
+  auto esc = [](const std::string &s) -> std::string {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+      if (c == '\'')
+        out += '\''; // ' → '' (두 번 삽입)
+      out += c;
+    }
+    return out;
+  };
+
   try {
     if (!ensureTableExists())
       return 0;
@@ -444,41 +457,33 @@ size_t CurrentValueRepository::saveBatch(
       auto params = entityToParams(entity);
 
       // INSERT OR REPLACE 쿼리 직접 생성 (executeBatch는 트랜잭션 없이 실행)
+      // 문자열 값에는 esc() 적용, 숫자 값(point_id 등)은 그대로 사용
       std::string q = "INSERT OR REPLACE INTO current_values ("
                       "point_id, current_value, raw_value, value_type, "
                       "quality_code, quality, value_timestamp, "
                       "read_count, write_count, error_count, updated_at"
-                      ") VALUES ("
-                      "'" +
+                      ") VALUES (" +
                       params["point_id"] +
+                      ", " // 숫자: 따옴표 없이
+                      "'" +
+                      esc(params["current_value"]) +
                       "', "
                       "'" +
-                      params["current_value"] +
+                      esc(params["raw_value"]) +
                       "', "
                       "'" +
-                      params["raw_value"] +
-                      "', "
-                      "'" +
-                      params["value_type"] +
-                      "', "
-                      "'" +
+                      esc(params["value_type"]) + "', " +
                       params["quality_code"] +
+                      ", " // 숫자
+                      "'" +
+                      esc(params["quality"]) +
                       "', "
                       "'" +
-                      params["quality"] +
-                      "', "
-                      "'" +
-                      params["value_timestamp"] +
-                      "', "
-                      "'" +
-                      params["read_count"] +
-                      "', "
-                      "'" +
-                      params["write_count"] +
-                      "', "
-                      "'" +
-                      params["error_count"] +
-                      "', "
+                      esc(params["value_timestamp"]) + "', " +
+                      params["read_count"] + ", "    // 숫자
+                      + params["write_count"] + ", " // 숫자
+                      + params["error_count"] +
+                      ", " // 숫자
                       "'" +
                       now_str +
                       "'"
@@ -555,7 +560,8 @@ int CurrentValueRepository::getTotalCount() {
 bool CurrentValueRepository::ensureTableExists() {
   try {
     DbLib::DatabaseAbstractionLayer db_layer;
-    return db_layer.executeNonQuery(SQL::CurrentValue::CREATE_TABLE);
+    // ✅ doesTableExist() + adaptDDL() 자동 처리 (MSSQL 중복 CREATE 방지)
+    return db_layer.executeCreateTable(SQL::CurrentValue::CREATE_TABLE);
 
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("ensureTableExists failed: " +

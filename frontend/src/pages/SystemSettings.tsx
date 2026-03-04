@@ -50,6 +50,7 @@ const initialSettings = {
     device_timeout: 5000, // ms
     retry_attempts: 3,
     influxdb_storage_interval: 0, // ms (0: 스캔 시 즉시 저장)
+    rdb_sync_interval: 60, // 초 (Redis→SQLite 아날로그 주기 동기화)
 
     packet_log_retention_hours: 24,
     virtual_point_calculation_interval: 500, // ms
@@ -373,6 +374,7 @@ const SystemSettings = () => {
               max_concurrent_devices: c.max_concurrent_connections ?? prev[SETTING_CATEGORIES.COLLECTION].max_concurrent_devices,
               device_timeout: c.device_response_timeout ?? prev[SETTING_CATEGORIES.COLLECTION].device_timeout,
               influxdb_storage_interval: c.influxdb_storage_interval ?? prev[SETTING_CATEGORIES.COLLECTION].influxdb_storage_interval,
+              rdb_sync_interval: c.rdb_sync_interval ?? prev[SETTING_CATEGORIES.COLLECTION].rdb_sync_interval,
             };
           }
 
@@ -425,6 +427,7 @@ const SystemSettings = () => {
             max_concurrent_connections: settings[SETTING_CATEGORIES.COLLECTION].max_concurrent_devices, // 프론트는 devices, 백엔드는 connections
             device_response_timeout: settings[SETTING_CATEGORIES.COLLECTION].device_timeout, // 프론트는 timeout, 백엔드는 response_timeout
             influxdb_storage_interval: settings[SETTING_CATEGORIES.COLLECTION].influxdb_storage_interval,
+            rdb_sync_interval: settings[SETTING_CATEGORIES.COLLECTION].rdb_sync_interval,
           }
         }),
       });
@@ -809,6 +812,16 @@ const SystemSettings = () => {
                     suffix="ms"
                     min={0}
                     max={3600000}
+                  />
+                  <InputField
+                    label={t('systemSettings:collection.rdbSyncInterval')}
+                    type="number"
+                    value={settings.collection.rdb_sync_interval}
+                    onChange={(value) => handleSettingChange('collection', 'rdb_sync_interval', value)}
+                    description={t('systemSettings:collection.rdbSyncIntervalDesc')}
+                    suffix="초"
+                    min={10}
+                    max={3600}
                   />
                 </div>
               )}

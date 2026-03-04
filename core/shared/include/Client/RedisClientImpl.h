@@ -69,6 +69,7 @@ public:
   int ttl(const std::string &key) override;
   int incr(const std::string &key, int increment = 1) override;
   StringList keys(const std::string &pattern) override;
+  StringList scan(const std::string &pattern, int count = 100) override;
   // =============================================================================
   // Hash 조작 (RedisClient 인터페이스 구현)
   // =============================================================================

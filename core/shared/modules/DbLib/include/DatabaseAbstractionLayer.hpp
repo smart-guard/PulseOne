@@ -180,11 +180,17 @@ public:
   std::string getCurrentTimestamp();
   std::string getGenericTimestamp();
 
+  // 🔥 DB별 마지막 INSERT ID 조회 (last_insert_rowid 대체)
+  // SQLite: last_insert_rowid(), PG: lastval(), MySQL: LAST_INSERT_ID(), MSSQL:
+  // SCOPE_IDENTITY()
+  int64_t getLastInsertId();
+
 private:
   void initializeDialect();
   SQLStatementType detectStatementType(const std::string &query);
 
   std::string adaptQuery(const std::string &query);
+  std::string adaptDDL(const std::string &query); // CREATE TABLE 등 DDL 변환
   std::string adaptUpsertQuery(const std::string &query);
   std::string adaptBooleanValues(const std::string &query);
   std::string adaptTimestampFunctions(const std::string &query);

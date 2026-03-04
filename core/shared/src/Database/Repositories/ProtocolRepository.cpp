@@ -126,10 +126,10 @@ bool ProtocolRepository::save(ProtocolEntity &entity) {
     if (success) {
       // 새로 생성된 경우 ID 조회
       if (entity.getId() <= 0) {
-        auto id_result =
-            db_layer.executeQuery(SQL::Protocol::GET_LAST_INSERT_ID);
-        if (!id_result.empty()) {
-          entity.setId(std::stoi(id_result[0].at("id")));
+        // DB 타입별 자동 분기 (SQLite/PG/MySQL/MariaDB/MSSQL)
+        int64_t new_id = db_layer.getLastInsertId();
+        if (new_id > 0) {
+          entity.setId(static_cast<int>(new_id));
         }
       }
 

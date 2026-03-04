@@ -130,6 +130,15 @@ public:
    * @warning 프로덕션 환경에서는 SCAN 사용 권장
    */
   virtual StringList keys(const std::string &pattern) = 0;
+
+  /**
+   * @brief 패턴으로 키 검색 (SCAN 명령 - 논블로킹)
+   * @param pattern 검색 패턴
+   * @param count 한 번에 반환할 힌트 수 (기본 100)
+   * @return 매칭되는 키 리스트 (전체 순회 완료 후 반환)
+   * @note KEYS와 달리 서버를 블로킹하지 않음. 30K+ 키에도 안전.
+   */
+  virtual StringList scan(const std::string &pattern, int count = 100) = 0;
   /**
    * @brief 정수 값 증가
    * @param key 키

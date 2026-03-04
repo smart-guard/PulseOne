@@ -228,6 +228,12 @@ public:
   void SetInfluxDbStorageInterval(int interval_ms) {
     influxdb_storage_interval_ms_.store(interval_ms);
   }
+  // RDB 주기 저장 인터벌 설정 (기본 60초)
+  void SetRdbSyncInterval(int interval_seconds) {
+    rdb_sync_interval_s_.store(interval_seconds);
+  }
+  // 종료 전 모든 Redis current_values → SQLite 즉시 동기화
+  void FlushCurrentValuesToSQLite();
 
   // IPersistenceQueue Implementation
   void
@@ -263,6 +269,8 @@ private:
   void ProcessInfluxTasks(const std::vector<PersistenceTask> &influx_tasks);
   void
   ProcessCommStatsTasks(const std::vector<PersistenceTask> &comm_stats_tasks);
+  // 주기 Redis→SQLite 동기화 스레드 루프
+  void RdbSyncThreadLoop();
 
   // Pipeline
   std::vector<std::unique_ptr<IPipelineStage>> pipeline_stages_;
@@ -301,13 +309,18 @@ private:
 
   mutable std::mutex processing_mutex_;
   mutable std::mutex rdb_save_mutex_;
+  // 🔒 SQLite 직렬화: ProcessRDBTasks와 FlushCurrentValuesToSQLite가
+  // 동시에 executeBatch()  호출 시 SQLITE_BUSY 방지
+  mutable std::mutex sqlite_write_mutex_;
   std::unordered_map<int, std::chrono::steady_clock::time_point>
       last_rdb_save_times_;
   mutable std::mutex influxd_save_mutex_;
   std::unordered_map<int, std::chrono::steady_clock::time_point>
       last_influxd_save_times_;
   std::atomic<int> influxdb_storage_interval_ms_{0};
-
+  // RDB 주기 동기화: Redis 전체 스캔 → SQLite saveBatch()
+  std::atomic<int> rdb_sync_interval_s_{60}; // 기본 60초
+  std::thread rdb_sync_thread_;
   std::chrono::steady_clock::time_point start_time_;
 };
 

@@ -143,16 +143,13 @@ bool AlarmOccurrenceRepository::save(AlarmOccurrenceEntity &entity) {
     bool success = db_layer.executeNonQuery(query);
 
     if (success) {
-      auto id_results = db_layer.executeQuery(
-          PulseOne::Database::SQL::Common::GET_LAST_INSERT_ID);
-      if (!id_results.empty() && id_results[0].count("id")) {
-        auto last_id = std::stoll(id_results[0].at("id"));
-        if (last_id > 0) {
-          entity.setId(static_cast<int>(last_id));
-          entity.markSaved();
-          if (isCacheEnabled()) {
-            cacheEntity(entity);
-          }
+      // DB 타입별 자동 분기 (SQLite/PG/MySQL/MariaDB/MSSQL)
+      int64_t new_id = db_layer.getLastInsertId();
+      if (new_id > 0) {
+        entity.setId(static_cast<int>(new_id));
+        entity.markSaved();
+        if (isCacheEnabled()) {
+          cacheEntity(entity);
         }
       }
     }
@@ -741,8 +738,8 @@ bool AlarmOccurrenceRepository::clear(int64_t occurrence_id, int cleared_by,
 
     // SQL::AlarmOccurrence::CLEAR 쿼리 사용
     // UPDATE alarm_occurrences SET state = 'cleared', cleared_time =
-    // (datetime('now', 'localtime')), cleared_value = ?, clear_comment = ?, cleared_by = ?,
-    // updated_at = (datetime('now', 'localtime')) WHERE id = ?
+    // (datetime('now', 'localtime')), cleared_value = ?, clear_comment = ?,
+    // cleared_by = ?, updated_at = (datetime('now', 'localtime')) WHERE id = ?
     std::string query = SQL::AlarmOccurrence::CLEAR;
     query =
         RepositoryHelpers::replaceParameter(query, escapeString(cleared_value));
@@ -1275,16 +1272,9 @@ AlarmOccurrenceRepository::entityToParams(const AlarmOccurrenceEntity &entity) {
 bool AlarmOccurrenceRepository::ensureTableExists() {
   try {
     DbLib::DatabaseAbstractionLayer db_layer;
-
-    std::string check_query = "SELECT name FROM sqlite_master WHERE "
-                              "type='table' AND name='alarm_occurrences'";
-    auto results = db_layer.executeQuery(check_query);
-
-    if (!results.empty()) {
-      return true;
-    }
-
-    return db_layer.executeNonQuery(SQL::AlarmOccurrence::CREATE_TABLE);
+    // ✅ executeCreateTable() 내부에서 doesTableExist() + adaptDDL() 자동 처리
+    // (SQLite: sqlite_master, PG: information_schema, MSSQL: sys.tables)
+    return db_layer.executeCreateTable(SQL::AlarmOccurrence::CREATE_TABLE);
   } catch (const std::exception &e) {
     LogManager::getInstance().log(
         "AlarmOccurrenceRepository", LogLevel::LOG_ERROR,

@@ -12,6 +12,8 @@
 #include "Database/Repositories/SystemSettingsRepository.h"
 #include "Database/Repositories/TenantRepository.h"
 #include "Database/RepositoryFactory.h"
+#include "Database/RuntimeSQLQueries.h"
+using namespace PulseOne::Database::SQL;
 #include "DatabaseManager.hpp"
 #include "Drivers/Common/PluginLoader.h"
 #include "Logging/LogManager.h"
@@ -378,8 +380,19 @@ bool CollectorApplication::Initialize() {
         int influx_interval = std::stoi(
             settings_repo->getValue("influxdb_storage_interval", "0"));
         data_processing_service_->SetInfluxDbStorageInterval(influx_interval);
+
+        // Redis→SQLite 아날로그 주기 저장 인터벌 (기본 60초)
+        int rdb_interval =
+            std::stoi(settings_repo->getValue("rdb_sync_interval", "60"));
+        data_processing_service_->SetRdbSyncInterval(rdb_interval);
+
+        LogManager::getInstance().Info(
+            "⚙️ Data collection settings: influx_interval=" +
+            std::to_string(influx_interval) +
+            "ms, rdb_sync_interval=" + std::to_string(rdb_interval) + "s");
       } catch (...) {
         data_processing_service_->SetInfluxDbStorageInterval(0);
+        data_processing_service_->SetRdbSyncInterval(60);
       }
 
       if (!data_processing_service_->Start()) {
@@ -500,12 +513,9 @@ int CollectorApplication::ResolveCollectorId() {
   if (explicit_id > 0) {
     LogManager::getInstance().Info("🆔 Using explicit Collector ID: " +
                                    std::to_string(explicit_id));
-    // Claim the slot with instance_key for consistency
-    std::string update_query =
-        "UPDATE edge_servers SET instance_key = '" + instance_key +
-        "', last_seen = (datetime('now', 'localtime')) WHERE id = " +
-        std::to_string(explicit_id) + " AND server_type = 'collector'";
-    db_mgr.executeNonQuery(update_query);
+    // ✅ RuntimeSQLQueries::EdgeServer::CLAIM_BY_ID
+    db_mgr.executeNonQuery(
+        Runtime::EdgeServer::CLAIM_BY_ID(instance_key, explicit_id));
     config.setCollectorId(explicit_id);
     return explicit_id;
   }
@@ -516,9 +526,9 @@ int CollectorApplication::ResolveCollectorId() {
 
   // 2. Check if already claimed
   std::vector<std::vector<std::string>> results;
+  // ✅ RuntimeSQLQueries::EdgeServer::FIND_BY_INSTANCE_KEY
   std::string find_query =
-      "SELECT id FROM edge_servers WHERE instance_key = '" + instance_key +
-      "' AND server_type = 'collector' LIMIT 1";
+      Runtime::EdgeServer::FIND_BY_INSTANCE_KEY(instance_key);
   if (db_mgr.executeQuery(find_query, results) && !results.empty()) {
     int id = std::stoi(results[0][0]);
     LogManager::getInstance().Info(
@@ -529,16 +539,9 @@ int CollectorApplication::ResolveCollectorId() {
 
   // 3. Try to claim an available slot (instance_key IS NULL or stale heartbeat
   // > 5 min)
-  std::string claim_query =
-      "UPDATE edge_servers SET instance_key = '" + instance_key +
-      "', last_seen = (datetime('now', 'localtime')) "
-      "WHERE id = (SELECT id FROM edge_servers WHERE server_type = 'collector' "
-      "AND ((instance_key IS NULL OR "
-      "instance_key = '') "
-      "OR (last_heartbeat < (datetime('now', 'localtime')) - INTERVAL '5 minutes')) LIMIT "
-      "1)";
-
-  if (db_mgr.executeNonQuery(claim_query)) {
+  // ✅ RuntimeSQLQueries::EdgeServer::CLAIM_STALE_SLOT
+  if (db_mgr.executeNonQuery(
+          Runtime::EdgeServer::CLAIM_STALE_SLOT(instance_key))) {
     // Re-check which ID we got
     if (db_mgr.executeQuery(find_query, results) && !results.empty()) {
       int id = std::stoi(results[0][0]);
@@ -822,12 +825,9 @@ void CollectorApplication::UpdateHeartbeat() {
       return;
 
     auto &db_mgr = DbLib::DatabaseManager::getInstance();
-    std::string query =
-        "UPDATE edge_servers SET last_seen = (datetime('now', 'localtime')), "
-        "last_heartbeat = (datetime('now', 'localtime')) WHERE id = " +
-        std::to_string(collector_id);
-
-    db_mgr.executeNonQuery(query);
+    // ✅ RuntimeSQLQueries::EdgeServer::UPDATE_HEARTBEAT
+    db_mgr.executeNonQuery(
+        Runtime::EdgeServer::UPDATE_HEARTBEAT(collector_id));
 
     // Redis 하트비트 추가
     auto redis = PulseOne::Utils::RedisManager::getInstance().getClient();

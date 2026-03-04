@@ -146,11 +146,10 @@ bool AlarmRuleRepository::save(AlarmRuleEntity &entity) {
     bool success = db_layer.executeNonQuery(query);
 
     if (success) {
-      // 새로 생성된 ID 조회
-      auto id_results = db_layer.executeQuery(SQL::Common::GET_LAST_INSERT_ID);
-      if (!id_results.empty() &&
-          id_results[0].find("id") != id_results[0].end()) {
-        entity.setId(std::stoll(id_results[0].at("id")));
+      // DB 타입별 자동 분기 (SQLite/PG/MySQL/MariaDB/MSSQL)
+      int64_t new_id = db_layer.getLastInsertId();
+      if (new_id > 0) {
+        entity.setId(static_cast<int>(new_id));
       }
 
       LogManager::getInstance().log("AlarmRuleRepository", LogLevel::INFO,

@@ -76,6 +76,7 @@ INSERT INTO schema_versions VALUES(3,'2.1.0','2026-01-29 09:38:43','Complete Pul
 -- Table: system_settings
 INSERT INTO system_settings VALUES(1,'backup.auto_enabled','false',NULL,'general','string',0,0,NULL,NULL,NULL,NULL,1,1770072789924);
 INSERT INTO system_settings VALUES(5,'data_collection.influxdb_storage_interval','0',NULL,'collection','integer',0,0,NULL,NULL,NULL,NULL,1,1770072789931);
+INSERT INTO system_settings VALUES(6,'data_collection.rdb_sync_interval','60',NULL,'collection','integer',0,0,NULL,NULL,NULL,NULL,1,1770072789932);
 INSERT INTO system_settings VALUES(6,'collection.max_concurrent_connections','20',NULL,'collection','integer',0,0,NULL,NULL,NULL,NULL,1,1770072789931);
 INSERT INTO system_settings VALUES(7,'collection.device_response_timeout','3000',NULL,'collection','integer',0,0,NULL,NULL,NULL,NULL,1,1770072789931);
 INSERT INTO system_settings VALUES(2,'backup.schedule_time','02:00',NULL,'general','string',0,0,NULL,NULL,NULL,NULL,1,1770072789931);

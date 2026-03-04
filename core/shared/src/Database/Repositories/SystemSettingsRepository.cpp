@@ -1,11 +1,21 @@
+// =============================================================================
+// core/shared/src/Database/Repositories/SystemSettingsRepository.cpp
+// 인라인 SQL → SQL::SystemSettings:: 헤더 상수 참조로 교체
+// 🔧 NOW() 버그 수정: datetime('now', 'localtime') → adaptQuery()가 DB별 변환
+// =============================================================================
+
 #include "Database/Repositories/SystemSettingsRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
+#include "Database/SQLQueries.h"
 #include "DatabaseAbstractionLayer.hpp"
 #include <sstream>
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
+
+// SQL 네임스페이스 단축
+namespace SS = PulseOne::Database::SQL::SystemSettings;
 
 SystemSettingsRepository::SystemSettingsRepository()
     : IRepository<SystemSettingsEntity>("SystemSettingsRepository") {}
@@ -16,8 +26,8 @@ SystemSettingsRepository::SystemSettingsRepository()
 std::vector<SystemSettingsEntity> SystemSettingsRepository::findAll() {
   try {
     DbLib::DatabaseAbstractionLayer db;
-    auto results = db.executeQuery("SELECT id, key_name, value, category FROM "
-                                   "system_settings ORDER BY key_name ASC");
+    // ✅ SQL::SystemSettings::FIND_ALL
+    auto results = db.executeQuery(SS::FIND_ALL);
     return mapResultToEntities(results);
   } catch (const std::exception &e) {
     logger_->Error("SystemSettingsRepository::findAll failed: " +
@@ -27,15 +37,13 @@ std::vector<SystemSettingsEntity> SystemSettingsRepository::findAll() {
 }
 
 // -----------------------------------------------------------------------------
-// findById (id 컬럼 기준)
+// findById
 // -----------------------------------------------------------------------------
 std::optional<SystemSettingsEntity> SystemSettingsRepository::findById(int id) {
   try {
     DbLib::DatabaseAbstractionLayer db;
-    std::string query = "SELECT id, key_name, value, category FROM "
-                        "system_settings WHERE id = " +
-                        std::to_string(id);
-    auto results = db.executeQuery(query);
+    // ✅ SQL::SystemSettings::FIND_BY_ID
+    auto results = db.executeQuery(SS::FIND_BY_ID(id));
     if (!results.empty())
       return mapRowToEntity(results[0]);
     return std::nullopt;
@@ -53,10 +61,8 @@ std::optional<SystemSettingsEntity>
 SystemSettingsRepository::findByKey(const std::string &key) {
   try {
     DbLib::DatabaseAbstractionLayer db;
-    std::string query = "SELECT id, key_name, value, category FROM "
-                        "system_settings WHERE key_name = '" +
-                        key + "'";
-    auto results = db.executeQuery(query);
+    // ✅ SQL::SystemSettings::FIND_BY_KEY
+    auto results = db.executeQuery(SS::FIND_BY_KEY(key));
     if (!results.empty())
       return mapRowToEntity(results[0]);
     return std::nullopt;
@@ -81,27 +87,21 @@ SystemSettingsRepository::getValue(const std::string &key,
 
 // -----------------------------------------------------------------------------
 // updateValue — upsert (없으면 INSERT, 있으면 UPDATE)
+// 🔧 NOW() → datetime('now', 'localtime') 수정
 // -----------------------------------------------------------------------------
 bool SystemSettingsRepository::updateValue(const std::string &key,
                                            const std::string &value) {
   try {
     DbLib::DatabaseAbstractionLayer db;
 
-    // 존재 여부 확인
     auto existing = findByKey(key);
 
     if (existing.has_value()) {
-      // UPDATE
-      std::string query = "UPDATE system_settings SET value = '" + value +
-                          "', updated_at = NOW() WHERE key_name = '" + key +
-                          "'";
-      return db.executeNonQuery(query);
+      // ✅ SQL::SystemSettings::UPDATE_VALUE (NOW() 버그 수정됨)
+      return db.executeNonQuery(SS::UPDATE_VALUE(key, value));
     } else {
-      // INSERT
-      std::string query = "INSERT INTO system_settings (key_name, value, "
-                          "updated_at) VALUES ('" +
-                          key + "', '" + value + "', NOW())";
-      return db.executeNonQuery(query);
+      // ✅ SQL::SystemSettings::INSERT_VALUE
+      return db.executeNonQuery(SS::INSERT_VALUE(key, value));
     }
   } catch (const std::exception &e) {
     logger_->Error("SystemSettingsRepository::updateValue failed: " +
@@ -124,8 +124,8 @@ bool SystemSettingsRepository::update(const SystemSettingsEntity &entity) {
 bool SystemSettingsRepository::deleteById(int id) {
   try {
     DbLib::DatabaseAbstractionLayer db;
-    return db.executeNonQuery("DELETE FROM system_settings WHERE id = " +
-                              std::to_string(id));
+    // ✅ SQL::SystemSettings::DELETE_BY_ID
+    return db.executeNonQuery(SS::DELETE_BY_ID(id));
   } catch (const std::exception &e) {
     logger_->Error("SystemSettingsRepository::deleteById failed: " +
                    std::string(e.what()));
@@ -136,9 +136,8 @@ bool SystemSettingsRepository::deleteById(int id) {
 bool SystemSettingsRepository::exists(int id) {
   try {
     DbLib::DatabaseAbstractionLayer db;
-    auto results = db.executeQuery(
-        "SELECT COUNT(*) as count FROM system_settings WHERE id = " +
-        std::to_string(id));
+    // ✅ SQL::SystemSettings::COUNT_BY_ID
+    auto results = db.executeQuery(SS::COUNT_BY_ID(id));
     if (!results.empty())
       return std::stoi(results[0].at("count")) > 0;
     return false;
@@ -150,7 +149,7 @@ bool SystemSettingsRepository::exists(int id) {
 }
 
 // -----------------------------------------------------------------------------
-// mapRowToEntity
+// mapRowToEntity / mapResultToEntities
 // -----------------------------------------------------------------------------
 SystemSettingsEntity SystemSettingsRepository::mapRowToEntity(
     const std::map<std::string, std::string> &row) {

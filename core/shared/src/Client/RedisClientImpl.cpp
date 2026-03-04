@@ -285,6 +285,48 @@ RedisClient::StringList RedisClientImpl::keys(const std::string &pattern) {
       StringList{});
 }
 
+// SCAN: 논블로킹 커서 기반 키 순회 (프로덕션 안전, 30K+ 키 지원)
+RedisClient::StringList RedisClientImpl::scan(const std::string &pattern,
+                                              int count) {
+  return executeWithRetry<StringList>(
+      [this, &pattern, count]() {
+        StringList all_keys;
+#ifdef HAVE_REDIS
+        long long cursor = 0;
+        do {
+          redisReply *reply = executeCommandSafe(
+              "SCAN %lld MATCH %s COUNT %d", cursor, pattern.c_str(), count);
+          if (!reply)
+            break;
+
+          if (reply->type == REDIS_REPLY_ARRAY && reply->elements == 2) {
+            // 첫 번째 요소: 다음 커서 (문자열)
+            if (reply->element[0] && reply->element[0]->str)
+              cursor = std::stoll(reply->element[0]->str);
+            else
+              cursor = 0;
+
+            // 두 번째 요소: 이번 배치 키 목록
+            if (reply->element[1]) {
+              StringList batch = replyToStringList(reply->element[1]);
+              all_keys.insert(all_keys.end(), batch.begin(), batch.end());
+            }
+          } else {
+            freeReplyObject(reply);
+            break;
+          }
+          freeReplyObject(reply);
+        } while (cursor != 0);
+#else
+        logInfo("SCAN " + pattern + " (시뮬레이션)");
+        all_keys.push_back("point:1:current");
+        all_keys.push_back("point:2:current");
+#endif
+        return all_keys;
+      },
+      StringList{});
+}
+
 bool RedisClientImpl::expire(const std::string &key, int seconds) {
   return executeWithRetry<bool>(
       [this, &key, seconds]() {

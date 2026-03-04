@@ -881,12 +881,11 @@ int DataPointRepository::saveBulk(std::vector<DataPointEntity> &entities) {
       if (success) {
         saved_count++;
 
-        // 새로 생성된 ID 조회
+        // 새로 생성된 ID 조회 (DB 타입별 자동 분기)
         if (entity.getId() <= 0) {
-          auto results =
-              db_layer.executeQuery("SELECT last_insert_rowid() as id");
-          if (!results.empty()) {
-            entity.setId(std::stoi(results[0].at("id")));
+          int64_t new_id = db_layer.getLastInsertId();
+          if (new_id > 0) {
+            entity.setId(static_cast<int>(new_id));
           }
         }
       }

@@ -126,6 +126,7 @@ router.get('/data-collection-settings', async (req, res) => {
             max_concurrent_connections: parseInt(await repo.getValue('max_concurrent_connections', '20'), 10),
             device_response_timeout: parseInt(await repo.getValue('device_response_timeout', '3000'), 10),
             influxdb_storage_interval: parseInt(await repo.getValue('influxdb_storage_interval', '0'), 10),
+            rdb_sync_interval: parseInt(await repo.getValue('rdb_sync_interval', '60'), 10),
         };
         res.json({ success: true, data: settings });
     } catch (error) {
@@ -267,7 +268,8 @@ router.put('/settings', async (req, res) => {
             }
 
             // 기타 data_collection 설정은 DB에만 저장
-            const dcKeys = ['default_polling_interval', 'max_concurrent_connections', 'device_response_timeout', 'influxdb_storage_interval'];
+            const dcKeys = ['default_polling_interval', 'max_concurrent_connections', 'device_response_timeout', 'influxdb_storage_interval', 'rdb_sync_interval'];
+
             for (const key of dcKeys) {
                 if (data_collection[key] !== undefined) {
                     await saveToDb(repo, key, data_collection[key]);

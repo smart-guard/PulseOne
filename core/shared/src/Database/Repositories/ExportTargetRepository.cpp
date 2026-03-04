@@ -157,10 +157,10 @@ bool ExportTargetRepository::save(ExportTargetEntity &entity) {
     bool success = db_layer.executeNonQuery(query);
 
     if (success) {
-      // 생성된 ID 가져오기
-      auto results = db_layer.executeQuery("SELECT last_insert_rowid() as id");
-      if (!results.empty() && results[0].find("id") != results[0].end()) {
-        entity.setId(std::stoi(results[0].at("id")));
+      // 생성된 ID 가져오기 (DB 타입별 자동 분기)
+      int64_t new_id = db_layer.getLastInsertId();
+      if (new_id > 0) {
+        entity.setId(static_cast<int>(new_id));
       }
     }
 

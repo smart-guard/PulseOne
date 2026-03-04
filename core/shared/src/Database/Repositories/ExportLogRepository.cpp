@@ -775,9 +775,10 @@ bool ExportLogRepository::save(ExportLogEntity &entity) {
     bool success = db_layer.executeNonQuery(query);
 
     if (success) {
-      auto results = db_layer.executeQuery("SELECT last_insert_rowid() as id");
-      if (!results.empty() && results[0].find("id") != results[0].end()) {
-        entity.setId(std::stoi(results[0].at("id")));
+      // DB 타입별 자동 분기 (SQLite/PG/MySQL/MariaDB/MSSQL)
+      int64_t new_id = db_layer.getLastInsertId();
+      if (new_id > 0) {
+        entity.setId(static_cast<int>(new_id));
       }
     }
 
@@ -1845,7 +1846,9 @@ ExportLogRepository::entityToParams(const ExportLogEntity &entity) {
 bool ExportLogRepository::ensureTableExists() {
   try {
     DbLib::DatabaseAbstractionLayer db_layer;
-    bool table_created = db_layer.executeNonQuery(SQL::ExportLog::CREATE_TABLE);
+    // ✅ doesTableExist() + adaptDDL() 자동 처리 (MSSQL 중복 CREATE 방지)
+    bool table_created =
+        db_layer.executeCreateTable(SQL::ExportLog::CREATE_TABLE);
     bool indexes_created =
         db_layer.executeNonQuery(SQL::ExportLog::CREATE_INDEXES);
     return table_created && indexes_created;

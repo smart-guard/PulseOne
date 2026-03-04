@@ -47,7 +47,8 @@ const std::string GET_LAST_INSERT_ID_POSTGRES = "SELECT lastval() as id";
 const std::string GET_LAST_INSERT_ID_MYSQL = "SELECT LAST_INSERT_ID() as id";
 
 // 🔥 현재 시간 조회
-const std::string GET_CURRENT_TIMESTAMP = "SELECT datetime('now', 'localtime') as timestamp";
+const std::string GET_CURRENT_TIMESTAMP =
+    "SELECT datetime('now', 'localtime') as timestamp";
 
 // 🔥 데이터베이스 정보 조회
 const std::string GET_DATABASE_VERSION = "SELECT sqlite_version() as version";
@@ -1598,6 +1599,120 @@ const std::string CREATE_TABLE = R"(
         )
     )";
 } // namespace EdgeServer
+
+// =============================================================================
+// 🗓️ DeviceSchedule — device_schedules 테이블 CRUD (DeviceScheduleRepository)
+// =============================================================================
+namespace DeviceSchedule {
+
+const std::string SELECT_COLUMNS =
+    "SELECT id, device_id, point_id, schedule_type, schedule_data, "
+    "is_synced, last_sync_time, created_at, updated_at "
+    "FROM device_schedules";
+
+const std::string FIND_ALL = SELECT_COLUMNS;
+
+const std::string FIND_PENDING_SYNC = SELECT_COLUMNS + " WHERE is_synced = 0";
+
+// 파라미터 포함 쿼리 (id/device_id 값으로 조립)
+inline std::string FIND_BY_ID(int id) {
+  return SELECT_COLUMNS + " WHERE id = " + std::to_string(id);
+}
+
+inline std::string FIND_BY_DEVICE_ID(int device_id) {
+  return SELECT_COLUMNS + " WHERE device_id = " + std::to_string(device_id);
+}
+
+inline std::string FIND_PENDING_BY_DEVICE(int device_id) {
+  return SELECT_COLUMNS +
+         " WHERE is_synced = 0 AND device_id = " + std::to_string(device_id);
+}
+
+// device_id, point_id(nullable), schedule_type, schedule_data, is_synced
+inline std::string INSERT(int device_id, const std::string &point_id_or_null,
+                          const std::string &schedule_type,
+                          const std::string &schedule_data, bool is_synced) {
+  return "INSERT INTO device_schedules "
+         "(device_id, point_id, schedule_type, schedule_data, is_synced) "
+         "VALUES (" +
+         std::to_string(device_id) + ", " + point_id_or_null + ", '" +
+         schedule_type + "', '" + schedule_data + "', " +
+         (is_synced ? "1" : "0") + ")";
+}
+
+inline std::string UPDATE(int id, int device_id,
+                          const std::string &point_id_or_null,
+                          const std::string &schedule_type,
+                          const std::string &schedule_data, bool is_synced) {
+  return "UPDATE device_schedules SET "
+         "device_id = " +
+         std::to_string(device_id) + ", point_id = " + point_id_or_null +
+         ", schedule_type = '" + schedule_type + "', schedule_data = '" +
+         schedule_data + "', is_synced = " + (is_synced ? "1" : "0") +
+         ", updated_at = (datetime('now', 'localtime')) "
+         "WHERE id = " +
+         std::to_string(id);
+}
+
+inline std::string DELETE_BY_ID(int id) {
+  return "DELETE FROM device_schedules WHERE id = " + std::to_string(id);
+}
+
+// is_synced = 1, last_sync_time = now 업데이트
+inline std::string MARK_SYNCED(int id) {
+  return "UPDATE device_schedules SET is_synced = 1, "
+         "last_sync_time = (datetime('now', 'localtime')) "
+         "WHERE id = " +
+         std::to_string(id);
+}
+
+} // namespace DeviceSchedule
+
+// =============================================================================
+// ⚙️ SystemSettings — system_settings 테이블 CRUD (SystemSettingsRepository)
+// =============================================================================
+namespace SystemSettings {
+
+const std::string SELECT_COLUMNS =
+    "SELECT id, key_name, value, category FROM system_settings";
+
+const std::string FIND_ALL = SELECT_COLUMNS + " ORDER BY key_name ASC";
+
+inline std::string FIND_BY_ID(int id) {
+  return SELECT_COLUMNS + " WHERE id = " + std::to_string(id);
+}
+
+inline std::string FIND_BY_KEY(const std::string &key) {
+  return SELECT_COLUMNS + " WHERE key_name = '" + key + "'";
+}
+
+inline std::string COUNT_BY_ID(int id) {
+  return "SELECT COUNT(*) as count FROM system_settings WHERE id = " +
+         std::to_string(id);
+}
+
+// 🔧 NOW() → datetime('now', 'localtime') — adaptQuery()가 DB별 자동 변환
+// (SQLite: datetime, PG: NOW(), MySQL: NOW() 등으로 각각 치환됨)
+inline std::string UPDATE_VALUE(const std::string &key,
+                                const std::string &value) {
+  return "UPDATE system_settings SET value = '" + value +
+         "', updated_at = (datetime('now', 'localtime')) "
+         "WHERE key_name = '" +
+         key + "'";
+}
+
+inline std::string INSERT_VALUE(const std::string &key,
+                                const std::string &value) {
+  return "INSERT INTO system_settings (key_name, value, updated_at) "
+         "VALUES ('" +
+         key + "', '" + value + "', (datetime('now', 'localtime')))";
+}
+
+inline std::string DELETE_BY_ID(int id) {
+  return "DELETE FROM system_settings WHERE id = " + std::to_string(id);
+}
+
+} // namespace SystemSettings
 
 } // namespace SQL
 } // namespace Database

@@ -180,8 +180,12 @@ std::string DatabaseAbstractionLayer::adaptQuery(const std::string &query) {
   std::string adapted = query;
   SQLStatementType stmt_type = detectStatementType(query);
 
-  if (stmt_type == SQLStatementType::DDL ||
-      stmt_type == SQLStatementType::DCL ||
+  if (stmt_type == SQLStatementType::DDL) {
+    // DDL도 DB별 문법으로 변환 (AUTOINCREMENT, datetime 기본값 등)
+    return adaptDDL(adapted);
+  }
+
+  if (stmt_type == SQLStatementType::DCL ||
       stmt_type == SQLStatementType::TCL) {
     return adapted;
   }
@@ -195,6 +199,123 @@ std::string DatabaseAbstractionLayer::adaptQuery(const std::string &query) {
   }
 
   return adapted;
+}
+
+// =============================================================================
+// 🔥 DDL 변환: CREATE TABLE 등 SQLite 전용 문법 → 각 DB 방언으로 자동 변환
+// =============================================================================
+std::string DatabaseAbstractionLayer::adaptDDL(const std::string &query) {
+  std::string result = query;
+
+  if (current_db_type_ == "SQLITE") {
+    // SQLite는 그대로 사용
+    return result;
+  }
+
+  // ── 공통: datetime('now', 'localtime') 기본값 → CURRENT_TIMESTAMP ─────────
+  // CREATE TABLE의 DEFAULT (datetime('now', 'localtime')) 처리
+  result = std::regex_replace(
+      result,
+      std::regex("DEFAULT\\s*\\(datetime\\s*\\('now'\\s*,\\s*'localtime'\\)\\)",
+                 std::regex_constants::icase),
+      "DEFAULT CURRENT_TIMESTAMP");
+
+  // datetime('now', 'localtime') 단독 사용 (COPY_TO_DEVICE 등)
+  result = std::regex_replace(
+      result,
+      std::regex("datetime\\s*\\('now'\\s*,\\s*'localtime'\\)",
+                 std::regex_constants::icase),
+      "CURRENT_TIMESTAMP");
+
+  // ── PostgreSQL ────────────────────────────────────────────────────────────
+  if (current_db_type_ == "POSTGRESQL") {
+    // INTEGER PRIMARY KEY AUTOINCREMENT → SERIAL PRIMARY KEY
+    result = std::regex_replace(
+        result,
+        std::regex("INTEGER\\s+PRIMARY\\s+KEY\\s+AUTOINCREMENT",
+                   std::regex_constants::icase),
+        "SERIAL PRIMARY KEY");
+    // BIGINT PRIMARY KEY AUTOINCREMENT → BIGSERIAL PRIMARY KEY
+    result = std::regex_replace(
+        result,
+        std::regex("BIGINT\\s+PRIMARY\\s+KEY\\s+AUTOINCREMENT",
+                   std::regex_constants::icase),
+        "BIGSERIAL PRIMARY KEY");
+    // 남은 AUTOINCREMENT 제거 (인라인으로 붙은 경우)
+    result = std::regex_replace(
+        result, std::regex("\\bAUTOINCREMENT\\b", std::regex_constants::icase),
+        "");
+    // VARCHAR(n) → VARCHAR(n) 호환, TEXT → TEXT 호환 (그대로)
+    // REAL → DOUBLE PRECISION
+    result = std::regex_replace(
+        result, std::regex("\\bREAL\\b", std::regex_constants::icase),
+        "DOUBLE PRECISION");
+  }
+
+  // ── MySQL / MariaDB ───────────────────────────────────────────────────────
+  if (current_db_type_ == "MYSQL" || current_db_type_ == "MARIADB") {
+    // AUTOINCREMENT → AUTO_INCREMENT
+    result = std::regex_replace(
+        result, std::regex("\\bAUTOINCREMENT\\b", std::regex_constants::icase),
+        "AUTO_INCREMENT");
+    // DATETIME DEFAULT CURRENT_TIMESTAMP (이미 위에서 변환됨)
+    // SQLite의 DATE 타입은 그대로 유지 (MySQL도 DATE 사용)
+  }
+
+  // ── MSSQL (SQL Server) ────────────────────────────────────────────────────
+  if (current_db_type_ == "MSSQL") {
+    // INTEGER PRIMARY KEY AUTOINCREMENT → INT PRIMARY KEY IDENTITY(1,1)
+    result = std::regex_replace(
+        result,
+        std::regex("INTEGER\\s+PRIMARY\\s+KEY\\s+AUTOINCREMENT",
+                   std::regex_constants::icase),
+        "INT PRIMARY KEY IDENTITY(1,1)");
+    // BIGINT PRIMARY KEY AUTOINCREMENT → BIGINT PRIMARY KEY IDENTITY(1,1)
+    result = std::regex_replace(
+        result,
+        std::regex("BIGINT\\s+PRIMARY\\s+KEY\\s+AUTOINCREMENT",
+                   std::regex_constants::icase),
+        "BIGINT PRIMARY KEY IDENTITY(1,1)");
+    // 남은 AUTOINCREMENT → IDENTITY(1,1)
+    result = std::regex_replace(
+        result, std::regex("\\bAUTOINCREMENT\\b", std::regex_constants::icase),
+        "IDENTITY(1,1)");
+    // CURRENT_TIMESTAMP → GETDATE() (MSSQL 표준)
+    result = std::regex_replace(
+        result,
+        std::regex("\\bCURRENT_TIMESTAMP\\b", std::regex_constants::icase),
+        "GETDATE()");
+    // DEFAULT CURRENT_TIMESTAMP → DEFAULT GETDATE()
+    result = std::regex_replace(
+        result,
+        std::regex("DEFAULT\\s+CURRENT_TIMESTAMP", std::regex_constants::icase),
+        "DEFAULT GETDATE()");
+    // TEXT → NVARCHAR(MAX) (MSSQL에서 TEXT는 deprecated)
+    result = std::regex_replace(
+        result, std::regex("\\bTEXT\\b", std::regex_constants::icase),
+        "NVARCHAR(MAX)");
+    // VARCHAR → NVARCHAR (유니코드 보장)
+    result = std::regex_replace(
+        result, std::regex("\\bVARCHAR\\b", std::regex_constants::icase),
+        "NVARCHAR");
+    // REAL → FLOAT
+    result = std::regex_replace(
+        result, std::regex("\\bREAL\\b", std::regex_constants::icase), "FLOAT");
+    // INTEGER → INT (MSSQL 표준형)
+    result = std::regex_replace(
+        result,
+        std::regex("\\bINTEGER\\b(?!\\s+PRIMARY)", std::regex_constants::icase),
+        "INT");
+    // IF NOT EXISTS → MSSQL 미지원, CREATE TABLE을 IF 체크로 감싸는 건
+    // doesTableExist()가 미리 처리하므로 문법에서만 제거
+    result = std::regex_replace(
+        result,
+        std::regex("CREATE\\s+TABLE\\s+IF\\s+NOT\\s+EXISTS\\s+",
+                   std::regex_constants::icase),
+        "CREATE TABLE ");
+  }
+
+  return result;
 }
 
 // 🎯 Upsert Adaptation
@@ -456,14 +577,37 @@ DatabaseAbstractionLayer::extractTableNameFromQuery(const std::string &query) {
 
 std::vector<std::string> DatabaseAbstractionLayer::getTableColumnsFromSchema(
     const std::string &table_name) {
-  std::vector<std::vector<std::string>> pragma_results;
-  if (db_manager_->executeQuery("PRAGMA table_info(" + table_name + ")",
-                                pragma_results)) {
-    std::vector<std::string> columns;
-    for (const auto &row : pragma_results)
-      if (row.size() > 1)
-        columns.push_back(row[1]);
-    return columns;
+
+  if (current_db_type_ == "SQLITE") {
+    // SQLite: PRAGMA table_info()
+    std::vector<std::vector<std::string>> pragma_results;
+    if (db_manager_->executeQuery("PRAGMA table_info(" + table_name + ")",
+                                  pragma_results)) {
+      std::vector<std::string> columns;
+      for (const auto &row : pragma_results)
+        if (row.size() > 1)
+          columns.push_back(row[1]); // 인덱스 1 = column name
+      return columns;
+    }
+  } else {
+    // PostgreSQL / MySQL / MariaDB: information_schema.columns
+    std::string schema_filter;
+    if (current_db_type_ == "POSTGRESQL") {
+      schema_filter = " AND table_schema = 'public'";
+    }
+    std::string query = "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_name = '" +
+                        table_name + "'" + schema_filter +
+                        " ORDER BY ordinal_position";
+
+    std::vector<std::vector<std::string>> results;
+    if (db_manager_->executeQuery(query, results)) {
+      std::vector<std::string> columns;
+      for (const auto &row : results)
+        if (!row.empty())
+          columns.push_back(row[0]);
+      return columns;
+    }
   }
   return {};
 }
@@ -484,11 +628,26 @@ bool DatabaseAbstractionLayer::doesTableExist(const std::string &table_name) {
                         "WHERE table_schema='public' AND table_name='" +
                         table_name + "'";
     auto results = executeQuery(query);
-    db_manager_->log(0, "DEBUG: doesTableExist(" + table_name + ") -> " +
-                            std::to_string(results.size()));
     return !results.empty();
   }
 
+  if (current_db_type_ == "MYSQL" || current_db_type_ == "MARIADB") {
+    std::string query = "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_name='" +
+                        table_name + "'";
+    auto results = executeQuery(query);
+    return !results.empty();
+  }
+
+  if (current_db_type_ == "MSSQL") {
+    // MSSQL: sys.tables 사용 (information_schema.tables도 동작하나 sys가 권장)
+    std::string query =
+        "SELECT name FROM sys.tables WHERE name='" + table_name + "'";
+    auto results = executeQuery(query);
+    return !results.empty();
+  }
+
+  // SQLite: sqlite_master 사용
   std::string query =
       "SELECT name FROM sqlite_master WHERE type='table' AND name='" +
       table_name + "'";
@@ -538,6 +697,43 @@ std::string DatabaseAbstractionLayer::getGenericTimestamp() {
   std::ostringstream ss;
   ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
   return ss.str();
+}
+
+// =============================================================================
+// 🔥 getLastInsertId: DB별 마지막 INSERT ID 반환 (last_insert_rowid 완전 대체)
+// 각 DB의 세션-로컬 마지막 INSERT 행 ID를 반환하므로 thread-safe
+// =============================================================================
+int64_t DatabaseAbstractionLayer::getLastInsertId() {
+  std::string query;
+
+  if (current_db_type_ == "SQLITE") {
+    query = "SELECT last_insert_rowid() as id";
+  } else if (current_db_type_ == "POSTGRESQL") {
+    // lastval()은 현재 세션에서 마지막으로 사용된 SEQUENCE 값 반환
+    query = "SELECT lastval() as id";
+  } else if (current_db_type_ == "MYSQL" || current_db_type_ == "MARIADB") {
+    query = "SELECT LAST_INSERT_ID() as id";
+  } else if (current_db_type_ == "MSSQL") {
+    // SCOPE_IDENTITY()는 현재 scope의 마지막 INSERT id (@@IDENTITY보다 안전)
+    query = "SELECT SCOPE_IDENTITY() as id";
+  } else {
+    // 알수 없는 DB: SQLite 문법 시도
+    query = "SELECT last_insert_rowid() as id";
+  }
+
+  try {
+    auto results = executeQuery(query);
+    if (!results.empty() && results[0].count("id")) {
+      const std::string &val = results[0].at("id");
+      if (!val.empty() && val != "NULL" && val != "null") {
+        return std::stoll(val);
+      }
+    }
+  } catch (const std::exception &e) {
+    db_manager_->log(3, "getLastInsertId failed: " + std::string(e.what()));
+  }
+
+  return -1; // 실패 시 -1 반환 (0은 유효한 rowid일 수 있음)
 }
 
 // 🔥 Batch: N개 쿼리를 1 트랜잭션으로 처리 (30K 포인트 성능 최적화)

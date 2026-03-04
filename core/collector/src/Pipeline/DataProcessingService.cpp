@@ -18,6 +18,8 @@
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
 #include "Database/Repositories/CurrentValueRepository.h"
 #include "Database/RepositoryFactory.h"
+#include "Database/RuntimeSQLQueries.h"
+using namespace PulseOne::Database::SQL;
 #include "DatabaseManager.hpp"
 #include "Logging/LogManager.h"
 #include "Pipeline/PipelineManager.h"
@@ -138,6 +140,10 @@ bool DataProcessingService::Start() {
   persistence_thread_ =
       std::thread(&DataProcessingService::PersistenceThreadLoop, this);
 
+  // 🔥 주기 Redis→SQLite 동기화 스레드 시작 (아날로그 포인트 배치 저장)
+  rdb_sync_thread_ =
+      std::thread(&DataProcessingService::RdbSyncThreadLoop, this);
+
   // Manager 초기화 (명시적)
   PulseOne::VirtualPoint::VirtualPointEngine::getInstance().initialize();
   PulseOne::Alarm::AlarmManager::getInstance().initialize();
@@ -239,6 +245,14 @@ void DataProcessingService::Stop() {
   // Persistence 스레드 종료
   if (persistence_thread_.joinable()) {
     persistence_thread_.join();
+  }
+
+  // 🔥 종료 전 Redis 모든 current_values → SQLite 일괄 플러시
+  FlushCurrentValuesToSQLite();
+
+  // RDB 동기화 스레드 종료
+  if (rdb_sync_thread_.joinable()) {
+    rdb_sync_thread_.join();
   }
 
   is_running_.store(false);
@@ -410,13 +424,126 @@ void DataProcessingService::ProcessRDBTasks(
   if (batch_entities.empty())
     return;
 
+  // 🔒 SQLite 직렬화: FlushCurrentValuesToSQLite와 동시 executeBatch() 호출
+  // 방지
+  std::lock_guard<std::mutex> lock(sqlite_write_mutex_);
   size_t saved = current_value_repo->saveBatch(batch_entities);
 
   if (saved > 0) {
     LogManager::getInstance().log(
         "processing", LogLevel::DEBUG_LEVEL,
-        "🔥 RDB 배치 저장 완료: " + std::to_string(saved) + "/" +
-            std::to_string(batch_entities.size()) + "개 포인트 (1 트랜잭션)");
+        "🔥 디지털 RDB 즉시 저장: " + std::to_string(saved) + "개 포인트");
+  }
+}
+
+// =============================================================================
+// 🔥 주기 Redis→SQLite 동기화 (아날로그 포인트 배치 저장)
+// =============================================================================
+
+void DataProcessingService::RdbSyncThreadLoop() {
+  LogManager::getInstance().log("processing", LogLevel::INFO,
+                                "RDB Sync 스레드 시작");
+
+  while (!should_stop_.load()) {
+    // 설정된 주기만큼 대기 (1초 단위로 깨어나서 중지 여부 확인)
+    int interval_s = rdb_sync_interval_s_.load();
+    if (interval_s <= 0)
+      interval_s = 60;
+
+    for (int i = 0; i < interval_s * 10 && !should_stop_.load(); ++i) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    if (should_stop_.load())
+      break;
+
+    // Redis 전체 스캔 → current_values 배치 저장
+    FlushCurrentValuesToSQLite();
+  }
+
+  LogManager::getInstance().log("processing", LogLevel::INFO,
+                                "RDB Sync 스레드 종료");
+}
+
+void DataProcessingService::FlushCurrentValuesToSQLite() {
+  // Redis keys("point:*:current") + mget() 2회 호출로 모든 포인트 최신값 배치
+  // 조회 → 기존: 포인트마다 GET N회, 개선: 2회 왕복으로 30K포인트 처리
+  auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
+  auto current_value_repo = factory.getCurrentValueRepository();
+  if (!current_value_repo)
+    return;
+
+  auto &db_manager = DbLib::DatabaseManager::getInstance();
+  auto *redis = db_manager.getRedisClient();
+  if (!redis) {
+    LogManager::getInstance().log(
+        "processing", LogLevel::DEBUG_LEVEL,
+        "FlushCurrentValuesToSQLite: Redis 없음, 스킵");
+    return;
+  }
+
+  try {
+    // 1) SCAN으로 논블로킹 키 순회 (KEYS 대신 사용 - 30K+ 키 안전)
+    auto keys = redis->scan("point:*:current", 200);
+    if (keys.empty())
+      return;
+
+    // 2) MGET으로 모든 값 한 번에 조회 (1회 왕복)
+    auto values = redis->mget(keys);
+
+    std::vector<PulseOne::Database::Entities::CurrentValueEntity> batch;
+    batch.reserve(keys.size());
+
+    for (size_t i = 0; i < keys.size() && i < values.size(); ++i) {
+      if (values[i].empty())
+        continue;
+
+      // 키에서 point_id 추출: "point:12345:current" → 12345
+      int point_id = 0;
+      try {
+        const auto &k = keys[i];
+        auto first_colon = k.find(':');
+        auto second_colon = k.find(':', first_colon + 1);
+        if (first_colon == std::string::npos ||
+            second_colon == std::string::npos)
+          continue;
+        point_id = std::stoi(
+            k.substr(first_colon + 1, second_colon - first_colon - 1));
+      } catch (...) {
+        continue;
+      }
+
+      try {
+        auto j = nlohmann::json::parse(values[i]);
+        PulseOne::Database::Entities::CurrentValueEntity entity;
+        entity.setPointId(point_id);
+        entity.setCurrentValue(j.value("value", ""));
+        entity.setRawValue(j.value("value", ""));
+        entity.setValueType("number");
+        entity.setQuality(
+            static_cast<PulseOne::Enums::DataQuality>(j.value("quality", 0)));
+        entity.setValueTimestamp(PulseOne::Utils::GetCurrentTimestamp());
+        batch.push_back(std::move(entity));
+      } catch (...) {
+        // JSON 파싱 실패 시 스킵
+      }
+    }
+
+    if (batch.empty())
+      return;
+
+    // 🔒 SQLite 직렬화: ProcessRDBTasks와 동시 executeBatch() 호출 방지
+    std::lock_guard<std::mutex> lock(sqlite_write_mutex_);
+    size_t saved = current_value_repo->saveBatch(batch);
+    LogManager::getInstance().log(
+        "processing", LogLevel::INFO,
+        "🔄 Redis→SQLite 주기 동기화: " + std::to_string(saved) + "/" +
+            std::to_string(batch.size()) + "개 포인트 저장 (SCAN+MGET)");
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().log("processing", LogLevel::WARN,
+                                  "FlushCurrentValuesToSQLite 실패: " +
+                                      std::string(e.what()));
   }
 }
 
@@ -580,29 +707,9 @@ void DataProcessingService::ProcessCommStatsTasks(
         continue;
       }
 
-      // SQLite UPSERT 지원 (안전한 정수 ID 사용)
-      std::string status_query =
-          "INSERT INTO device_status (device_id, connection_status, "
-          "last_communication, updated_at, response_time, total_requests, "
-          "successful_requests) "
-          "VALUES (" +
-          safe_device_id + ", '" + status_str +
-          "', datetime('now', 'localtime'), datetime('now', 'localtime'), " +
-          std::to_string(msg.response_time.count()) + ", 1, " +
-          (is_online ? "1" : "0") +
-          ") "
-          "ON CONFLICT(device_id) DO UPDATE SET "
-          "connection_status = excluded.connection_status, "
-          "last_communication = excluded.last_communication, "
-          "updated_at = excluded.updated_at, "
-          "response_time = excluded.response_time, "
-          "total_requests = device_status.total_requests + 1" +
-          (is_online
-               ? ", successful_requests = device_status.successful_requests + 1"
-               : "") +
-          ";";
-
-      db_mgr.executeNonQuery(status_query);
+      // ✅ RuntimeSQLQueries::DeviceStatus::UPSERT_STATUS
+      db_mgr.executeNonQuery(Runtime::DeviceStatus::UPSERT_STATUS(
+          safe_device_id, status_str, msg.response_time.count(), is_online));
     } catch (...) {
     }
   }
@@ -711,10 +818,24 @@ void DataProcessingService::ProcessBatch(
 void DataProcessingService::QueueRDBTask(
     const Structs::DeviceDataMessage &message,
     const std::vector<Structs::TimestampedValue> &points) {
+
+  // 🎯 디지털(bool) 포인트 중 값이 변경된 것만 즉시 SQLite에 저장
+  // 아날로그는 RDB 큐에 넣지 않음 → RdbSyncThreadLoop이 주기적으로 처리
+  std::vector<Structs::TimestampedValue> digital_changed;
+  for (const auto &p : points) {
+    if (std::holds_alternative<bool>(p.value) && p.value_changed) {
+      digital_changed.push_back(p);
+    }
+  }
+
+  if (digital_changed.empty())
+    return;
+
   PersistenceTask task;
   task.type = PersistenceTask::Type::RDB_SAVE;
   task.message = message;
-  task.points = points;
+  task.points = std::move(digital_changed);
+
   // Backpressure Protection: 큐가 가득 차면 데이터를 버림 (10,000개 제한)
   if (!persistence_queue_.try_push(std::move(task), 10000)) {
     static std::atomic<int> drop_counter{0};
@@ -722,8 +843,7 @@ void DataProcessingService::QueueRDBTask(
     if (count % 100 == 1) {
       LogManager::getInstance().log(
           "processing", LogLevel::WARN,
-          "Persistence Queue FULL (10,000 items). Dropping RDB data to prevent "
-          "hang! (Count: " +
+          "Persistence Queue FULL. Dropping digital RDB data! (Count: " +
               std::to_string(count) + ")");
     }
   }

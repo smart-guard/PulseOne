@@ -2563,3 +2563,53 @@ CREATE TABLE IF NOT EXISTS control_templates (
     FOREIGN KEY (tenant_id) REFERENCES tenants(id)     ON DELETE SET NULL,
     FOREIGN KEY (point_id)  REFERENCES data_points(id) ON DELETE SET NULL
 );
+
+-- ============================================================
+-- 🔧 LogLevelManager 관련 테이블
+-- 추가일: 2026-03-05 (LogLevelManager.cpp에서 사용)
+-- ============================================================
+
+-- 엔지니어 유지보수 모드 감사 로그
+-- 사용처: LogLevelManager::StartMaintenanceModeFromWeb(), EndMaintenanceModeFromWeb()
+CREATE TABLE IF NOT EXISTS maintenance_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    engineer_id VARCHAR(100) NOT NULL,        -- 엔지니어 ID (로그인 계정)
+    action      VARCHAR(10)  NOT NULL,        -- 'START', 'END'
+    log_level   VARCHAR(20),                  -- START 시 설정한 로그 레벨
+    timestamp   DATETIME DEFAULT (datetime('now', 'localtime')),
+    source      VARCHAR(20) DEFAULT 'WEB_API' -- 변경 출처
+);
+
+CREATE INDEX IF NOT EXISTS idx_maintenance_log_engineer ON maintenance_log(engineer_id);
+CREATE INDEX IF NOT EXISTS idx_maintenance_log_time     ON maintenance_log(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_maintenance_log_action   ON maintenance_log(action);
+
+-- 로그 레벨 변경 이력
+-- 사용처: LogLevelManager::SaveLogLevelToDB() → INSERT_LEVEL_HISTORY
+CREATE TABLE IF NOT EXISTS log_level_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    old_level   VARCHAR(20),                  -- 이전 로그 레벨
+    new_level   VARCHAR(20) NOT NULL,         -- 변경된 로그 레벨
+    source      VARCHAR(30),                  -- WEB_API, FILE_CONFIG, MAINTENANCE_OVERRIDE 등
+    changed_by  VARCHAR(100),                 -- 변경한 주체 (엔지니어 ID 또는 SYSTEM)
+    reason      TEXT,                         -- 변경 이유
+    change_time DATETIME DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_log_level_history_time   ON log_level_history(change_time DESC);
+CREATE INDEX IF NOT EXISTS idx_log_level_history_source ON log_level_history(source);
+CREATE INDEX IF NOT EXISTS idx_log_level_history_by     ON log_level_history(changed_by);
+
+-- 드라이버별 카테고리 로그 레벨 설정
+-- 사용처: LogLevelManager::LoadCategoryLevelsFromDB(), SaveCategoryLevelToDB()
+-- category: GENERAL, CONNECTION, COMMUNICATION, DATA_PROCESSING, ERROR_HANDLING, 등
+CREATE TABLE IF NOT EXISTS driver_log_levels (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    category    VARCHAR(50) UNIQUE NOT NULL,  -- DriverLogCategory 문자열
+    log_level   VARCHAR(20) NOT NULL DEFAULT 'INFO',
+    updated_by  VARCHAR(100),                 -- 마지막으로 변경한 주체
+    updated_at  DATETIME DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_driver_log_levels_category ON driver_log_levels(category);
+CREATE INDEX IF NOT EXISTS idx_driver_log_levels_updated  ON driver_log_levels(updated_at DESC);

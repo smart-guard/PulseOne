@@ -59,7 +59,9 @@
         "deviceTimeout": "Device Response Timeout",
         "deviceTimeoutDesc": "Time before a non-responding device is considered timed out.",
         "influxInterval": "Time-series Data Save Interval",
-        "influxIntervalDesc": "Interval for saving time-series data for historical queries\n(set to 0 to save immediately on scan)."
+        "influxIntervalDesc": "Interval for saving time-series data for historical queries\n(set to 0 to save immediately on scan).",
+        "rdbSyncInterval": "SQLite Sync Interval",
+        "rdbSyncIntervalDesc": "Interval for periodically flushing Redis analog point values\nto the SQLite current_values table."
     },
     "notifications": {
         "emailServer": "Email Server Settings",
