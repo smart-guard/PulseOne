@@ -330,21 +330,21 @@ export default function ControlSchedulePage() {
     };
 
     return (
-        <div style={{ padding: '24px', maxWidth: '1200px' }}>
+        <div style={{ padding: '24px', width: '100%', maxWidth: '1600px', margin: '0 auto', boxSizing: 'border-box' }}>
             {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+            <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '20px 24px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
                     <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#111827', margin: 0 }}>
                         <i className="fas fa-calendar-alt" style={{ color: '#7c3aed', marginRight: '10px' }} />{t('title')}
                     </h1>
-                    <p style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px' }}>{t('description')}</p>
+                    <p style={{ fontSize: '14px', color: '#6b7280', marginTop: '4px', marginBottom: 0 }}>{t('description')}</p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => load()} style={{ padding: '8px 14px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', color: '#374151' }}>
+                    <button onClick={() => load()} style={{ padding: '8px 14px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', color: '#374151' }}>
                         <i className="fas fa-sync-alt" style={{ marginRight: '6px' }} />{t('refresh')}
                     </button>
                     <button onClick={() => setShowAdd(true)}
-                        style={{ padding: '8px 18px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 700 }}>
+                        style={{ padding: '8px 18px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 700 }}>
                         <i className="fas fa-plus" style={{ marginRight: '6px' }} />{t('newSchedule')}
                     </button>
                 </div>
@@ -383,44 +383,45 @@ export default function ControlSchedulePage() {
                         <thead>
                             <tr style={{ background: '#f8fafc' }}>
                                 {['ID', t('table.point'), t('table.device'), t('table.value'), t('table.type'), t('table.schedule'), t('table.lastRun'), t('table.status'), t('table.action')].map(h => (
-                                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
+                                    <th key={h} style={{ padding: '12px 16px', textAlign: 'center', fontSize: '12px', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {schedules.map((s, idx) => (
                                 <tr key={s.id} style={{ background: idx % 2 === 0 ? 'white' : '#fafafa', borderBottom: '1px solid #f3f4f6' }}>
-                                    <td style={{ padding: '12px 14px', fontSize: '13px', fontWeight: 600, color: '#7c3aed' }}>#{s.id}</td>
-                                    <td style={{ padding: '12px 14px', fontSize: '13px', fontWeight: 600 }}>{s.point_name || `Point #${s.point_id}`}</td>
-                                    <td style={{ padding: '12px 14px', fontSize: '13px', color: '#374151' }}>{s.device_name || `Device #${s.device_id}`}</td>
-                                    <td style={{ padding: '12px 14px', fontSize: '15px', fontWeight: 700, fontFamily: 'monospace', color: '#1d4ed8' }}>{s.value}</td>
-                                    <td style={{ padding: '12px 14px' }}>
+                                    <td style={{ padding: '13px 16px', fontSize: '14px', fontWeight: 600, color: '#7c3aed', textAlign: 'center' }}>#{s.id}</td>
+                                    <td style={{ padding: '13px 16px', fontSize: '14px', fontWeight: 600, textAlign: 'center' }}>{s.point_name || `Point #${s.point_id}`}</td>
+                                    <td style={{ padding: '13px 16px', fontSize: '14px', color: '#374151', textAlign: 'center' }}>{s.device_name || `Device #${s.device_id}`}</td>
+                                    <td style={{ padding: '13px 16px', fontSize: '16px', fontWeight: 700, fontFamily: 'monospace', color: '#1d4ed8', textAlign: 'center' }}>{s.value}</td>
+                                    <td style={{ padding: '13px 16px', textAlign: 'center' }}>
                                         {s.cron_expr
-                                            ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: '8px', fontSize: '11px', fontWeight: 600 }}>Repeat</span>
-                                            : <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: '8px', fontSize: '11px', fontWeight: 600 }}>One-time</span>}
+                                            ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '3px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 600 }}>Repeat</span>
+                                            : <span style={{ background: '#fef3c7', color: '#92400e', padding: '3px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: 600 }}>One-time</span>}
                                     </td>
-                                    <td style={{ padding: '12px 14px', fontSize: '12px', color: '#374151' }}>
+                                    <td style={{ padding: '13px 16px', fontSize: '13px', color: '#374151', textAlign: 'center' }}>
                                         {s.cron_expr ? describeCron(s.cron_expr) : formatDatetime(s.once_at)}
                                     </td>
-                                    <td style={{ padding: '12px 14px', fontSize: '12px', color: '#9ca3af' }}>{formatDatetime(s.last_run)}</td>
-                                    <td style={{ padding: '12px 14px' }}><StatusBadge enabled={s.enabled} /></td>
-                                    <td style={{ padding: '12px 14px' }}>
-                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                    <td style={{ padding: '13px 16px', fontSize: '13px', color: '#9ca3af', textAlign: 'center' }}>{formatDatetime(s.last_run)}</td>
+                                    <td style={{ padding: '13px 16px', textAlign: 'center' }}><StatusBadge enabled={s.enabled} /></td>
+                                    <td style={{ padding: '13px 16px', textAlign: 'center' }}>
+                                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
                                             <button onClick={() => handleToggle(s.id, s.enabled)} disabled={togglingId === s.id}
                                                 style={{
-                                                    padding: '5px 10px', fontSize: '11px', fontWeight: 600, borderRadius: '5px', cursor: 'pointer', border: 'none',
+                                                    padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '5px', cursor: 'pointer', border: 'none',
                                                     background: s.enabled ? '#fef3c7' : '#dcfce7', color: s.enabled ? '#92400e' : '#16a34a'
                                                 }}>
                                                 {togglingId === s.id ? <i className="fas fa-spinner fa-spin" /> : s.enabled ? t('action.pause') : t('action.activate')}
                                             </button>
                                             <button onClick={() => handleDelete(s.id)} disabled={deletingId === s.id}
-                                                style={{ padding: '5px 10px', fontSize: '11px', fontWeight: 600, borderRadius: '5px', cursor: 'pointer', border: 'none', background: '#fef2f2', color: '#dc2626' }}>
+                                                style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, borderRadius: '5px', cursor: 'pointer', border: 'none', background: '#fef2f2', color: '#dc2626' }}>
                                                 {deletingId === s.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-trash" />}
                                             </button>
                                         </div>
                                     </td>
                                 </tr>
                             ))}
+
                         </tbody>
                     </table>
                     {/* [translated comment] */}
