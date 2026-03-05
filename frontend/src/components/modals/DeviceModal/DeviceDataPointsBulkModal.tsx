@@ -167,10 +167,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             loadTemplates();
             setDraftRestoredCount(null); // 모달 열릴 때 배너 초기화
 
-            // 데이터가 이미 있거나 (Step 3에서 넘어옴) 마운트된 상태면 Reset 건너뜀
-            if (points.length > 0) return;
-
-            // 마스터모델 & 개별디바이스 모두 동일하게: 임시저장 복원 시도 → 없으면 기본 행 생성
+            // 임시저장 복원 시도 → 없으면 기본 행 생성
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 try {
@@ -195,9 +192,16 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             setPoints(initial);
             setHistory([JSON.parse(JSON.stringify(initial))]);
             setHistoryIndex(0);
+        } else {
+            // 모달 닫힐 때 points 초기화 → 재오픈 시 복원 로직 다시 실행됨
+            setPoints([]);
+            setHistory([]);
+            setHistoryIndex(-1);
+            setDraftRestoredCount(null);
         }
         return () => setMounted(false);
     }, [isOpen, deviceId, draftContext]);
+
 
 
     const loadTemplates = async () => {
