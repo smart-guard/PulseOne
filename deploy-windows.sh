@@ -621,9 +621,10 @@ PART4_SQLITE
 :: ============================================================
 echo [6/8] 데이터베이스 설치 중 ^(선택: %DB_TYPE%^)...
 
-if "%DB_TYPE%"=="SQLITE" goto DB_SQLITE
-if "%DB_TYPE%"=="MARIADB" goto DB_MARIADB
+if "%DB_TYPE%"=="SQLITE"     goto DB_SQLITE
+if "%DB_TYPE%"=="MARIADB"    goto DB_MARIADB
 if "%DB_TYPE%"=="POSTGRESQL" goto DB_POSTGRESQL
+if "%DB_TYPE%"=="MSSQL"      goto DB_MSSQL
 goto DB_SQLITE
 
 :DB_SQLITE
@@ -660,7 +661,7 @@ if exist "mariadb\bin\mysqld.exe" (
     sc start PulseOne-MariaDB >nul 2>&1
     timeout /t 5 /nobreak >nul
     rem DB/계정 생성
-    "mariadb\bin\mysql.exe" -u root -e "CREATE DATABASE IF NOT EXISTS pulseone CHARACTER SET utf8mb4; CREATE USER IF NOT EXISTS 'pulseone'@'localhost' IDENTIFIED BY 'pulseone123!'; GRANT ALL ON pulseone.* TO 'pulseone'@'localhost'; FLUSH PRIVILEGES;" >nul 2>&1
+    "mariadb\bin\mysql.exe" -u root -e "CREATE DATABASE IF NOT EXISTS pulseone CHARACTER SET utf8mb4; CREATE USER IF NOT EXISTS 'pulseone'@'localhost' IDENTIFIED BY 'PulseOne123#'; GRANT ALL ON pulseone.* TO 'pulseone'@'localhost'; FLUSH PRIVILEGES;" >nul 2>&1
     echo    MariaDB PulseOne 데이터베이스/계정 생성 완료
     (
         echo DATABASE_TYPE=MARIADB
@@ -669,7 +670,7 @@ if exist "mariadb\bin\mysqld.exe" (
         echo MARIADB_PORT=3306
         echo MARIADB_DATABASE=pulseone
         echo MARIADB_USER=pulseone
-        echo MARIADB_PASSWORD=pulseone123!
+        echo MARIADB_PASSWORD=PulseOne123#
         echo MARIADB_POOL_SIZE=10
         echo MARIADB_CHARSET=utf8mb4
         echo.
@@ -678,7 +679,7 @@ if exist "mariadb\bin\mysqld.exe" (
         echo MYSQL_PORT=3306
         echo MYSQL_DATABASE=pulseone
         echo MYSQL_USER=pulseone
-        echo MYSQL_PASSWORD=pulseone123!
+        echo MYSQL_PASSWORD=PulseOne123#
     ) > "config\database.env"
     echo    MariaDB database.env 생성 완료
 ) else (
@@ -707,9 +708,9 @@ if exist "postgresql\bin\postgres.exe" (
     sc start PulseOne-PostgreSQL >nul 2>&1
     timeout /t 5 /nobreak >nul
     rem DB/계정 생성
-    set "PGPASSWORD=pulseone123!"
+    set "PGPASSWORD=PulseOne123#"
     "postgresql\bin\psql.exe" -U postgres -c "CREATE DATABASE pulseone;" >nul 2>&1
-    "postgresql\bin\psql.exe" -U postgres -c "CREATE USER pulseone WITH PASSWORD 'pulseone123!';" >nul 2>&1
+    "postgresql\bin\psql.exe" -U postgres -c "CREATE USER pulseone WITH PASSWORD 'PulseOne123#';" >nul 2>&1
     "postgresql\bin\psql.exe" -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE pulseone TO pulseone;" >nul 2>&1
     echo    PostgreSQL PulseOne 데이터베이스/계정 생성 완료
     (
@@ -719,7 +720,7 @@ if exist "postgresql\bin\postgres.exe" (
         echo POSTGRES_PORT=5432
         echo POSTGRES_DATABASE=pulseone
         echo POSTGRES_USER=pulseone
-        echo POSTGRES_PASSWORD=pulseone123!
+        echo POSTGRES_PASSWORD=PulseOne123#
         echo POSTGRES_POOL_SIZE=10
         echo POSTGRES_SSL=false
     ) > "config\database.env"
@@ -736,33 +737,37 @@ echo.
 echo    [!] MSSQL은 별도 설치되지 않습니다.
 echo    [!] 이미 설치된 SQL Server 인스턴스에 연결 설정합니다.
 echo.
-set /p "MSSQL_HOST_INPUT=SQL Server 호스트 [기본값: localhost]: "
-if "%MSSQL_HOST_INPUT%"=="" set "MSSQL_HOST_INPUT=localhost"
-set /p "MSSQL_PORT_INPUT=포트 [기본값: 1433]: "
-if "%MSSQL_PORT_INPUT%"=="" set "MSSQL_PORT_INPUT=1433"
-set /p "MSSQL_DB_INPUT=데이터베이스명 [기본값: pulseone]: "
-if "%MSSQL_DB_INPUT%"=="" set "MSSQL_DB_INPUT=pulseone"
-set /p "MSSQL_USER_INPUT=사용자 [기본값: sa]: "
-if "%MSSQL_USER_INPUT%"=="" set "MSSQL_USER_INPUT=sa"
-set /p "MSSQL_PASS_INPUT=비밀번호: "
-set /p "MSSQL_INST_INPUT=인스턴스명 (없으면 Enter): "
+set /p "MSSQL_H=SQL Server 호스트 [기본값: localhost]: "
+if "!MSSQL_H!"=="" set "MSSQL_H=localhost"
+set /p "MSSQL_PT=포트 [기본값: 1433]: "
+if "!MSSQL_PT!"=="" set "MSSQL_PT=1433"
+set /p "MSSQL_DB=데이터베이스명 [기본값: pulseone]: "
+if "!MSSQL_DB!"=="" set "MSSQL_DB=pulseone"
+set /p "MSSQL_U=사용자 [기본값: sa]: "
+if "!MSSQL_U!"=="" set "MSSQL_U=sa"
+set /p "MSSQL_PW=비밀번호: "
+set /p "MSSQL_INST=인스턴스명 (없으면 Enter): "
 
 (
     echo DATABASE_TYPE=MSSQL
     echo MSSQL_ENABLED=true
-    echo MSSQL_HOST=%MSSQL_HOST_INPUT%
-    echo MSSQL_PORT=%MSSQL_PORT_INPUT%
-    echo MSSQL_DATABASE=%MSSQL_DB_INPUT%
-    echo MSSQL_USER=%MSSQL_USER_INPUT%
-    echo MSSQL_PASSWORD=%MSSQL_PASS_INPUT%
-    echo MSSQL_INSTANCE=%MSSQL_INST_INPUT%
+    echo MSSQL_HOST=!MSSQL_H!
+    echo MSSQL_PORT=!MSSQL_PT!
+    echo MSSQL_DATABASE=!MSSQL_DB!
+    echo MSSQL_USER=!MSSQL_U!
+    echo MSSQL_PASSWORD=!MSSQL_PW!
+    echo MSSQL_INSTANCE=!MSSQL_INST!
     echo MSSQL_ENCRYPT=false
     echo MSSQL_TRUST_SERVER_CERTIFICATE=true
     echo MSSQL_POOL_SIZE=10
 ) > "config\database.env"
 echo    MSSQL database.env 생성 완료
 
-sqlcmd -S %MSSQL_HOST_INPUT%\%MSSQL_INST_INPUT% -U %MSSQL_USER_INPUT% -P %MSSQL_PASS_INPUT% -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name='%MSSQL_DB_INPUT%') CREATE DATABASE [%MSSQL_DB_INPUT%];" 2>nul
+if "!MSSQL_INST!"=="" (
+    sqlcmd -S !MSSQL_H! -U !MSSQL_U! -P !MSSQL_PW! -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name='!MSSQL_DB!') CREATE DATABASE [!MSSQL_DB!];" 2>nul
+) else (
+    sqlcmd -S !MSSQL_H!\!MSSQL_INST! -U !MSSQL_U! -P !MSSQL_PW! -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name='!MSSQL_DB!') CREATE DATABASE [!MSSQL_DB!];" 2>nul
+)
 if not errorlevel 1 echo    PulseOne 데이터베이스 생성 완료 (또는 이미 존재)
 goto DB_DONE
 
