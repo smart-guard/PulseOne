@@ -405,18 +405,26 @@ LINPART2B
 echo "  3. PostgreSQL (대규모, 자동 설치 포함)"
 LINPART2C
         fi
-        cat >> "$PACKAGE_DIR/install.sh" << 'LINPART2D'
+        # read 프롬프트 및 case문 — shell에서 미리 조립
+        LIN_PROMPT='선택 [기본값=1]: '
+        LIN_CASE='    1) DB_TYPE="SQLITE" ;;\n    *) DB_TYPE="SQLITE" ;;'
+        if [ "$DB_BUNDLE" = "mariadb" ]; then
+            LIN_CASE='    1) DB_TYPE="SQLITE" ;;\n    2) DB_TYPE="MARIADB" ;;\n    *) DB_TYPE="SQLITE" ;;'
+        elif [ "$DB_BUNDLE" = "postgresql" ]; then
+            LIN_CASE='    1) DB_TYPE="SQLITE" ;;\n    3) DB_TYPE="POSTGRESQL" ;;\n    *) DB_TYPE="SQLITE" ;;'
+        elif [ "$DB_BUNDLE" = "all" ]; then
+            LIN_CASE='    1) DB_TYPE="SQLITE" ;;\n    2) DB_TYPE="MARIADB" ;;\n    3) DB_TYPE="POSTGRESQL" ;;\n    *) DB_TYPE="SQLITE" ;;'
+        fi
+
+        cat >> "$PACKAGE_DIR/install.sh" << LINPART2D_EOF
 echo "============================================================"
-read -p "선택 [기본값=1]: " DB_CHOICE
-DB_CHOICE=${DB_CHOICE:-1}
-case "$DB_CHOICE" in
-    1) DB_TYPE="SQLITE" ;;
-    2) DB_TYPE="MARIADB" ;;
-    3) DB_TYPE="POSTGRESQL" ;;
-    *) DB_TYPE="SQLITE" ;;
+read -p "${LIN_PROMPT}" DB_CHOICE
+DB_CHOICE=\${DB_CHOICE:-1}
+case "\$DB_CHOICE" in
+$(printf '%b' "$LIN_CASE")
 esac
-echo "[DB] 선택된 데이터베이스: $DB_TYPE"
-LINPART2D
+echo "[DB] 선택된 데이터베이스: \$DB_TYPE"
+LINPART2D_EOF
     fi
 
     # ③ 공통 설치 (Redis, Mosquitto, InfluxDB, 런타임)
