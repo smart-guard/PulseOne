@@ -20,6 +20,8 @@ interface BulkDataPoint extends Partial<DataPoint> {
 
 interface DeviceDataPointsBulkModalProps {
     deviceId?: number;
+    /** 임시저장 컨텍스트: 마스터모델과 개별 디바이스를 별도 키로 저장 */
+    draftContext?: 'master-model' | 'device';
     isOpen: boolean;
     onClose: () => void;
     onSave?: (points: Partial<DataPoint>[]) => Promise<void>;
@@ -30,6 +32,7 @@ interface DeviceDataPointsBulkModalProps {
 
 const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
     deviceId = 0,
+    draftContext = 'device',
     isOpen,
     onClose,
     onSave,
@@ -58,7 +61,10 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         register_type: isModbus ? 'HR' : undefined  // Modbus: HR(FC3)/IR(FC4)/CO(FC1)/DI(FC2)
     });
 
-    const STORAGE_KEY = `bulk_draft_device_${deviceId}`;
+    // 마스터모델과 개별 디바이스를 별도 localStorage 키로 분리
+    const STORAGE_KEY = draftContext === 'master-model'
+        ? 'bulk_draft_master_model'
+        : `bulk_draft_device_${deviceId}`;
 
     const [points, setPoints] = useState<BulkDataPoint[]>([]);
     const { t } = useTranslation(['devices', 'common']);
@@ -69,6 +75,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
     const [templates, setTemplates] = useState<DeviceTemplate[]>([]);
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
     const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+    // 복원 배너: 임시저장 데이터 복원 시 표시
+    const [draftRestoredCount, setDraftRestoredCount] = useState<number | null>(null);
 
     // 🔥 NEW: JSON 파서 상태
     const [showJsonParser, setShowJsonParser] = useState(false);
@@ -157,43 +165,40 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         setMounted(true);
         if (isOpen) {
             loadTemplates();
+            setDraftRestoredCount(null); // 모달 열릴 때 배너 초기화
 
             // 데이터가 이미 있거나 (Step 3에서 넘어옴) 마운트된 상태면 Reset 건너뜀
             if (points.length > 0) return;
 
-            // 1. 새 디바이스 생성(deviceId === 0)인 경우:
-            // 이전 작업 내역(bulk_draft_device_0)이 있으면 자동으로 로드하지 않고 빈 행으로 시작하도록 유도
-            // (사용자 피드백 반영: "선택도 안했는데 데이터가 들어가 있음" 문제 해결)
-            if (deviceId === 0) {
-                const initial = Array(20).fill(null).map(() => createEmptyRow());
-                setPoints(initial);
-                setHistory([JSON.parse(JSON.stringify(initial))]);
-                setHistoryIndex(0);
-                return;
-            }
-
-            // 2. 기존 디바이스 수정인 경우: 로컬 스토리지에서 복원 시도
+            // 마스터모델 & 개별디바이스 모두 동일하게: 임시저장 복원 시도 → 없으면 기본 행 생성
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved);
-                    setPoints(parsed);
-                    setHistory([JSON.parse(JSON.stringify(parsed))]);
-                    setHistoryIndex(0);
-                    return;
+                    const hasData = parsed.some((p: BulkDataPoint) => p.name || p.address);
+                    if (hasData) {
+                        setPoints(parsed);
+                        setHistory([JSON.parse(JSON.stringify(parsed))]);
+                        setHistoryIndex(0);
+                        // 복원된 데이터 건수 계산 → 배너에 표시
+                        const count = parsed.filter((p: BulkDataPoint) => p.name || p.address).length;
+                        setDraftRestoredCount(count);
+                        return;
+                    }
                 } catch (e) {
                     console.error('Failed to load draft:', e);
                 }
             }
 
-            // 3. 아무것도 없으면 기본 행 생성
+            // 임시저장 없으면 기본 빈 행 생성
             const initial = Array(20).fill(null).map(() => createEmptyRow());
             setPoints(initial);
             setHistory([JSON.parse(JSON.stringify(initial))]);
             setHistoryIndex(0);
         }
         return () => setMounted(false);
-    }, [isOpen, deviceId]);
+    }, [isOpen, deviceId, draftContext]);
+
 
     const loadTemplates = async () => {
         try {
@@ -573,6 +578,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         pushHistory(next);
     };
 
+
     const handleReset = async () => {
         const isConfirmed = await confirm({
             title: t('bulk.confirmReset', { defaultValue: '리셋 확인' }),
@@ -587,8 +593,10 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             setHistory([JSON.parse(JSON.stringify(initial))]);
             setHistoryIndex(0);
             localStorage.removeItem(STORAGE_KEY);
+            setDraftRestoredCount(null); // 배너 숨김
         }
     };
+
 
     // 엑셀 붙여넣기 처리
     // 모달 오픈 시 배경 스크롤 방지 및 이벤트 차단
@@ -932,6 +940,34 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                 </header>
 
                 <main id="bulk-main">
+                    {/* 🔄 임시저장 복원 배너 */}
+                    {draftRestoredCount !== null && (
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '8px 16px',
+                            background: 'linear-gradient(90deg, #eff6ff 0%, #dbeafe 100%)',
+                            borderBottom: '1px solid #bfdbfe',
+                            fontSize: 13, color: '#1d4ed8',
+                            flexShrink: 0,
+                        }}>
+                            <i className="fas fa-history" style={{ fontSize: 14 }} />
+                            <span>
+                                <strong>임시저장된 데이터 {draftRestoredCount}건이 복원되었습니다.</strong>
+                                &nbsp;작업을 이어서 진행하세요.
+                            </span>
+                            <button
+                                onClick={handleReset}
+                                style={{
+                                    marginLeft: 'auto', padding: '3px 10px',
+                                    background: 'white', border: '1px solid #93c5fd',
+                                    borderRadius: 6, color: '#1d4ed8', fontSize: 12,
+                                    cursor: 'pointer', fontWeight: 500
+                                }}
+                            >
+                                지우고 새로 시작
+                            </button>
+                        </div>
+                    )}
                     <div id="grid-outer-container">
                         {/* 헤더 + 바디를 하나의 스크롤 컨테이너 안에 통합 */}
                         <div id="grid-body-scroll-area" ref={tableContainerRef} className="custom-scrollbar">

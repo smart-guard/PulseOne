@@ -967,6 +967,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         isOpen={showBulkModal}
         onClose={() => handleBulkModalChange(false)}
         onSave={handleBulkCreate}
+        draftContext="device"
         existingAddresses={dataPoints?.map(dp => dp.address) || []}
         protocolType={protocolType}
       />

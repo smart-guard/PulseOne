@@ -483,6 +483,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
             <DeviceDataPointsBulkModal
                 isOpen={isBulkModalOpen}
                 onClose={() => setIsBulkModalOpen(false)}
+                draftContext="master-model"
                 existingAddresses={dataPoints.map(p => {
                     const pp = p.protocol_params as any;
                     if (pp?.bit_index !== undefined) return `${p.address}:bit${pp.bit_index}`;
