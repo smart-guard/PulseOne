@@ -461,6 +461,11 @@ PART2B
 echo   3. PostgreSQL (대규모, 자동 설치 포함)
 PART2C
         fi
+        if [ "$DB_BUNDLE" = "mssql" ] || [ "$DB_BUNDLE" = "all" ]; then
+            cat >> "$PACKAGE_DIR/install.bat" << 'PART2MSSQL'
+echo   4. MSSQL    (SQL Server - 기존 서버 연결, database.env만 설정)
+PART2MSSQL
+        fi
 
         cat >> "$PACKAGE_DIR/install.bat" << 'PART2D'
 echo.
@@ -472,8 +477,10 @@ PART2D
             printf '/2=MariaDB' >> "$PACKAGE_DIR/install.bat"
         elif [ "$DB_BUNDLE" = "postgresql" ]; then
             printf '/3=PostgreSQL' >> "$PACKAGE_DIR/install.bat"
+        elif [ "$DB_BUNDLE" = "mssql" ]; then
+            printf '/4=MSSQL' >> "$PACKAGE_DIR/install.bat"
         elif [ "$DB_BUNDLE" = "all" ]; then
-            printf '/2=MariaDB/3=PostgreSQL' >> "$PACKAGE_DIR/install.bat"
+            printf '/2=MariaDB/3=PostgreSQL/4=MSSQL' >> "$PACKAGE_DIR/install.bat"
         fi
 
         cat >> "$PACKAGE_DIR/install.bat" << 'PART2E'
@@ -482,6 +489,7 @@ if "%DB_CHOICE%"=="" set DB_CHOICE=1
 if "%DB_CHOICE%"=="1" set "DB_TYPE=SQLITE"
 if "%DB_CHOICE%"=="2" set "DB_TYPE=MARIADB"
 if "%DB_CHOICE%"=="3" set "DB_TYPE=POSTGRESQL"
+if "%DB_CHOICE%"=="4" set "DB_TYPE=MSSQL"
 if "%DB_TYPE%"=="" set "DB_TYPE=SQLITE"
 echo [DB] 선택된 데이터베이스: %DB_TYPE%
 echo.
@@ -720,6 +728,42 @@ if exist "postgresql\bin\postgres.exe" (
     echo    [WARNING] PostgreSQL 바이너리 없음 - SQLite로 대체
     goto DB_SQLITE
 )
+    goto DB_DONE
+
+:DB_MSSQL
+echo    MSSQL (SQL Server) - 기존 서버 연결 설정
+echo.
+echo    [!] MSSQL은 별도 설치되지 않습니다.
+echo    [!] 이미 설치된 SQL Server 인스턴스에 연결 설정합니다.
+echo.
+set /p "MSSQL_HOST_INPUT=SQL Server 호스트 [기본값: localhost]: "
+if "%MSSQL_HOST_INPUT%"=="" set "MSSQL_HOST_INPUT=localhost"
+set /p "MSSQL_PORT_INPUT=포트 [기본값: 1433]: "
+if "%MSSQL_PORT_INPUT%"=="" set "MSSQL_PORT_INPUT=1433"
+set /p "MSSQL_DB_INPUT=데이터베이스명 [기본값: pulseone]: "
+if "%MSSQL_DB_INPUT%"=="" set "MSSQL_DB_INPUT=pulseone"
+set /p "MSSQL_USER_INPUT=사용자 [기본값: sa]: "
+if "%MSSQL_USER_INPUT%"=="" set "MSSQL_USER_INPUT=sa"
+set /p "MSSQL_PASS_INPUT=비밀번호: "
+set /p "MSSQL_INST_INPUT=인스턴스명 (없으면 Enter): "
+
+(
+    echo DATABASE_TYPE=MSSQL
+    echo MSSQL_ENABLED=true
+    echo MSSQL_HOST=%MSSQL_HOST_INPUT%
+    echo MSSQL_PORT=%MSSQL_PORT_INPUT%
+    echo MSSQL_DATABASE=%MSSQL_DB_INPUT%
+    echo MSSQL_USER=%MSSQL_USER_INPUT%
+    echo MSSQL_PASSWORD=%MSSQL_PASS_INPUT%
+    echo MSSQL_INSTANCE=%MSSQL_INST_INPUT%
+    echo MSSQL_ENCRYPT=false
+    echo MSSQL_TRUST_SERVER_CERTIFICATE=true
+    echo MSSQL_POOL_SIZE=10
+) > "config\database.env"
+echo    MSSQL database.env 생성 완료
+
+sqlcmd -S %MSSQL_HOST_INPUT%\%MSSQL_INST_INPUT% -U %MSSQL_USER_INPUT% -P %MSSQL_PASS_INPUT% -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name='%MSSQL_DB_INPUT%') CREATE DATABASE [%MSSQL_DB_INPUT%];" 2>nul
+if not errorlevel 1 echo    PulseOne 데이터베이스 생성 완료 (또는 이미 존재)
 goto DB_DONE
 
 :DB_DONE

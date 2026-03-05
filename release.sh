@@ -32,7 +32,8 @@ usage() {
     echo "  --db=sqlite      SQLite only (default, smallest package)"
     echo "  --db=mariadb     SQLite + MariaDB portable bundle"
     echo "  --db=postgresql  SQLite + PostgreSQL portable bundle"
-    echo "  --db=all         SQLite + MariaDB + PostgreSQL (all included)"
+    echo "  --db=mssql       SQLite + MSSQL (Windows only, no installer bundle)"
+    echo "  --db=all         All databases included (MSSQL = Windows only)"
     exit 1
 }
 
@@ -48,6 +49,7 @@ while [[ "$#" -gt 0 ]]; do
         --db=sqlite)      DB_BUNDLE="sqlite";      shift ;;
         --db=mariadb)     DB_BUNDLE="mariadb";     shift ;;
         --db=postgresql)  DB_BUNDLE="postgresql";  shift ;;
+        --db=mssql)       DB_BUNDLE="mssql";       shift ;;
         --db=all)         DB_BUNDLE="all";         shift ;;
         *) usage ;;
     esac
