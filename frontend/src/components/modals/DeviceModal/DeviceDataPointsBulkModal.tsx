@@ -101,19 +101,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
     });
     const [selectedRows, setSelectedRows] = useState<Set<string | number>>(new Set());
 
-    // 비트 범위 파싱: "0-3, 4-7" → [{start:0, end:3}, {start:4, end:7}]
-    const parseBitRanges = (raw: string, maxBits: number): Array<{ start: number, end: number, error?: string }> => {
-        if (!raw.trim()) return [];
-        return raw.split(',').map(part => {
-            const p = part.trim();
-            const m = p.match(/^(\d+)\s*[-~]\s*(\d+)$/);
-            if (!m) return { start: -1, end: -1, error: `잘못된 형식: "${p}" (예: 0-3)` };
-            const s = parseInt(m[1]), e = parseInt(m[2]);
-            if (s < 0 || e >= maxBits) return { start: s, end: e, error: `범위 초과: ${s}-${e} (0~${maxBits - 1})` };
-            if (s > e) return { start: s, end: e, error: `시작>끝: ${s}-${e}` };
-            return { start: s, end: e };
-        });
-    };
+    // parseBitRanges — BitSplitModal.tsx에서 import된 공유 함수 사용
 
     // 테이블 컨테이너 참조 (스크롤 제어 등)
     const tableContainerRef = useRef<HTMLDivElement>(null);
