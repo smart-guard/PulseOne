@@ -181,9 +181,28 @@ class EdgeServerService extends BaseService {
      */
     async getQuotaStatus(tenantId) {
         return await this.handleRequest(async () => {
+            // tenantId가 없으면(개발/admin 모드) 기본 쿼터 반환
+            if (!tenantId) {
+                const allCollectors = await this.repository.findAll(null);
+                const used = allCollectors.length;
+                const online = allCollectors.filter(c => c.status === 'active' || c.status === 'online').length;
+                return {
+                    used,
+                    max: 99,
+                    available: 99 - used,
+                    is_exceeded: false,
+                    online,
+                    offline: used - online
+                };
+            }
+
             const tenantRepo = require('../database/repositories/RepositoryFactory').getInstance().getTenantRepository();
             const tenant = await tenantRepo.findById(tenantId);
-            if (!tenant) throw new Error('테넌트를 찾을 수 없습니다.');
+            if (!tenant) {
+                // tenant를 못 찾으면 에러 대신 기본값 반환
+                const used = await this.repository.countByTenant(tenantId);
+                return { used, max: 3, available: Math.max(0, 3 - used), is_exceeded: used >= 3, online: 0, offline: used };
+            }
 
             const used = await this.repository.countByTenant(tenantId);
             const max = tenant.max_edge_servers || 3;

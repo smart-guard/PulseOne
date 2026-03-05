@@ -261,7 +261,15 @@ bool CollectorApplication::Initialize() {
       if (env_host && std::strlen(env_host) > 0) {
         my_ip = std::string(env_host); // Docker: "collector"
       } else {
-        my_ip = DetectOutboundIP(); // 자동 감지: 192.168.x.x 또는 127.0.0.1
+#ifdef _WIN32
+        // Windows 단독 배포: 백엔드와 같은 머신이므로 127.0.0.1 고정
+        // (LAN IP를 등록하면 백엔드가 로컬 Collector를 원격 IP로 접속 시도)
+        my_ip = "127.0.0.1";
+        LogManager::getInstance().Info(
+            "🌐 [Self-Register] Windows native mode: using 127.0.0.1");
+#else
+        my_ip = DetectOutboundIP(); // Linux/Docker: 자동 감지
+#endif
       }
 
       // 멀티 인스턴스: BASE_PORT + (collector_id - 1)
@@ -826,8 +834,7 @@ void CollectorApplication::UpdateHeartbeat() {
 
     auto &db_mgr = DbLib::DatabaseManager::getInstance();
     // ✅ RuntimeSQLQueries::EdgeServer::UPDATE_HEARTBEAT
-    db_mgr.executeNonQuery(
-        Runtime::EdgeServer::UPDATE_HEARTBEAT(collector_id));
+    db_mgr.executeNonQuery(Runtime::EdgeServer::UPDATE_HEARTBEAT(collector_id));
 
     // Redis 하트비트 추가
     auto redis = PulseOne::Utils::RedisManager::getInstance().getClient();

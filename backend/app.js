@@ -530,9 +530,11 @@ async function initializeSystem() {
         }
 
         logger.system('INFO', '시스템 초기화 완료');
+        app.locals.dbInitialized = true;  // 🔥 DB 완전 초기화 완료 플래그
 
     } catch (error) {
         logger.system('ERROR', '시스템 초기화 실패', { error: error.message });
+        app.locals.dbInitialized = false;
 
         const failOnInitError = config.getBoolean('FAIL_ON_INIT_ERROR', false);
         if (failOnInitError) {
@@ -631,6 +633,9 @@ app.get('/api/health', async (req, res) => {
                 autoInit: config.getBoolean('AUTO_INITIALIZE_ON_START')
             }
         };
+
+        // 🔥 DB 초기화 완료 여부 (start.bat이 이걸 보고 Collector 시작 시점 결정)
+        healthInfo.db_initialized = app.locals.dbInitialized === true;
 
         logger.api('DEBUG', 'Health check 요청', { status: 'ok' });
         res.json(healthInfo);

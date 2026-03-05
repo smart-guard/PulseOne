@@ -302,8 +302,7 @@ class DataService extends BaseService {
         return await this.handleRequest(async () => {
             const { site_id } = params;
 
-            const devicesResult = await this.deviceRepo.findAllDevices({
-                tenantId,
+            const devicesResult = await this.deviceRepo.findAll(tenantId, {
                 siteId: site_id ? parseInt(site_id) : null
             });
 

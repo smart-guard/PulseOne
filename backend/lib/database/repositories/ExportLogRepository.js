@@ -21,13 +21,11 @@ class ExportLogRepository extends BaseRepository {
             // Use Knex Query Builder via this.knex
             const query = this.knex(`${this.tableName} as l`)
                 .leftJoin('export_targets as t', 'l.target_id', 't.id')
-                .leftJoin('export_profiles as p', 't.profile_id', 'p.id')
                 .leftJoin('edge_servers as g', 'l.gateway_id', 'g.id')
                 .select(
                     'l.*',
                     't.name as target_name',
                     't.target_type',
-                    'p.name as profile_name',
                     'g.server_name as gateway_name'
                 );
 
@@ -68,7 +66,6 @@ class ExportLogRepository extends BaseRepository {
             if (filters.search_term) {
                 query.where(function () {
                     this.where('t.name', 'like', `%${filters.search_term}%`)
-                        .orWhere('p.name', 'like', `%${filters.search_term}%`)
                         .orWhere('g.server_name', 'like', `%${filters.search_term}%`);
                 });
             }
@@ -104,7 +101,6 @@ class ExportLogRepository extends BaseRepository {
         try {
             const query = this.knex(`${this.tableName} as l`)
                 .leftJoin('export_targets as t', 'l.target_id', 't.id')
-                .leftJoin('export_profiles as p', 't.profile_id', 'p.id')
                 .leftJoin('edge_servers as g', 'l.gateway_id', 'g.id');
 
             if (filters.tenant_id) {
@@ -132,7 +128,6 @@ class ExportLogRepository extends BaseRepository {
             if (filters.search_term) {
                 query.where(function () {
                     this.where('t.name', 'like', `%${filters.search_term}%`)
-                        .orWhere('p.name', 'like', `%${filters.search_term}%`)
                         .orWhere('g.server_name', 'like', `%${filters.search_term}%`);
                 });
             }

@@ -108,10 +108,12 @@ INSERT INTO users VALUES(3,1,'operator01','operator@pulseone.io','$2a$10$IjD584s
 INSERT INTO sites VALUES(1,1,NULL,'PulseOne Demo Site','DEMO-SITE-001','factory','PulseOne 데모 현장 — Modbus/MQTT/OPC UA/ROS 통합 수집 환경','서울특별시 강남구',NULL,NULL,NULL,NULL,NULL,NULL,'Asia/Seoul','KRW','ko',NULL,NULL,NULL,NULL,NULL,NULL,'MON-FRI',NULL,NULL,NULL,NULL,0,NULL,0,1,0,1,1,NULL,NULL,NULL,datetime('now','localtime'),datetime('now','localtime'));
 
 -- ──────────────────────────────────────────────
--- edge_servers (id=1: Main Collector)
--- id=2는 seed_hmi001_insite.sql에서 Insite Gateway로 추가
+-- edge_servers
+--   id=1: Main Collector (Modbus/MQTT/BACnet 수집)
+--   id=2: Export Gateway (데이터 내보내기)
 -- ──────────────────────────────────────────────
 INSERT INTO edge_servers VALUES(1,1,'Main Collector','collector',NULL,'PulseOne Demo Site',NULL,'127.0.0.1',NULL,NULL,8501,NULL,NULL,NULL,NULL,'active',NULL,NULL,'3.6.0',0.0,0.0,0.0,0,NULL,NULL,1,1,datetime('now','localtime'),datetime('now','localtime'),0,1,100,1000,'all',1);
+INSERT INTO edge_servers VALUES(2,1,'Export Gateway','gateway',NULL,'PulseOne Demo Site',NULL,'127.0.0.1',NULL,NULL,8601,NULL,NULL,NULL,NULL,'active',NULL,NULL,'3.6.0',0.0,0.0,0.0,0,NULL,NULL,1,1,datetime('now','localtime'),datetime('now','localtime'),0,1,100,1000,'all',1);
 
 -- ──────────────────────────────────────────────
 -- manufacturers (레퍼런스)
@@ -175,7 +177,7 @@ INSERT INTO template_data_points VALUES(16,2,'Control_Word','제어 워드',11,N
 -- ──────────────────────────────────────────────
 -- devices (id=1: HMI-001, Modbus TCP, edge_server_id=1)
 -- ──────────────────────────────────────────────
-INSERT INTO devices VALUES(1,1,1,NULL,1,'HMI-001',NULL,'HMI','PulseOne',NULL,NULL,NULL,1,'simulator-modbus:50502','{"slave_id":1}',1000,3000,3,NULL,NULL,NULL,NULL,NULL,0,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,datetime('now','localtime'),datetime('now','localtime'),NULL);
+INSERT INTO devices VALUES(1,1,1,NULL,1,'HMI-001',NULL,'HMI','PulseOne',NULL,NULL,NULL,1,'simulator-modbus:50502','{"slave_id":1}',1000,3000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,datetime('now','localtime'),datetime('now','localtime'),NULL);
 INSERT INTO device_settings VALUES(1,1000,NULL,1,10000,3000,5000,10,3,5000,1.5,60000,300000,1,30,10,1,0,1,0,1,0,0,0,1024,1024,100,datetime('now','localtime'),datetime('now','localtime'),NULL);
 INSERT INTO device_status VALUES(1,'disconnected',NULL,NULL,0,NULL,NULL,0,0,NULL,NULL,0.0,0,0,0,0.0,NULL,NULL,NULL,NULL,NULL,datetime('now','localtime'));
 
@@ -252,7 +254,7 @@ INSERT INTO sqlite_sequence VALUES('system_settings',8);
 INSERT INTO sqlite_sequence VALUES('tenants',1);
 INSERT INTO sqlite_sequence VALUES('users',3);
 INSERT INTO sqlite_sequence VALUES('sites',1);
-INSERT INTO sqlite_sequence VALUES('edge_servers',1);
+INSERT INTO sqlite_sequence VALUES('edge_servers',2);
 INSERT INTO sqlite_sequence VALUES('manufacturers',5);
 INSERT INTO sqlite_sequence VALUES('device_models',4);
 INSERT INTO sqlite_sequence VALUES('protocols',9);

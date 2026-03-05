@@ -107,9 +107,19 @@ class SQLiteConnection {
                             console.log('✅ SQLite 연결 성공');
                             console.log(`   파일 위치: ${this.resolvedPath}`);
 
+                            // 🔥 핵심: DB 오픈 직후 네이티브 레벨 busyTimeout 설정
+                            // PRAGMA busy_timeout보다 먼저 적용되어 Statement 레벨
+                            // SQLITE_BUSY 에러 자체를 방지 (내부적으로 대기 후 재시도)
+                            this.connection.configure('busyTimeout', this.config.timeout || 10000);
+
+                            // Database 인스턴스 에러 핸들러 (프로세스 크래시 방지)
+                            this.connection.on('error', (dbErr) => {
+                                console.error(`⚠️ [SQLite] Database error event (non-fatal): ${dbErr.message}`);
+                            });
+
                             this.isConnected = true;
-                            this._applyPragmas();
-                            resolve(this.connection);
+                            // PRAGMA를 serialize()로 순서 보장 후 resolve
+                            this._applyPragmas(resolve);
                         }
                     }
                 );
@@ -120,13 +130,18 @@ class SQLiteConnection {
         }
     }
 
-    _applyPragmas() {
-        if (!this.connection) return;
+    _applyPragmas(onDone) {
+        if (!this.connection) {
+            if (onDone) onDone(this.connection);
+            return;
+        }
 
-        try {
-            // PRAGMA 설정 적용
-            this.connection.run(`PRAGMA journal_mode = ${this.config.journalMode}`);
+        // serialize()로 PRAGMA들을 직렬 실행하여 busy_timeout이
+        // 첫 번째 쿼리보다 반드시 먼저 적용됨을 보장
+        this.connection.serialize(() => {
+            // busy_timeout을 가장 먼저 — Collector와의 락 충돌 방지
             this.connection.run(`PRAGMA busy_timeout = ${this.config.timeout}`);
+            this.connection.run(`PRAGMA journal_mode = ${this.config.journalMode}`);
 
             if (this.config.foreignKeys) {
                 this.connection.run('PRAGMA foreign_keys = ON');
@@ -135,12 +150,15 @@ class SQLiteConnection {
             // 성능 최적화
             this.connection.run(`PRAGMA cache_size = ${this.config.cacheSize}`);
             this.connection.run('PRAGMA temp_store = memory');
-            this.connection.run('PRAGMA mmap_size = 268435456'); // 256MB
-
-            console.log('✅ SQLite PRAGMA 설정 적용 완료');
-        } catch (error) {
-            console.warn('⚠️ SQLite PRAGMA 설정 실패:', error.message);
-        }
+            this.connection.run('PRAGMA mmap_size = 268435456', (err) => {
+                // 모든 PRAGMA 완료 후 resolve
+                if (err) {
+                    console.warn('⚠️ SQLite mmap_size PRAGMA 실패 (무시):', err.message);
+                }
+                console.log('✅ SQLite PRAGMA 설정 적용 완료');
+                if (onDone) onDone(this.connection);
+            });
+        });
     }
 
     async query(sql, params = []) {

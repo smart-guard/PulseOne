@@ -890,7 +890,7 @@ PART5
     cat > "$PACKAGE_DIR/start.bat" << 'WIN_START'
 @echo off
 chcp 65001 >nul
-setlocal
+setlocal enabledelayedexpansion
 pushd "%~dp0"
 set "ROOT=%CD%"
 
@@ -902,7 +902,6 @@ if not exist "runHidden.vbs" (
 echo Starting PulseOne...
 
 if exist "influxdb\influxd.exe" (
-    rem VBS에 인수 전달 시 경로에 공백 있으면 깨짐 - cmd /c 로 wrapper
     wscript.exe runHidden.vbs "cmd /c cd /d %ROOT% && influxdb\influxd.exe --bolt-path %ROOT%\data\influxdb\.influxdbv2\influxd.bolt --engine-path %ROOT%\data\influxdb\.influxdbv2\engine --http-bind-address 127.0.0.1:8086"
     timeout /t 4 /nobreak >nul
 )
@@ -920,12 +919,38 @@ if exist "mosquitto\mosquitto.exe" (
 if not exist "%ROOT%\logs" mkdir "%ROOT%\logs"
 if not exist "%ROOT%\logs\packets" mkdir "%ROOT%\logs\packets"
 
-if exist "pulseone-backend.exe" (
-    wscript.exe runHidden.vbs "cmd /c cd /d %ROOT% && pulseone-backend.exe --config=%ROOT%\config >> %ROOT%\logs\backend-startup.log 2>&1"
-    timeout /t 4 /nobreak >nul
-) else (
+if not exist "pulseone-backend.exe" (
     echo [ERROR] pulseone-backend.exe not found!
+    goto SKIP_BACKEND
 )
+
+wscript.exe runHidden.vbs "cmd /c cd /d %ROOT% && pulseone-backend.exe --config=%ROOT%\config >> %ROOT%\logs\backend-startup.log 2>&1"
+echo [INFO] Backend 시작됨. DB 초기화 완료 대기 중 (최대 90초)...
+echo [INFO] /api/health 의 db_initialized:true 응답을 기다립니다...
+
+set WAIT_COUNT=0
+:WAIT_DB_READY
+timeout /t 3 /nobreak >nul
+set /a WAIT_COUNT+=1
+
+powershell -Command "try { $r = (Invoke-WebRequest -Uri 'http://localhost:3000/api/health' -TimeoutSec 3 -UseBasicParsing).Content | ConvertFrom-Json; if ($r.db_initialized -eq $true) { exit 0 } else { exit 2 } } catch { exit 1 }" >nul 2>&1
+set HEALTH_CODE=%errorlevel%
+
+if %HEALTH_CODE% EQU 0 (
+    echo [OK] DB 초기화 완료 확인 ^(대기 !WAIT_COUNT!회 / 약 !WAIT_COUNT!x3초^)
+    goto BACKEND_READY
+)
+if !WAIT_COUNT! GEQ 30 (
+    echo [WARN] 90초 내 DB 초기화 미완료 - Collector 강제 시작 ^(logs\backend-startup.log 확인 필요^)
+    goto BACKEND_READY
+)
+if %HEALTH_CODE% EQU 2 (
+    echo [...] DB 초기화 진행 중... ^(!WAIT_COUNT!회^)
+)
+goto WAIT_DB_READY
+
+:BACKEND_READY
+:SKIP_BACKEND
 
 if exist "pulseone-collector.exe" (
     wscript.exe runHidden.vbs "cmd /c cd /d %ROOT% && pulseone-collector.exe --config=%ROOT%\config >> %ROOT%\logs\collector-startup.log 2>&1"

@@ -761,7 +761,9 @@ class DeviceRepository extends BaseRepository {
      */
     async hasCurrentValues(deviceId, tenantId = null) {
         try {
-            const exists = await redis.exists(`current_values:${deviceId}`);
+            const client = await redis.getRedisClient();
+            if (!client) return false;
+            const exists = await client.exists(`current_values:${deviceId}`);
             return exists === 1 || exists === true;
         } catch (error) {
             this.logger.error(`DeviceRepository.hasCurrentValues 실패 (DeviceID: ${deviceId}):`, error.message);
