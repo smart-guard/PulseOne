@@ -12,6 +12,7 @@
 #include "Pipeline/DataProcessingService.h"
 #include "Alarm/AlarmManager.h"
 #include "Client/InfluxClientImpl.h"
+#include "Client/RedisClientImpl.h"
 #include "Common/Enums.h"
 #include "Database/Entities/AlarmOccurrenceEntity.h"
 #include "Database/Entities/CurrentValueEntity.h"
