@@ -27,6 +27,12 @@ usage() {
     echo "  --all         Build all platforms"
     echo "  --skip-ui     Skip frontend build"
     echo "  --skip-build  Skip C++ compilation (use existing binaries)"
+    echo ""
+    echo "Database Bundle Options (for Windows/Linux/RPi):"
+    echo "  --db=sqlite      SQLite only (default, smallest package)"
+    echo "  --db=mariadb     SQLite + MariaDB portable bundle"
+    echo "  --db=postgresql  SQLite + PostgreSQL portable bundle"
+    echo "  --db=all         SQLite + MariaDB + PostgreSQL (all included)"
     exit 1
 }
 
@@ -39,6 +45,10 @@ while [[ "$#" -gt 0 ]]; do
         --all)        TARGET_OS="all";      shift ;;
         --skip-ui)    SKIP_FRONTEND=true;   shift ;;
         --skip-build) SKIP_BUILD=true;      shift ;;
+        --db=sqlite)      DB_BUNDLE="sqlite";      shift ;;
+        --db=mariadb)     DB_BUNDLE="mariadb";     shift ;;
+        --db=postgresql)  DB_BUNDLE="postgresql";  shift ;;
+        --db=all)         DB_BUNDLE="all";         shift ;;
         *) usage ;;
     esac
 done
@@ -69,6 +79,7 @@ fi
 # =============================================================================
 run_windows() {
     echo "🪟 Windows: running deploy-windows.sh inside pulseone-win-builder..."
+    echo "   DB Bundle: $DB_BUNDLE"
     # 이미지 없으면 자동 빌드 (최초 1회)
     if ! docker image inspect pulseone-win-builder > /dev/null 2>&1; then
         echo "   Building pulseone-win-builder image (최초 1회)..."
@@ -81,11 +92,13 @@ run_windows() {
         -e SKIP_FRONTEND=true \
         -e SKIP_BUILD="$SKIP_BUILD" \
         -e HOST_TIMESTAMP="$HOST_TIMESTAMP" \
+        -e DB_BUNDLE="$DB_BUNDLE" \
         pulseone-win-builder bash /workspace/deploy-windows.sh
 }
 
 run_linux() {
     echo "🐧 Linux: running deploy-linux.sh inside pulseone-linux-builder..."
+    echo "   DB Bundle: $DB_BUNDLE"
     # 이미지 없으면 자동 빌드 (최초 1회)
     if ! docker image inspect pulseone-linux-builder > /dev/null 2>&1; then
         echo "   Building pulseone-linux-builder image (최초 1회)..."
@@ -98,11 +111,13 @@ run_linux() {
         -e SKIP_FRONTEND=true \
         -e SKIP_BUILD="$SKIP_BUILD" \
         -e HOST_TIMESTAMP="$HOST_TIMESTAMP" \
+        -e DB_BUNDLE="$DB_BUNDLE" \
         pulseone-linux-builder bash /workspace/deploy-linux.sh
 }
 
 run_rpi() {
     echo "🍓 RPi: running deploy-rpi.sh inside pulseone-rpi-builder (linux/arm64)..."
+    echo "   DB Bundle: $DB_BUNDLE"
     # 이미지 없으면 자동 빌드 (최초 1회 — QEMU 에뮬레이션으로 ARM64 빌드)
     if ! docker image inspect pulseone-rpi-builder > /dev/null 2>&1; then
         echo "   Building pulseone-rpi-builder image (최초 1회, ARM64 — 시간이 걸립니다)..."
@@ -115,6 +130,7 @@ run_rpi() {
         -e SKIP_FRONTEND=true \
         -e SKIP_BUILD="$SKIP_BUILD" \
         -e HOST_TIMESTAMP="$HOST_TIMESTAMP" \
+        -e DB_BUNDLE="$DB_BUNDLE" \
         pulseone-rpi-builder bash /workspace/deploy-rpi.sh
 }
 
@@ -137,5 +153,5 @@ case $TARGET_OS in
 esac
 
 echo "================================================================="
-echo "✅ Release complete: $TARGET_OS"
+echo "✅ Release complete: $TARGET_OS (DB bundle: $DB_BUNDLE)"
 echo "================================================================="

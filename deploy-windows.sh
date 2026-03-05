@@ -31,6 +31,7 @@ SKIP_GATEWAY=false
 SKIP_BACKEND=false
 SKIP_FRONTEND=false
 NO_PACKAGE=false
+DB_BUNDLE="${DB_BUNDLE:-sqlite}"
 
 for arg in "$@"; do
     case "$arg" in
@@ -41,6 +42,10 @@ for arg in "$@"; do
         --skip-frontend)   SKIP_FRONTEND=true ;;
         --skip-cpp)        SKIP_SHARED=true; SKIP_COLLECTOR=true; SKIP_GATEWAY=true ;;
         --no-package)      NO_PACKAGE=true ;;
+        --db=sqlite)       DB_BUNDLE="sqlite" ;;
+        --db=mariadb)      DB_BUNDLE="mariadb" ;;
+        --db=postgresql)   DB_BUNDLE="postgresql" ;;
+        --db=all)          DB_BUNDLE="all" ;;
     esac
 done
 
@@ -50,6 +55,7 @@ echo "================================================================="
 echo "🪟 PulseOne Windows Deploy v$VERSION"
 echo "   skip: shared=$SKIP_SHARED  collector=$SKIP_COLLECTOR  gateway=$SKIP_GATEWAY"
 echo "         backend=$SKIP_BACKEND  frontend=$SKIP_FRONTEND"
+echo "   DB bundle: $DB_BUNDLE"
 echo "   output: $BIN_DIR"
 echo "================================================================="
 
@@ -347,13 +353,50 @@ if [ "$NO_PACKAGE" = "false" ]; then
 
     mkdir -p "$PACKAGE_DIR/setup_assets"
     cp "$SETUP_CACHE/"* "$PACKAGE_DIR/setup_assets/" 2>/dev/null || true
-    cd "$PROJECT_ROOT"
-    echo "✅ setup_assets ready"
 
     # ==========================================================================
-    # install.bat
+    # DB 번들 다운로드 (MariaDB / PostgreSQL)
     # ==========================================================================
-    cat > "$PACKAGE_DIR/install.bat" << 'WIN_INSTALL'
+    MARIA_ZIP="mariadb-11.4.5-winx64.zip"
+    PG_ZIP="postgresql-17.4-2-windows-x64-binaries.zip"
+
+    if [ "$DB_BUNDLE" = "mariadb" ] || [ "$DB_BUNDLE" = "all" ]; then
+        if [ ! -f "$SETUP_CACHE/$MARIA_ZIP" ]; then
+            echo "   Downloading MariaDB 11.4 portable ZIP (~270MB)..."
+            curl -fsSL -L -o "$SETUP_CACHE/$MARIA_ZIP" \
+                "https://downloads.mariadb.org/rest-api/mariadb/11.4.5/mariadb-11.4.5-winx64.zip" || \
+            curl -fsSL -L -o "$SETUP_CACHE/$MARIA_ZIP" \
+                "https://archive.mariadb.org/mariadb-11.4.5/winx64-packages/mariadb-11.4.5-winx64.zip" || \
+                echo "   ⚠️  MariaDB 다운로드 실패"
+        else
+            echo "   ✅ MariaDB (cached)"
+        fi
+        [ -f "$SETUP_CACHE/$MARIA_ZIP" ] && cp "$SETUP_CACHE/$MARIA_ZIP" "$PACKAGE_DIR/setup_assets/"
+    fi
+
+    if [ "$DB_BUNDLE" = "postgresql" ] || [ "$DB_BUNDLE" = "all" ]; then
+        if [ ! -f "$SETUP_CACHE/$PG_ZIP" ]; then
+            echo "   Downloading PostgreSQL 17 portable ZIP (~300MB)..."
+            curl -fsSL -L -o "$SETUP_CACHE/$PG_ZIP" \
+                "https://get.enterprisedb.com/postgresql/postgresql-17.4-2-windows-x64-binaries.zip" || \
+                echo "   ⚠️  PostgreSQL 다운로드 실패"
+        else
+            echo "   ✅ PostgreSQL (cached)"
+        fi
+        [ -f "$SETUP_CACHE/$PG_ZIP" ] && cp "$SETUP_CACHE/$PG_ZIP" "$PACKAGE_DIR/setup_assets/"
+    fi
+
+    cd "$PROJECT_ROOT"
+    echo "✅ setup_assets ready (DB bundle: $DB_BUNDLE)"
+
+    # ==========================================================================
+    # install.bat — DB_BUNDLE=$DB_BUNDLE 에 따라 DB 선택 메뉴 동적 삽입
+    # ==========================================================================
+    # 히어독을 분리하여 shell 변수($DB_BUNDLE)와 bat 변수(%%VAR%%)를 혼용
+    # ==========================================================================
+
+    # ① 공통 헤더 (관리자 권한 체크 + 디렉토리 생성)
+    cat > "$PACKAGE_DIR/install.bat" << 'PART1'
 @echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
@@ -367,7 +410,6 @@ set "ROOT=%CD%"
 net session >nul 2>&1
 if errorlevel 1 (
     echo 관리자 권한으로 다시 실행합니다...
-    rem 경로에 공백이 있어도 안전하게 어뤼되는 방식
     powershell -Command "Start-Process '%~f0' -Verb RunAs -Wait"
     exit /b 0
 )
@@ -383,11 +425,76 @@ if not exist "data\backup"   mkdir "data\backup"
 if not exist "data\temp"     mkdir "data\temp"
 if not exist "data\influxdb" mkdir "data\influxdb"
 
+PART1
+
+    # ② DB 선택 메뉴 (번들에 포함된 DB만 표시)
+    if [ "$DB_BUNDLE" = "sqlite" ]; then
+        # SQLite 전용 패키지 — 메뉴 없이 바로 SQLite 설정
+        cat >> "$PACKAGE_DIR/install.bat" << 'PART2'
+:: ============================================================
+:: 데이터베이스: SQLite (기본)
+:: ============================================================
+set "DB_TYPE=SQLITE"
+echo [DB] SQLite 모드로 설치합니다.
+PART2
+    else
+        # MariaDB / PostgreSQL / all 패키지 — 메뉴 표시
+        # 메뉴 옵션을 DB_BUNDLE에 따라 동적으로 구성
+        cat >> "$PACKAGE_DIR/install.bat" << 'PART2A'
+:: ============================================================
+:: [0/?] 데이터베이스 유형 선택
+:: ============================================================
+echo.
+echo ============================================================
+echo   PulseOne 데이터베이스 선택
+echo.
+echo   1. SQLite   (소규모, 기본값, 별도 서버 불필요)
+PART2A
+
+        if [ "$DB_BUNDLE" = "mariadb" ] || [ "$DB_BUNDLE" = "all" ]; then
+            cat >> "$PACKAGE_DIR/install.bat" << 'PART2B'
+echo   2. MariaDB  (중대규모, 자동 설치 포함)
+PART2B
+        fi
+        if [ "$DB_BUNDLE" = "postgresql" ] || [ "$DB_BUNDLE" = "all" ]; then
+            cat >> "$PACKAGE_DIR/install.bat" << 'PART2C'
+echo   3. PostgreSQL (대규모, 자동 설치 포함)
+PART2C
+        fi
+
+        cat >> "$PACKAGE_DIR/install.bat" << 'PART2D'
+echo.
+echo ============================================================
+set /p "DB_CHOICE=선택 [1=SQLite"
+PART2D
+
+        if [ "$DB_BUNDLE" = "mariadb" ]; then
+            printf '/2=MariaDB' >> "$PACKAGE_DIR/install.bat"
+        elif [ "$DB_BUNDLE" = "postgresql" ]; then
+            printf '/3=PostgreSQL' >> "$PACKAGE_DIR/install.bat"
+        elif [ "$DB_BUNDLE" = "all" ]; then
+            printf '/2=MariaDB/3=PostgreSQL' >> "$PACKAGE_DIR/install.bat"
+        fi
+
+        cat >> "$PACKAGE_DIR/install.bat" << 'PART2E'
+, 기본값=1]: "
+if "%DB_CHOICE%"=="" set DB_CHOICE=1
+if "%DB_CHOICE%"=="1" set "DB_TYPE=SQLITE"
+if "%DB_CHOICE%"=="2" set "DB_TYPE=MARIADB"
+if "%DB_CHOICE%"=="3" set "DB_TYPE=POSTGRESQL"
+if "%DB_TYPE%"=="" set "DB_TYPE=SQLITE"
+echo [DB] 선택된 데이터베이스: %DB_TYPE%
+echo.
+PART2E
+    fi
+
+    # ③ 공통 설치 단계 (MSVC, Node.js, InfluxDB, Redis, Mosquitto)
+    cat >> "$PACKAGE_DIR/install.bat" << 'PART3'
 
 :: ============================================================
-:: [1/7] MSVC Redistributable
+:: [1/8] MSVC Redistributable
 :: ============================================================
-echo [1/7] MSVC Redistributable 확인 중...
+echo [1/8] MSVC Redistributable 확인 중...
 if exist "setup_assets\vc_redist.x64.exe" (
     start /wait "" "setup_assets\vc_redist.x64.exe" /install /quiet /norestart
     echo    MSVC Redistributable 설치 완료
@@ -396,9 +503,9 @@ if exist "setup_assets\vc_redist.x64.exe" (
 )
 
 :: ============================================================
-:: [2/7] Node.js
+:: [2/8] Node.js
 :: ============================================================
-echo [2/7] Node.js 확인 중...
+echo [2/8] Node.js 확인 중...
 where node >nul 2>&1
 if errorlevel 1 (
     echo    Node.js 설치 중...
@@ -410,9 +517,9 @@ if errorlevel 1 (
 )
 
 :: ============================================================
-:: [3/7] InfluxDB
+:: [3/8] InfluxDB
 :: ============================================================
-echo [3/7] InfluxDB 설정 중...
+echo [3/8] InfluxDB 설정 중...
 if not exist "influxdb\influxd.exe" (
     mkdir influxdb 2>nul
     tar -xf "setup_assets\influxdb2-2.7.1-windows-amd64.zip" -C influxdb --strip-components=1 >nul 2>&1
@@ -420,11 +527,8 @@ if not exist "influxdb\influxd.exe" (
 if exist "influxdb\influxd.exe" (
     if not exist "data\influxdb\.influxdbv2" (
         echo    InfluxDB 초기 설정 중 ^(최초 1회^)...
-        rem 백그라운드 시작 - start /b 사용, & 아님
         start /b /min "" "influxdb\influxd.exe" --bolt-path "%ROOT%\data\influxdb\.influxdbv2\influxd.bolt" --engine-path "%ROOT%\data\influxdb\.influxdbv2\engine"
         timeout /t 8 /nobreak >nul
-        rem curl로 HTTP API 초기 설정 - JSON은 temp 파일 사용 (이스케이프 문제 방지)
-        rem echo로 JSON 쉽도 큰따옴표 안에 중괄호가 있으면 CMD가 token쳄림 - powershell으로 작성
         powershell -Command "'{""username"":""admin"",""password"":""admin123456"",""org"":""pulseone"",""bucket"":""telemetry_data"",""token"":""pulseone-influx-token-windows-2026"",""retentionPeriodSeconds"":0}' | Set-Content -Encoding UTF8 -Path '%TEMP%\influx_setup.json'"
         curl -s -X POST http://localhost:8086/api/v2/setup -H "Content-Type: application/json" -d "@%TEMP%\influx_setup.json" >nul 2>&1
         del "%TEMP%\influx_setup.json" >nul 2>&1
@@ -432,7 +536,6 @@ if exist "influxdb\influxd.exe" (
         timeout /t 2 /nobreak >nul
         echo    InfluxDB 초기 설정 완료
     )
-    rem sc create는 binPath 이스케이프가 복잡 - PowerShell로 처리
     sc query PulseOne-InfluxDB >nul 2>&1
     if errorlevel 1 (
         powershell -Command "New-Service -Name 'PulseOne-InfluxDB' -BinaryPathName ('%ROOT%\influxdb\influxd.exe --bolt-path %ROOT%\data\influxdb\.influxdbv2\influxd.bolt --engine-path %ROOT%\data\influxdb\.influxdbv2\engine') -DisplayName 'PulseOne InfluxDB' -StartupType Automatic" >nul 2>&1
@@ -444,25 +547,24 @@ if exist "influxdb\influxd.exe" (
 )
 
 :: ============================================================
-:: [4/7] Redis
+:: [4/8] Redis
 :: ============================================================
-echo [4/7] Redis 설정 중...
+echo [4/8] Redis 설정 중...
 if not exist "redis\redis-server.exe" (
     mkdir redis 2>nul
     tar -xf "setup_assets\Redis-x64-5.0.14.1.zip" -C redis >nul 2>&1
 )
 sc query PulseOne-Redis >nul 2>&1
 if errorlevel 1 (
-    rem Redis는 SCM에서 시작될 때 --service-run 필수 (없으면 오류 1053)
     sc create PulseOne-Redis binPath= "\"%ROOT%\redis\redis-server.exe\" --service-run" start= auto DisplayName= "PulseOne Redis" >nul 2>&1
 )
 sc start PulseOne-Redis >nul 2>&1
 echo    Redis 서비스 등록 완료
 
 :: ============================================================
-:: [5/7] Mosquitto
+:: [5/8] Mosquitto
 :: ============================================================
-echo [5/7] Mosquitto 설정 중...
+echo [5/8] Mosquitto 설정 중...
 if not exist "mosquitto\mosquitto.exe" (
     mkdir "%ROOT%\mosquitto" 2>nul
     if exist "setup_assets\zlib1.dll"          copy /y "setup_assets\zlib1.dll"          "%ROOT%\mosquitto\" >nul
@@ -470,7 +572,6 @@ if not exist "mosquitto\mosquitto.exe" (
     if exist "setup_assets\libssl-3-x64.dll"   copy /y "setup_assets\libssl-3-x64.dll"   "%ROOT%\mosquitto\" >nul
     start /wait "" "setup_assets\mosquitto-2.0.21-install-windows-x64.exe" /S /D=%ROOT%\mosquitto
 )
-rem mosquitto.conf 없으면 기본 conf 생성 (없으면 서비스 시작 거부됨)
 if not exist "%ROOT%\mosquitto\mosquitto.conf" (
     echo listener 1883 0.0.0.0 > "%ROOT%\mosquitto\mosquitto.conf"
     echo allow_anonymous true >> "%ROOT%\mosquitto\mosquitto.conf"
@@ -484,10 +585,144 @@ if errorlevel 1 (
 sc start PulseOne-MQTT >nul 2>&1
 echo    Mosquitto 서비스 등록 완료
 
+PART3
+
+    # ④ DB별 추가 설치 (MariaDB / PostgreSQL)
+    if [ "$DB_BUNDLE" = "sqlite" ]; then
+        cat >> "$PACKAGE_DIR/install.bat" << 'PART4_SQLITE'
 :: ============================================================
-:: [6/7] WinSW 서비스 등록 (Backend / Collector / Gateway)
+:: [6/8] 데이터베이스 초기화 (SQLite)
 :: ============================================================
-echo [6/7] PulseOne 서비스 등록 중...
+echo [6/8] SQLite 데이터베이스 설정 완료 (별도 서버 불필요)
+:: database.env 생성
+(
+    echo DATABASE_TYPE=SQLITE
+    echo SQLITE_PATH=./data/db/pulseone.db
+    echo SQLITE_JOURNAL_MODE=WAL
+    echo SQLITE_SYNCHRONOUS=NORMAL
+    echo SQLITE_CACHE_SIZE=2000
+    echo SQLITE_BUSY_TIMEOUT_MS=5000
+    echo SQLITE_FOREIGN_KEYS=true
+) > "config\database.env"
+echo    database.env 생성 완료 ^(SQLite^)
+PART4_SQLITE
+    else
+        cat >> "$PACKAGE_DIR/install.bat" << 'PART4_DB'
+:: ============================================================
+:: [6/8] 데이터베이스 설치 및 초기화
+:: ============================================================
+echo [6/8] 데이터베이스 설치 중 ^(선택: %DB_TYPE%^)...
+
+if "%DB_TYPE%"=="SQLITE" goto DB_SQLITE
+if "%DB_TYPE%"=="MARIADB" goto DB_MARIADB
+if "%DB_TYPE%"=="POSTGRESQL" goto DB_POSTGRESQL
+goto DB_SQLITE
+
+:DB_SQLITE
+(
+    echo DATABASE_TYPE=SQLITE
+    echo SQLITE_PATH=./data/db/pulseone.db
+    echo SQLITE_JOURNAL_MODE=WAL
+    echo SQLITE_SYNCHRONOUS=NORMAL
+    echo SQLITE_CACHE_SIZE=2000
+    echo SQLITE_BUSY_TIMEOUT_MS=5000
+    echo SQLITE_FOREIGN_KEYS=true
+) > "config\database.env"
+echo    SQLite database.env 생성 완료
+goto DB_DONE
+
+:DB_MARIADB
+echo    MariaDB 압축 해제 중...
+if not exist "mariadb\bin\mysqld.exe" (
+    mkdir mariadb 2>nul
+    tar -xf "setup_assets\mariadb-11.4.5-winx64.zip" -C mariadb --strip-components=1 >nul 2>&1
+)
+if exist "mariadb\bin\mysqld.exe" (
+    if not exist "data\db\mariadb" (
+        mkdir "data\db\mariadb" 2>nul
+        echo    MariaDB 데이터 디렉토리 초기화 중...
+        "mariadb\bin\mysqld.exe" --initialize-insecure --basedir="%ROOT%\mariadb" --datadir="%ROOT%\data\db\mariadb" >nul 2>&1
+        echo    MariaDB 초기화 완료
+    )
+    sc query PulseOne-MariaDB >nul 2>&1
+    if errorlevel 1 (
+        "mariadb\bin\mysqld.exe" --install PulseOne-MariaDB --defaults-file="%ROOT%\mariadb\my.ini" --basedir="%ROOT%\mariadb" --datadir="%ROOT%\data\db\mariadb" >nul 2>&1
+    )
+    sc start PulseOne-MariaDB >nul 2>&1
+    timeout /t 5 /nobreak >nul
+    rem DB/계정 생성
+    "mariadb\bin\mysql.exe" -u root -e "CREATE DATABASE IF NOT EXISTS pulseone CHARACTER SET utf8mb4; CREATE USER IF NOT EXISTS 'pulseone'@'localhost' IDENTIFIED BY 'pulseone123!'; GRANT ALL ON pulseone.* TO 'pulseone'@'localhost'; FLUSH PRIVILEGES;" >nul 2>&1
+    echo    MariaDB PulseOne 데이터베이스/계정 생성 완료
+    (
+        echo DATABASE_TYPE=MARIADB
+        echo DB_HOST=localhost
+        echo DB_PORT=3306
+        echo DB_NAME=pulseone
+        echo DB_USER=pulseone
+        echo DB_PASSWORD=pulseone123!
+        echo DB_POOL_SIZE=10
+    ) > "config\database.env"
+    echo    MariaDB database.env 생성 완료
+) else (
+    echo    [WARNING] MariaDB 바이너리 없음 - SQLite로 대체
+    goto DB_SQLITE
+)
+goto DB_DONE
+
+:DB_POSTGRESQL
+echo    PostgreSQL 압축 해제 중...
+if not exist "postgresql\bin\postgres.exe" (
+    mkdir postgresql 2>nul
+    tar -xf "setup_assets\postgresql-17.4-2-windows-x64-binaries.zip" -C postgresql --strip-components=1 >nul 2>&1
+)
+if exist "postgresql\bin\postgres.exe" (
+    if not exist "data\db\postgresql" (
+        mkdir "data\db\postgresql" 2>nul
+        echo    PostgreSQL 데이터 디렉토리 초기화 중...
+        "postgresql\bin\initdb.exe" -D "%ROOT%\data\db\postgresql" -U postgres -E UTF8 >nul 2>&1
+        echo    PostgreSQL 초기화 완료
+    )
+    sc query PulseOne-PostgreSQL >nul 2>&1
+    if errorlevel 1 (
+        sc create PulseOne-PostgreSQL binPath= "\"%ROOT%\postgresql\bin\pg_ctl.exe\" runservice -N \"PulseOne-PostgreSQL\" -D \"%ROOT%\data\db\postgresql\"" start= auto DisplayName= "PulseOne PostgreSQL" >nul 2>&1
+    )
+    sc start PulseOne-PostgreSQL >nul 2>&1
+    timeout /t 5 /nobreak >nul
+    rem DB/계정 생성
+    set "PGPASSWORD=pulseone123!"
+    "postgresql\bin\psql.exe" -U postgres -c "CREATE DATABASE pulseone;" >nul 2>&1
+    "postgresql\bin\psql.exe" -U postgres -c "CREATE USER pulseone WITH PASSWORD 'pulseone123!';" >nul 2>&1
+    "postgresql\bin\psql.exe" -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE pulseone TO pulseone;" >nul 2>&1
+    echo    PostgreSQL PulseOne 데이터베이스/계정 생성 완료
+    (
+        echo DATABASE_TYPE=POSTGRESQL
+        echo DB_HOST=localhost
+        echo DB_PORT=5432
+        echo DB_NAME=pulseone
+        echo DB_USER=pulseone
+        echo DB_PASSWORD=pulseone123!
+        echo DB_POOL_SIZE=10
+        echo DB_SSL=false
+    ) > "config\database.env"
+    echo    PostgreSQL database.env 생성 완료
+) else (
+    echo    [WARNING] PostgreSQL 바이너리 없음 - SQLite로 대체
+    goto DB_SQLITE
+)
+goto DB_DONE
+
+:DB_DONE
+echo    데이터베이스 설정 완료
+PART4_DB
+    fi
+
+    # ⑤ WinSW 서비스 등록 (DATABASE_TYPE 변수화)
+    cat >> "$PACKAGE_DIR/install.bat" << 'PART5'
+
+:: ============================================================
+:: [7/8] WinSW 서비스 등록 (Backend / Collector / Gateway)
+:: ============================================================
+echo [7/8] PulseOne 서비스 등록 중...
 if exist "setup_assets\winsw.exe" (
     copy /y "setup_assets\winsw.exe" "%ROOT%\winsw.exe" >nul
 )
@@ -506,7 +741,6 @@ rem Backend XML
     echo   ^<description^>PulseOne Industrial IoT Backend^</description^>
     echo   ^<executable^>%ROOT%\pulseone-backend.exe^</executable^>
     echo   ^<workingdirectory^>%ROOT%^</workingdirectory^>
-    rem NODE_ENV 미설정 → config/.env.production의 값 사용 (development로 주입됨)
     echo   ^<env name="DATA_DIR" value="%ROOT%\data"/^>
     echo   ^<env name="COLLECTOR_LOG_DIR" value="%ROOT%\logs\packets"/^>
     echo   ^<startarguments^>--auto-init^</startarguments^>
@@ -524,7 +758,7 @@ if errorlevel 1 (
     echo    Backend 서비스 등록 완료
 )
 
-rem Collector XML
+rem Collector XML — DATABASE_TYPE을 선택한 DB로 주입
 (
     echo ^<?xml version="1.0" encoding="UTF-8"?^>
     echo ^<service^>
@@ -534,7 +768,7 @@ rem Collector XML
     echo   ^<executable^>%ROOT%\pulseone-collector.exe^</executable^>
     echo   ^<workingdirectory^>%ROOT%^</workingdirectory^>
     echo   ^<env name="DATA_DIR" value="%ROOT%\data"/^>
-    echo   ^<env name="DATABASE_TYPE" value="SQLITE"/^>
+    echo   ^<env name="DATABASE_TYPE" value="%DB_TYPE%"/^>
     echo   ^<log mode="roll"/^>
     echo ^</service^>
 ) > pulseone-collector.xml
@@ -555,6 +789,7 @@ rem Gateway XML
     echo   ^<executable^>%ROOT%\pulseone-export-gateway.exe^</executable^>
     echo   ^<workingdirectory^>%ROOT%^</workingdirectory^>
     echo   ^<env name="DATA_DIR" value="%ROOT%\data"/^>
+    echo   ^<env name="DATABASE_TYPE" value="%DB_TYPE%"/^>
     echo   ^<arguments^>--config=%ROOT%\config^</arguments^>
     echo   ^<log mode="roll"/^>
     echo ^</service^>
@@ -569,15 +804,16 @@ echo    Gateway 서비스 등록 완료
 :NO_WINSW
 
 :: ============================================================
-:: [7/7] 바탕화면 바로가기
+:: [8/8] 바탕화면 바로가기
 :: ============================================================
-echo [7/7] 바탕화면 바로가기 생성 중...
+echo [8/8] 바탕화면 바로가기 생성 중...
 echo [InternetShortcut] > "%USERPROFILE%\Desktop\PulseOne Web UI.url"
 echo URL=http://localhost:3000 >> "%USERPROFILE%\Desktop\PulseOne Web UI.url"
 
 echo.
 echo ==========================================================
 echo  PulseOne 설치가 모두 완료되었습니다!
+echo  데이터베이스: %DB_TYPE%
 echo  브라우저에서 http://localhost:3000 으로 접속하세요.
 echo  (서비스 시작까지 10~30초 소요될 수 있습니다)
 echo ==========================================================
@@ -585,7 +821,8 @@ echo.
 echo 창을 닫으려면 아무 키나 누르세요...
 pause >nul
 popd
-WIN_INSTALL
+PART5
+
 
     # ==========================================================================
     # start.bat

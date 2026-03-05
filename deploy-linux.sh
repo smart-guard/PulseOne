@@ -33,6 +33,7 @@ SKIP_GATEWAY=false
 SKIP_BACKEND=false
 SKIP_FRONTEND=false
 NO_PACKAGE=false
+DB_BUNDLE="${DB_BUNDLE:-sqlite}"
 
 for arg in "$@"; do
     case "$arg" in
@@ -43,6 +44,10 @@ for arg in "$@"; do
         --skip-frontend)   SKIP_FRONTEND=true ;;
         --skip-cpp)        SKIP_SHARED=true; SKIP_COLLECTOR=true; SKIP_GATEWAY=true ;;
         --no-package)      NO_PACKAGE=true ;;
+        --db=sqlite)       DB_BUNDLE="sqlite" ;;
+        --db=mariadb)      DB_BUNDLE="mariadb" ;;
+        --db=postgresql)   DB_BUNDLE="postgresql" ;;
+        --db=all)          DB_BUNDLE="all" ;;
     esac
 done
 
@@ -53,6 +58,7 @@ echo "================================================================="
 echo "🐧 PulseOne Linux Deploy v$VERSION"
 echo "   skip: shared=$SKIP_SHARED  collector=$SKIP_COLLECTOR  gateway=$SKIP_GATEWAY"
 echo "         backend=$SKIP_BACKEND  frontend=$SKIP_FRONTEND"
+echo "   DB bundle: $DB_BUNDLE"
 echo "   output: $BIN_DIR"
 echo "================================================================="
 
@@ -318,13 +324,43 @@ if [ "$NO_PACKAGE" = "false" ]; then
 
     mkdir -p "$PACKAGE_DIR/setup_assets"
     cp "$SETUP_CACHE/"* "$PACKAGE_DIR/setup_assets/" 2>/dev/null || true
+
+    # DB 번들 다운로드 (MariaDB / PostgreSQL .deb)
+    if [ "$DB_BUNDLE" = "mariadb" ] || [ "$DB_BUNDLE" = "all" ]; then
+        MARIADB_DEB_CACHE="$SETUP_CACHE/mariadb-server.deb"
+        if [ ! -f "$MARIADB_DEB_CACHE" ]; then
+            echo "   Downloading MariaDB .deb..."
+            apt-get update -qq 2>/dev/null && apt-get download mariadb-server 2>/dev/null && \
+                mv mariadb-server*.deb "$MARIADB_DEB_CACHE" 2>/dev/null || \
+                echo "   ⚠️  MariaDB deb 다운로드 실패"
+        else
+            echo "   ✅ MariaDB .deb (cached)"
+        fi
+        [ -f "$MARIADB_DEB_CACHE" ] && cp "$MARIADB_DEB_CACHE" "$PACKAGE_DIR/setup_assets/"
+    fi
+
+    if [ "$DB_BUNDLE" = "postgresql" ] || [ "$DB_BUNDLE" = "all" ]; then
+        PG_DEB_CACHE="$SETUP_CACHE/postgresql.deb"
+        if [ ! -f "$PG_DEB_CACHE" ]; then
+            echo "   Downloading PostgreSQL .deb..."
+            apt-get update -qq 2>/dev/null && apt-get download postgresql 2>/dev/null && \
+                mv postgresql_*.deb "$PG_DEB_CACHE" 2>/dev/null || \
+                echo "   ⚠️  PostgreSQL deb 다운로드 실패"
+        else
+            echo "   ✅ PostgreSQL .deb (cached)"
+        fi
+        [ -f "$PG_DEB_CACHE" ] && cp "$PG_DEB_CACHE" "$PACKAGE_DIR/setup_assets/"
+    fi
+
     cd "$PROJECT_ROOT"
-    echo "✅ setup_assets ready"
+    echo "✅ setup_assets ready (DB bundle: $DB_BUNDLE)"
 
     # ==========================================================================
-    # install.sh
+    # install.sh — DB_BUNDLE=$DB_BUNDLE 에 따라 DB 선택 메뉴 동적 삽입
     # ==========================================================================
-    cat > "$PACKAGE_DIR/install.sh" << 'INSTALL_EOF'
+
+    # ① 공통 헤더
+    cat > "$PACKAGE_DIR/install.sh" << 'LINPART1'
 #!/bin/bash
 set -e
 if [ "$EUID" -ne 0 ]; then
@@ -343,29 +379,72 @@ mkdir -p "$INSTALL_DIR/data/db" "$INSTALL_DIR/data/logs" \
          "$INSTALL_DIR/data/influxdb" \
          "$INSTALL_DIR/logs/packets"
 
-# [1/5] Redis
-echo "[1/5] Redis 설치 중..."
-if ! command -v redis-server >/dev/null 2>&1; then
-    if ls "$INSTALL_DIR/setup_assets/"redis*.deb 1>/dev/null 2>&1; then
-        dpkg -i "$INSTALL_DIR/setup_assets/"redis*.deb >/dev/null 2>&1 || apt-get install -f -y -q >/dev/null
+LINPART1
+
+    # ② DB 선택 메뉴
+    if [ "$DB_BUNDLE" = "sqlite" ]; then
+        cat >> "$PACKAGE_DIR/install.sh" << 'LINPART2_SQLITE'
+DB_TYPE="SQLITE"
+echo "[DB] SQLite 모드로 설치합니다."
+LINPART2_SQLITE
     else
-        apt-get install -y -q redis-server >/dev/null
+        cat >> "$PACKAGE_DIR/install.sh" << 'LINPART2A'
+echo ""
+echo "============================================================"
+echo "  PulseOne 데이터베이스 선택"
+echo ""
+echo "  1. SQLite   (소규모, 기본값, 별도 서버 불필요)"
+LINPART2A
+        if [ "$DB_BUNDLE" = "mariadb" ] || [ "$DB_BUNDLE" = "all" ]; then
+            cat >> "$PACKAGE_DIR/install.sh" << 'LINPART2B'
+echo "  2. MariaDB  (중대규모, 자동 설치 포함)"
+LINPART2B
+        fi
+        if [ "$DB_BUNDLE" = "postgresql" ] || [ "$DB_BUNDLE" = "all" ]; then
+            cat >> "$PACKAGE_DIR/install.sh" << 'LINPART2C'
+echo "  3. PostgreSQL (대규모, 자동 설치 포함)"
+LINPART2C
+        fi
+        cat >> "$PACKAGE_DIR/install.sh" << 'LINPART2D'
+echo "============================================================"
+read -p "선택 [기본값=1]: " DB_CHOICE
+DB_CHOICE=${DB_CHOICE:-1}
+case "$DB_CHOICE" in
+    1) DB_TYPE="SQLITE" ;;
+    2) DB_TYPE="MARIADB" ;;
+    3) DB_TYPE="POSTGRESQL" ;;
+    *) DB_TYPE="SQLITE" ;;
+esac
+echo "[DB] 선택된 데이터베이스: $DB_TYPE"
+LINPART2D
+    fi
+
+    # ③ 공통 설치 (Redis, Mosquitto, InfluxDB, 런타임)
+    cat >> "$PACKAGE_DIR/install.sh" << 'LINPART3'
+
+# [1/6] Redis
+echo "[1/6] Redis 설치 중..."
+if ! command -v redis-server > /dev/null 2>&1; then
+    if ls "$INSTALL_DIR/setup_assets/"redis*.deb 1> /dev/null 2>&1; then
+        dpkg -i "$INSTALL_DIR/setup_assets/"redis*.deb > /dev/null 2>&1 || apt-get install -f -y -q > /dev/null
+    else
+        apt-get install -y -q redis-server > /dev/null
     fi
 fi
-systemctl enable redis-server >/dev/null 2>&1 || true
-systemctl start  redis-server 2>/dev/null || systemctl start redis 2>/dev/null || true
+systemctl enable redis-server > /dev/null 2>&1 || true
+systemctl start  redis-server 2> /dev/null || systemctl start redis 2> /dev/null || true
 echo "   ✅ Redis 실행 중"
 
-# [2/5] Mosquitto
-echo "[2/5] Mosquitto 설치 중..."
-if ! command -v mosquitto >/dev/null 2>&1; then
-    if ls "$INSTALL_DIR/setup_assets/"mosquitto*.deb 1>/dev/null 2>&1; then
-        dpkg -i "$INSTALL_DIR/setup_assets/"mosquitto*.deb >/dev/null 2>&1 || apt-get install -f -y -q >/dev/null
+# [2/6] Mosquitto
+echo "[2/6] Mosquitto 설치 중..."
+if ! command -v mosquitto > /dev/null 2>&1; then
+    if ls "$INSTALL_DIR/setup_assets/"mosquitto*.deb 1> /dev/null 2>&1; then
+        dpkg -i "$INSTALL_DIR/setup_assets/"mosquitto*.deb > /dev/null 2>&1 || apt-get install -f -y -q > /dev/null
     else
-        apt-get install -y -q mosquitto mosquitto-clients >/dev/null
+        apt-get install -y -q mosquitto mosquitto-clients > /dev/null
     fi
 fi
-systemctl enable mosquitto >/dev/null 2>&1 || true
+systemctl enable mosquitto > /dev/null 2>&1 || true
 if [ ! -f "/etc/mosquitto/mosquitto.conf" ]; then
     mkdir -p /etc/mosquitto
     cat > /etc/mosquitto/mosquitto.conf << MQTTCONF
@@ -374,16 +453,16 @@ allow_anonymous true
 log_type all
 MQTTCONF
 fi
-systemctl start mosquitto >/dev/null 2>&1 || true
+systemctl start mosquitto > /dev/null 2>&1 || true
 echo "   ✅ Mosquitto 실행 중"
 
-# [3/5] InfluxDB
-echo "[3/5] InfluxDB 설치 중..."
-if ! command -v influxd >/dev/null 2>&1 && [ ! -f "$INSTALL_DIR/influxdb/influxd" ]; then
+# [3/6] InfluxDB
+echo "[3/6] InfluxDB 설치 중..."
+if ! command -v influxd > /dev/null 2>&1 && [ ! -f "$INSTALL_DIR/influxdb/influxd" ]; then
     mkdir -p "$INSTALL_DIR/influxdb"
     if [ -f "$INSTALL_DIR/setup_assets/influxdb2-2.7.1-linux-amd64.tar.gz" ]; then
         tar -xzf "$INSTALL_DIR/setup_assets/influxdb2-2.7.1-linux-amd64.tar.gz" \
-            -C "$INSTALL_DIR/influxdb" --strip-components=1 2>/dev/null || true
+            -C "$INSTALL_DIR/influxdb" --strip-components=1 2> /dev/null || true
     else
         curl -fsSL "https://download.influxdata.com/influxdb/releases/influxdb2-2.7.1-linux-amd64.tar.gz" | \
             tar -xzf - -C "$INSTALL_DIR/influxdb" --strip-components=1 || true
@@ -400,7 +479,7 @@ if [ -f "$INSTALL_DIR/influxdb/influxd" ] && [ ! -d "$INFLUX_DATA/.influxdbv2" ]
     curl -sf -X POST http://localhost:8086/api/v2/setup \
         -H 'Content-Type: application/json' \
         -d '{"username":"admin","password":"admin123456","org":"pulseone","bucket":"telemetry_data","token":"pulseone-influx-token-linux-2026","retentionPeriodSeconds":0}' \
-        >/dev/null 2>&1 || true
+        > /dev/null 2>&1 || true
     kill $INFLUX_PID 2>/dev/null || true
     sleep 2
     echo "   ✅ InfluxDB 초기 설정 완료"
@@ -419,19 +498,110 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 INFLUXSVC
-    systemctl enable pulseone-influxdb >/dev/null 2>&1 || true
-    systemctl start  pulseone-influxdb 2>/dev/null || true
+    systemctl enable pulseone-influxdb > /dev/null 2>&1 || true
+    systemctl start  pulseone-influxdb 2> /dev/null || true
     echo "   ✅ InfluxDB 서비스 등록 완료"
 fi
 
-# [4/5] 런타임 라이브러리
-echo "[4/5] 런타임 라이브러리 설치 중..."
-cp "$INSTALL_DIR/lib/"* /usr/local/lib/ 2>/dev/null || true
+# [4/6] 런타임 라이브러리
+echo "[4/6] 런타임 라이브러리 설치 중..."
+cp "$INSTALL_DIR/lib/"* /usr/local/lib/ 2> /dev/null || true
 ldconfig
 echo "   ✅ 완료"
 
-# [5/5] systemd 서비스
-echo "[5/5] PulseOne 서비스 등록 중..."
+LINPART3
+
+    # ④ DB별 설치
+    if [ "$DB_BUNDLE" = "sqlite" ]; then
+        cat >> "$PACKAGE_DIR/install.sh" << 'LINPART4_SQLITE'
+# [5/6] 데이터베이스 설정 (SQLite)
+echo "[5/6] SQLite 데이터베이스 설정 완료 (별도 서버 불필요)"
+cat > "$INSTALL_DIR/config/database.env" << DBENV
+DATABASE_TYPE=SQLITE
+SQLITE_PATH=./data/db/pulseone.db
+SQLITE_JOURNAL_MODE=WAL
+SQLITE_SYNCHRONOUS=NORMAL
+SQLITE_CACHE_SIZE=2000
+SQLITE_BUSY_TIMEOUT_MS=5000
+SQLITE_FOREIGN_KEYS=true
+DBENV
+echo "   database.env 생성 완료 (SQLite)"
+LINPART4_SQLITE
+    else
+        cat >> "$PACKAGE_DIR/install.sh" << 'LINPART4_DB'
+# [5/6] 데이터베이스 설치 및 설정
+echo "[5/6] 데이터베이스 설치 중 (선택: $DB_TYPE)..."
+
+install_sqlite_env() {
+    cat > "$INSTALL_DIR/config/database.env" << DBENV
+DATABASE_TYPE=SQLITE
+SQLITE_PATH=./data/db/pulseone.db
+SQLITE_JOURNAL_MODE=WAL
+SQLITE_SYNCHRONOUS=NORMAL
+SQLITE_CACHE_SIZE=2000
+SQLITE_BUSY_TIMEOUT_MS=5000
+SQLITE_FOREIGN_KEYS=true
+DBENV
+    echo "   SQLite database.env 생성 완료"
+}
+
+if [ "$DB_TYPE" = "MARIADB" ]; then
+    if ls "$INSTALL_DIR/setup_assets/"mariadb*.deb 1>/dev/null 2>&1; then
+        dpkg -i "$INSTALL_DIR/setup_assets/"mariadb*.deb >/dev/null 2>&1 || apt-get install -f -y -q >/dev/null
+    else
+        apt-get install -y -q mariadb-server >/dev/null
+    fi
+    systemctl enable mariadb >/dev/null 2>&1 || true
+    systemctl start  mariadb 2>/dev/null || true
+    sleep 2
+    mysql -u root -e "CREATE DATABASE IF NOT EXISTS pulseone CHARACTER SET utf8mb4; \
+        CREATE USER IF NOT EXISTS 'pulseone'@'localhost' IDENTIFIED BY 'pulseone123!'; \
+        GRANT ALL ON pulseone.* TO 'pulseone'@'localhost'; FLUSH PRIVILEGES;" >/dev/null 2>&1 || true
+    cat > "$INSTALL_DIR/config/database.env" << DBENV
+DATABASE_TYPE=MARIADB
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=pulseone
+DB_USER=pulseone
+DB_PASSWORD=pulseone123!
+DB_POOL_SIZE=10
+DBENV
+    echo "   MariaDB database.env 생성 완료"
+
+elif [ "$DB_TYPE" = "POSTGRESQL" ]; then
+    if ls "$INSTALL_DIR/setup_assets/"postgresql*.deb 1>/dev/null 2>&1; then
+        dpkg -i "$INSTALL_DIR/setup_assets/"postgresql*.deb >/dev/null 2>&1 || apt-get install -f -y -q >/dev/null
+    else
+        apt-get install -y -q postgresql >/dev/null
+    fi
+    systemctl enable postgresql >/dev/null 2>&1 || true
+    systemctl start  postgresql 2>/dev/null || true
+    sleep 2
+    sudo -u postgres psql -c "CREATE DATABASE pulseone;" >/dev/null 2>&1 || true
+    sudo -u postgres psql -c "CREATE USER pulseone WITH PASSWORD 'pulseone123!';" >/dev/null 2>&1 || true
+    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE pulseone TO pulseone;" >/dev/null 2>&1 || true
+    cat > "$INSTALL_DIR/config/database.env" << DBENV
+DATABASE_TYPE=POSTGRESQL
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=pulseone
+DB_USER=pulseone
+DB_PASSWORD=pulseone123!
+DB_POOL_SIZE=10
+DB_SSL=false
+DBENV
+    echo "   PostgreSQL database.env 생성 완료"
+else
+    install_sqlite_env
+fi
+LINPART4_DB
+    fi
+
+    # ⑤ systemd 서비스 등록
+    cat >> "$PACKAGE_DIR/install.sh" << 'LINPART5'
+
+# [6/6] systemd 서비스 등록
+echo "[6/6] PulseOne 서비스 등록 중..."
 
 cat > /etc/systemd/system/pulseone-backend.service << EOF
 [Unit]
@@ -462,6 +632,7 @@ ExecStart=$INSTALL_DIR/pulseone-collector --config=$INSTALL_DIR/config
 WorkingDirectory=$INSTALL_DIR
 Environment=LD_LIBRARY_PATH=/usr/local/lib
 Environment=DATA_DIR=$INSTALL_DIR/data
+Environment=DATABASE_TYPE=$DB_TYPE
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -480,6 +651,7 @@ ExecStart=$INSTALL_DIR/pulseone-export-gateway --config=$INSTALL_DIR/config
 WorkingDirectory=$INSTALL_DIR
 Environment=LD_LIBRARY_PATH=/usr/local/lib
 Environment=DATA_DIR=$INSTALL_DIR/data
+Environment=DATABASE_TYPE=$DB_TYPE
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -495,11 +667,12 @@ sleep 3
 echo ""
 echo "=========================================="
 echo " ✅ PulseOne 설치 완료!"
+echo "   데이터베이스: $DB_TYPE"
 echo "   Web UI:  http://$(hostname -I | awk '{print $1}'):3000"
 echo "   로그:    journalctl -u pulseone-backend -f"
 echo "   상태:    systemctl status pulseone-*"
 echo "=========================================="
-INSTALL_EOF
+LINPART5
     chmod +x "$PACKAGE_DIR/install.sh"
 
     # start.sh
