@@ -656,7 +656,7 @@ if exist "mariadb\bin\mysqld.exe" (
     )
     sc query PulseOne-MariaDB >nul 2>&1
     if errorlevel 1 (
-        "mariadb\bin\mysqld.exe" --install PulseOne-MariaDB --defaults-file="%ROOT%\mariadb\my.ini" --basedir="%ROOT%\mariadb" --datadir="%ROOT%\data\db\mariadb" >nul 2>&1
+        "mariadb\bin\mysqld.exe" --install PulseOne-MariaDB --basedir="%ROOT%\mariadb" --datadir="%ROOT%\data\db\mariadb" >nul 2>&1
     )
     sc start PulseOne-MariaDB >nul 2>&1
     timeout /t 5 /nobreak >nul
