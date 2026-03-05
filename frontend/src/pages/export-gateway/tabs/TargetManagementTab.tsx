@@ -409,14 +409,14 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                         </div>
                                         {isAdmin && !tenantId && (
                                             <div className="mgmt-modal-form-group">
-                                                <label>Tenant <span style={{ color: 'red' }}>*</span></label>
+                                                <label>{t('target.tenantLabel', { defaultValue: 'Tenant' })} <span style={{ color: 'red' }}>*</span></label>
                                                 <select
                                                     className="mgmt-select"
                                                     required
                                                     value={editingTarget?.tenant_id || ''}
                                                     onChange={e => { setEditingTarget({ ...editingTarget, tenant_id: parseInt(e.target.value) }); setHasChanges(true); }}
                                                 >
-                                                    <option value="">(Select Tenant)</option>
+                                                    <option value="">{t('target.selectTenant', { defaultValue: '(Select Tenant)' })}</option>
                                                     {tenants.map(t => (
                                                         <option key={t.id} value={t.id}>{t.company_name}</option>
                                                     ))}
@@ -424,7 +424,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                             </div>
                                         )}
                                         <div className="mgmt-modal-form-group">
-                                            <label>Transmission Protocol</label>
+                                            <label>{t('target.protocol', { defaultValue: 'Protocol' })}</label>
                                             <select
                                                 className="mgmt-select"
                                                 required
@@ -432,10 +432,10 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                 onChange={e => { setEditingTarget({ ...editingTarget, target_type: e.target.value.toLowerCase() }); setHasChanges(true); }}
                                             >
                                                 <option value="http">HTTP / HTTPS (Rest API)</option>
-                                                <option value="mqtt">MQTT Broker</option>
-                                                <option value="s3">AWS S3 / MinIO (File)</option>
-                                                <option value="ftp">FTP / SFTP (File)</option>
-                                                <option value="database">External Database (SQL)</option>
+                                                <option value="mqtt">MQTT {t('target.broker', { defaultValue: 'Broker' })}</option>
+                                                <option value="s3">AWS S3 / MinIO ({t('target.file', { defaultValue: 'File' })})</option>
+                                                <option value="ftp">FTP / SFTP ({t('target.file', { defaultValue: 'File' })})</option>
+                                                <option value="database">{t('target.externalDb', { defaultValue: 'External Database (SQL)' })}</option>
                                             </select>
                                         </div>
                                         {/* Profile and Template associations have been decoupled from core Target definition */}
@@ -443,11 +443,11 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
 
                                     {/* Column 2: Protocol Specific Config */}
                                     <div style={{ flex: 1, paddingRight: '20px', display: 'flex', flexDirection: 'column' }}>
-                                        <div style={{ marginBottom: '15px', fontWeight: 'bold', color: '#333' }}>Transmission Settings</div>
+                                        <div style={{ marginBottom: '15px', fontWeight: 'bold', color: '#333' }}>{t('target.transmitSettings', { defaultValue: 'Transmission Settings' })}</div>
                                         {editingTarget?.target_type?.toLowerCase() === 'http' ? (
                                             <>
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>Endpoint URL</label>
+                                                    <label>{t('target.endpointUrl', { defaultValue: 'Endpoint URL' })}</label>
                                                     <input
                                                         type="text"
                                                         className="mgmt-input"
@@ -462,7 +462,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                     />
                                                 </div>
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>HTTP Method</label>
+                                                    <label>{t('target.httpMethod', { defaultValue: 'HTTP Method' })}</label>
                                                     <select
                                                         className="mgmt-select"
                                                         value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).method || 'POST'; } catch { return 'POST'; } })()}
@@ -480,7 +480,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                     </select>
                                                 </div>
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>Headers (JSON)</label>
+                                                    <label>{t('target.headers', { defaultValue: 'Headers (JSON)' })}</label>
                                                     <input
                                                         type="text"
                                                         className="mgmt-input"
@@ -510,10 +510,10 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
 
                                                 {/* 인증 키: headers.x-api-key에만 저장 */}
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>Auth Key (API Key / Token)</label>
+                                                    <label>{t('target.apiKey', { defaultValue: 'Auth Key (API Key / Token)' })}</label>
                                                     <Input.Password
                                                         className="mgmt-input"
-                                                        placeholder="Enter x-api-key value"
+                                                        placeholder="x-api-key"
                                                         value={(() => {
                                                             const c = getConfigObject(editingTarget.config);
                                                             const val = c.headers?.['x-api-key'] || '';
@@ -536,13 +536,13 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                             });
                                                         }}
                                                     />
-                                                    <div className="mgmt-modal-form-hint">Stored as x-api-key header when filled.</div>
+                                                    <div className="mgmt-modal-form-hint">{t('target.apiKeyHint', { defaultValue: 'Stored as x-api-key header.' })}</div>
                                                 </div>
                                             </>
                                         ) : editingTarget?.target_type?.toLowerCase() === 's3' ? (
                                             <>
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>S3 Endpoint (Service URL)</label>
+                                                    <label>{t('target.s3Endpoint', { defaultValue: 'S3 Endpoint (Service URL)' })}</label>
                                                     <input
                                                         type="text"
                                                         className="mgmt-input"
@@ -557,7 +557,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                     />
                                                 </div>
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>Bucket Name</label>
+                                                    <label>{t('target.bucketName', { defaultValue: 'Bucket Name' })}</label>
                                                     <input
                                                         type="text"
                                                         className="mgmt-input"
@@ -572,7 +572,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                     />
                                                 </div>
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>Folder Path</label>
+                                                    <label>{t('target.folderPath', { defaultValue: 'Folder Path' })}</label>
                                                     <input
                                                         type="text"
                                                         className="mgmt-input"
@@ -587,7 +587,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                     />
                                                 </div>
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>Object Key Template (Optional)</label>
+                                                    <label>{t('target.objectKeyTpl', { defaultValue: 'Object Key Template (optional)' })}</label>
                                                     <input
                                                         type="text"
                                                         className="mgmt-input"
@@ -600,10 +600,10 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                             setHasChanges(true);
                                                         }}
                                                     />
-                                                    <div className="mgmt-modal-form-hint">Available variables: {'{year}, {month}, {day}, {hour}, {minute}, {second}, {building_id}'}</div>
+                                                    <div className="mgmt-modal-form-hint">사용 가능 변수: {'{year}, {month}, {day}, {hour}, {minute}, {second}, {building_id}'}</div>
                                                 </div>
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>Access Key ID</label>
+                                                    <label>{t('target.accessKeyId', { defaultValue: 'Access Key ID' })}</label>
                                                     <Input.Password
                                                         className="mgmt-input"
                                                         placeholder="AKIA..."
@@ -625,7 +625,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                     />
                                                 </div>
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>Secret Access Key</label>
+                                                    <label>{t('target.secretAccessKey', { defaultValue: 'Secret Access Key' })}</label>
                                                     <Input.Password
                                                         className="mgmt-input"
                                                         placeholder="Secret Key..."
@@ -649,8 +649,8 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                             </>
                                         ) : (
                                             <div className="mgmt-alert info">
-                                                This target type does not have a separate input form ({editingTarget?.target_type?.toLowerCase()}).
-                                                Use the JSON settings panel on the right to configure directly.
+                                                {t('target.noForm', { defaultValue: 'This target type has no dedicated input form.' })} ({editingTarget?.target_type?.toLowerCase()}).<br />
+                                                {t('target.noFormHint', { defaultValue: 'Configure directly in the JSON settings panel on the right.' })}
                                             </div>
                                         )}
                                         {/* Activation Checkbox Moved below Column 2 inputs */}
@@ -669,9 +669,9 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
 
                                     {/* Column 3: JSON Config */}
                                     <div style={{ flex: 1.2, minWidth: '300px', borderLeft: '1px solid #eee', paddingLeft: '20px', display: 'flex', flexDirection: 'column' }}>
-                                        <div style={{ marginBottom: '15px', fontWeight: 'bold', color: '#333' }}>Advanced Settings (JSON)</div>
+                                        <div style={{ marginBottom: '15px', fontWeight: 'bold', color: '#333' }}>{t('target.advancedJson', { defaultValue: 'Advanced Settings (JSON)' })}</div>
                                         <div className="modal-form-hint" style={{ marginBottom: '10px' }}>
-                                            Auto-synced with the left form. Edit directly for fine-tuning.
+                                            {t('target.advancedJsonHint', { defaultValue: 'Auto-synced with the left form. Edit directly for fine-tuning.' })}
                                         </div>
                                         <textarea
                                             className="mgmt-input"

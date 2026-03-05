@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Select } from 'antd';
+import { useTranslation } from 'react-i18next';
 import exportGatewayApi, { DataPoint } from '../../../api/services/exportGatewayApi';
 import { DeviceApiService, Device } from '../../../api/services/deviceApi';
 
@@ -12,6 +13,7 @@ interface DataPointSelectorProps {
 }
 
 const DataPointSelector: React.FC<DataPointSelectorProps> = ({ siteId, selectedPoints, onSelect, onAddAll, onRemove }) => {
+    const { t } = useTranslation('dataExport');
     const [allPoints, setAllPoints] = useState<DataPoint[]>([]);
     const [devices, setDevices] = useState<Device[]>([]);
     const [selectedDeviceId, setSelectedDeviceId] = useState<number | undefined>();
@@ -114,15 +116,15 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ siteId, selectedP
         }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>Device Filter</label>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>{t('profileTab.deviceFilter')}</label>
                     <Select
-                        placeholder="Select device (All / By Device)"
+                        placeholder={t('profileTab.deviceFilterPlaceholder')}
                         style={{ width: '100%', height: '36px' }}
                         value={selectedDeviceId ?? null}
                         onChange={(val) => setSelectedDeviceId(val ?? undefined)}
                         getPopupContainer={trigger => trigger.parentElement}
                         options={[
-                            { value: null, label: 'All Devices' },
+                            { value: null, label: t('profileTab.deviceFilterAll') },
                             ...devices.map(d => ({
                                 value: d.id,
                                 label: d.device_type ? `${d.name} [${d.device_type}]` : d.name
@@ -131,7 +133,7 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ siteId, selectedP
                     />
                 </div>
                 <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>Keyword Search</label>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>{t('profileTab.keywordSearch')}</label>
                     <div className="search-box" style={{ position: 'relative' }}>
                         <i className="fas fa-search" style={{
                             position: 'absolute',
@@ -144,7 +146,7 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ siteId, selectedP
                         <input
                             type="text"
                             className="mgmt-input sm"
-                            placeholder="Enter name or address..."
+                            placeholder={t('profileTab.keywordSearchPlaceholder')}
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
                             style={{ paddingLeft: '36px', height: '36px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
@@ -156,7 +158,7 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ siteId, selectedP
             <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', border: '1px solid #e2e8f0', borderRadius: '8px', minHeight: '300px' }}>
                 <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <span>탐색 결과 ({allPoints.length})</span>
+                        <span>{t('profileTab.searchResults')} ({allPoints.length})</span>
                         {allPoints.length > 0 && onAddAll && (
                             <button
                                 type="button"
@@ -164,7 +166,7 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ siteId, selectedP
                                 style={{ fontSize: '10px', height: '18px', padding: '0 6px', lineHeight: '1' }}
                                 onClick={() => onAddAll(allPoints)}
                             >
-                                <i className="fas fa-plus-double" /> Add All
+                                <i className="fas fa-plus-double" /> {t('profileTab.addAll')}
                             </button>
                         )}
                     </div>

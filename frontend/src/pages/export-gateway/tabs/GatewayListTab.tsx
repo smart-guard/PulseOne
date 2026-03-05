@@ -191,9 +191,9 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
     const onDeploy = async (gw: Gateway) => {
         const confirmed = await confirm({
-            title: 'Confirm Deploy',
-            message: `Deploy configuration for gateway "${gw.name}" to the server?`,
-            confirmText: 'Start Deploy',
+            title: t('gwTab.deployConfirmTitle', { ns: 'dataExport' }),
+            message: t('gwTab.deployConfirmMsg', { ns: 'dataExport', name: gw.name }),
+            confirmText: t('gwTab.deployBtn', { ns: 'dataExport' }),
             confirmButtonType: 'primary'
         });
         if (!confirmed) return;
@@ -203,24 +203,24 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             const res = await exportGatewayApi.deployConfig(gw.id, siteId);
             if (res.success) {
                 await confirm({
-                    title: 'Deploy Success',
-                    message: 'Latest settings applied to the gateway successfully.',
+                    title: t('gwTab.deploySuccess', { ns: 'dataExport' }),
+                    message: t('gwTab.deploySuccessMsg', { ns: 'dataExport' }),
                     showCancelButton: false,
                     confirmButtonType: 'success'
                 });
                 onRefresh();
             } else {
                 await confirm({
-                    title: 'Deploy Failed',
-                    message: res.message || 'Failed to apply settings.',
+                    title: t('gwTab.deployFailed', { ns: 'dataExport' }),
+                    message: res.message || t('gwTab.deployFailedMsg', { ns: 'dataExport' }),
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
             }
         } catch (e) {
             await confirm({
-                title: 'Error Occurred',
-                message: 'Error calling API.',
+                title: t('gwTab.apiError', { ns: 'dataExport' }),
+                message: t('gwTab.apiErrorMsg', { ns: 'dataExport' }),
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });

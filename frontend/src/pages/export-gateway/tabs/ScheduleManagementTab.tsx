@@ -4,15 +4,15 @@ import exportGatewayApi, { ExportTarget, ExportProfile, ExportSchedule } from '.
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
 
 const CRON_PRESETS = [
-    { label: 'Every minute', value: '* * * * *', description: 'Sends data every minute.' },
-    { label: 'Every 5 mins', value: '*/5 * * * *', description: 'Sends data every 5 minutes.' },
-    { label: 'Every 10 mins', value: '*/10 * * * *', description: 'Sends data every 10 minutes.' },
-    { label: 'Every 15 mins', value: '*/15 * * * *', description: 'Sends data every 15 minutes.' },
-    { label: 'Every 30 mins', value: '*/30 * * * *', description: 'Sends data every 30 minutes.' },
-    { label: 'Hourly', value: '0 * * * *', description: 'Sends data every hour on the hour.' },
-    { label: 'Daily 00:00', value: '0 0 * * *', description: 'Sends data at midnight (00:00) daily.' },
-    { label: 'Daily 09:00', value: '0 9 * * *', description: 'Sends data at 9 AM daily.' },
-    { label: 'Weekly Mon', value: '0 0 * * 1', description: 'Sends data every Monday at midnight.' },
+    { key: 'cron1min', value: '* * * * *' },
+    { key: 'cron5min', value: '*/5 * * * *' },
+    { key: 'cron10min', value: '*/10 * * * *' },
+    { key: 'cron15min', value: '*/15 * * * *' },
+    { key: 'cron30min', value: '*/30 * * * *' },
+    { key: 'cronHourly', value: '0 * * * *' },
+    { key: 'cronDaily0', value: '0 0 * * *' },
+    { key: 'cronDaily9', value: '0 9 * * *' },
+    { key: 'cronWeeklyMon', value: '0 0 * * 1' },
 ];
 
 interface ScheduleManagementTabProps {
@@ -164,7 +164,7 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
                                     <div style={{ fontWeight: 600 }}>{s.schedule_name}</div>
                                     <div style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>{s.description}</div>
                                 </td>
-                                <td>{s.target_id ? (s.target_name || `ID: ${s.target_id}`) : <span style={{ color: 'var(--neutral-400)', fontStyle: 'italic' }}>Shared Preset (no target)</span>}</td>
+                                <td>{s.target_id ? (s.target_name || `ID: ${s.target_id}`) : <span style={{ color: 'var(--neutral-400)', fontStyle: 'italic' }}>{t('scheduleTab.sharedPreset')}</span>}</td>
                                 <td><code style={{ background: '#f0f0f0', padding: '2px 4px', borderRadius: '4px' }}>{s.cron_expression}</code></td>
                                 <td>
                                     <span className={`mgmt-badge ${s.is_enabled ? 'success' : 'neutral'}`}>
@@ -241,42 +241,42 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
                                 <div style={{ flex: 1 }}>
                                     <div className="mgmt-modal-form-section">
                                         <div className="mgmt-modal-form-group">
-                                            <label style={{ fontWeight: 700 }}>Schedule Name</label>
+                                            <label style={{ fontWeight: 700 }}>{t('scheduleTab.scheduleName')}</label>
                                             <input
                                                 type="text"
                                                 className="mgmt-input"
                                                 required
                                                 value={editingSchedule?.schedule_name || ''}
                                                 onChange={e => { setEditingSchedule({ ...editingSchedule, schedule_name: e.target.value }); setHasChanges(true); }}
-                                                placeholder="e.g. Daily EOD Data Transfer"
+                                                placeholder={t('scheduleTab.scheduleNamePlaceholder')}
                                             />
                                         </div>
 
                                         {isAdmin && !tenantId && (
                                             <div className="mgmt-modal-form-group">
-                                                <label style={{ fontWeight: 700 }}>Tenant <span style={{ color: 'red' }}>*</span></label>
+                                                <label style={{ fontWeight: 700 }}>{t('scheduleTab.tenant')} <span style={{ color: 'red' }}>*</span></label>
                                                 <select
                                                     className="mgmt-select"
                                                     required
                                                     value={editingSchedule?.tenant_id || ''}
                                                     onChange={e => { setEditingSchedule({ ...editingSchedule, tenant_id: parseInt(e.target.value) }); setHasChanges(true); }}
                                                 >
-                                                    <option value="">(Select Tenant)</option>
+                                                    <option value="">{t('scheduleTab.selectTenant')}</option>
                                                     {tenants.map(t => (
                                                         <option key={t.id} value={t.id}>{t.company_name}</option>
                                                     ))}
                                                 </select>
-                                                <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginTop: '4px' }}>Assign this schedule to a specific tenant with admin privileges.</div>
+                                                <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginTop: '4px' }}>{t('scheduleTab.tenantAdminHint')}</div>
                                             </div>
                                         )}
                                         {/* Target selection has been decoupled from global schedule presets. Targets are assigned via Gateway Wizard. */}
 
                                         <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '16px' }}>
                                             <label style={{ fontSize: '13px', fontWeight: 700, color: '#475569', marginBottom: '12px', display: 'block' }}>
-                                                Data Collection Range (Data Window)
+                                                {t('scheduleTab.dataWindow')}
                                             </label>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: '#64748b', fontSize: '14px' }}>
-                                                <span>As of execution time, collect the past</span>
+                                                <span>{t('scheduleTab.dataWindowFrom')}</span>
                                                 <input
                                                     type="number"
                                                     className="mgmt-input sm"
@@ -291,15 +291,15 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
                                                     value={editingSchedule?.data_range || 'hour'}
                                                     onChange={e => { setEditingSchedule({ ...editingSchedule, data_range: e.target.value }); setHasChanges(true); }}
                                                 >
-                                                    <option value="minute">Minutes</option>
-                                                    <option value="hour">Hours</option>
-                                                    <option value="day">Days</option>
+                                                    <option value="minute">{t('scheduleTab.dataWindowMinute')}</option>
+                                                    <option value="hour">{t('scheduleTab.dataWindowHour')}</option>
+                                                    <option value="day">{t('scheduleTab.dataWindowDay')}</option>
                                                 </select>
-                                                <span>of data and transmit.</span>
+                                                <span>{t('scheduleTab.dataWindowTo')}</span>
                                             </div>
                                             <div style={{ marginTop: '10px', fontSize: '12px', color: 'var(--primary-600)', background: 'var(--primary-50)', padding: '8px 12px', borderRadius: '6px' }}>
                                                 <i className="fas fa-magic" style={{ marginRight: '6px' }} />
-                                                <strong>Description:</strong> When the schedule runs, it fetches all accumulated data going back the configured duration and sends it to the target.
+                                                <strong>{t('common:description')}:</strong> {t('scheduleTab.dataWindowDesc')}
                                             </div>
                                         </div>
 
@@ -310,7 +310,7 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
                                                     checked={editingSchedule?.is_enabled ?? true}
                                                     onChange={e => { setEditingSchedule({ ...editingSchedule, is_enabled: e.target.checked }); setHasChanges(true); }}
                                                 />
-                                                <span style={{ fontWeight: 600 }}>Activate Schedule</span>
+                                                <span style={{ fontWeight: 600 }}>{t('scheduleTab.activateSchedule')}</span>
                                             </label>
                                         </div>
                                     </div>
@@ -320,8 +320,8 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
                                 <div style={{ flex: 1.2, borderLeft: '1px solid #f1f5f9', paddingLeft: '24px' }}>
                                     <div className="mgmt-modal-form-group">
                                         <label style={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
-                                            Cron Expression Settings
-                                            <span style={{ fontSize: '11px', color: 'var(--primary-600)', fontWeight: 400 }}>Click Presets to auto-fill</span>
+                                            {t('scheduleTab.cronSettings')}
+                                            <span style={{ fontSize: '11px', color: 'var(--primary-600)', fontWeight: 400 }}>{t('scheduleTab.cronAutoFillHint')}</span>
                                         </label>
                                         <input
                                             type="text"
@@ -340,7 +340,7 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
                                                     className="cron-preset-item"
                                                     onClick={() => { setEditingSchedule({ ...editingSchedule, cron_expression: p.value }); setHasChanges(true); }}
                                                 >
-                                                    <span className="cron-preset-label">{p.label}</span>
+                                                    <span className="cron-preset-label">{t(`scheduleTab.${p.key}`)}</span>
                                                     <span className="cron-preset-val">{p.value}</span>
                                                 </div>
                                             ))}
@@ -349,26 +349,26 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
 
                                     <div className="cron-guide-box">
                                         <div style={{ fontWeight: 700, fontSize: '12px', color: '#475569', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <i className="fas fa-info-circle" style={{ color: 'var(--primary-500)' }} /> Cron 표현식 가이드
+                                            <i className="fas fa-info-circle" style={{ color: 'var(--primary-500)' }} /> {t('scheduleTab.cronGuide')}
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', textAlign: 'center', fontSize: '10px', color: '#64748b', background: 'white', padding: '8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                                             <div><div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>*</div>min(0-59)</div>
                                             <div><div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>*</div>hr(0-23)</div>
                                             <div><div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>*</div>day(1-31)</div>
                                             <div><div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>*</div>month(1-12)</div>
-                                            <div><div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>*</div>요일(0-6)</div>
+                                            <div><div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>*</div>{t('scheduleTab.cronDow')}</div>
                                         </div>
                                         <div style={{ marginTop: '10px', fontSize: '11px', color: '#64748b' }}>
-                                            <div style={{ marginBottom: '4px' }}>• <code>*</code>: 모든 값을 의미</div>
-                                            <div style={{ marginBottom: '4px' }}>• <code>*/N</code>: N 마다 반복</div>
-                                            <div>• <code>0-5</code>: 범위 설정</div>
+                                            <div style={{ marginBottom: '4px' }}>• <code>*</code>: {t('scheduleTab.cronHintAny')}</div>
+                                            <div style={{ marginBottom: '4px' }}>• <code>*/N</code>: {t('scheduleTab.cronHintEvery')}</div>
+                                            <div>• <code>0-5</code>: {t('scheduleTab.cronHintRange')}</div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                             <div className="mgmt-modal-footer">
-                                <button type="button" className="mgmt-btn mgmt-btn-outline" onClick={handleCloseModal}>취소</button>
-                                <button type="submit" className="mgmt-btn mgmt-btn-primary" style={{ padding: '0 32px' }}>스케줄 저장</button>
+                                <button type="button" className="mgmt-btn mgmt-btn-outline" onClick={handleCloseModal}>{t('cancel', { ns: 'common' })}</button>
+                                <button type="submit" className="mgmt-btn mgmt-btn-primary" style={{ padding: '0 32px' }}>{t('schedule.saveSchedule', { defaultValue: 'Save Schedule' })}</button>
                             </div>
                         </form>
                     </div>

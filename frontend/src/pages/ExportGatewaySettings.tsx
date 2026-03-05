@@ -274,7 +274,7 @@ const ExportGatewaySettings: React.FC = () => {
                     <div className="tab-actions">
                         {activeTab === 'gateways' && (
                             <button className="btn btn-primary btn-sm" onClick={() => setIsRegModalOpen(true)} style={{ fontSize: '13px', padding: '4px 10px', whiteSpace: 'nowrap' }}>
-                                <i className="fas fa-magic" style={{ marginRight: '4px' }} /> 게이트웨이 등록 (마법사)
+                                <i className="fas fa-magic" style={{ marginRight: '4px' }} /> {t('gwTab.registerWizard', { ns: 'dataExport' })}
                             </button>
                         )}
                     </div>

@@ -467,31 +467,31 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                             {/* Top Setup Bar (Horizontal) */}
                             <div style={{ background: 'white', padding: '20px 32px', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '40px', alignItems: 'flex-start' }}>
                                 <div style={{ flex: '0 0 400px' }}>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>Profile Name</label>
+                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>{t('profileTab.profileName')}</label>
                                     <input
                                         type="text"
                                         className="mgmt-input"
                                         required
                                         value={editingProfile?.name || ''}
                                         onChange={e => { setEditingProfile({ ...editingProfile, name: e.target.value }); setHasChanges(true); }}
-                                        placeholder="e.g. Factory Data Transfer Profile"
+                                        placeholder={t('profileTab.profileNamePlaceholder')}
                                         style={{ height: '42px', fontSize: '15px' }}
                                     />
                                 </div>
                                 <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>Description</label>
+                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>{t('profileTab.description')}</label>
                                     <input
                                         type="text"
                                         className="mgmt-input"
                                         value={editingProfile?.description || ''}
                                         onChange={e => { setEditingProfile({ ...editingProfile, description: e.target.value }); setHasChanges(true); }}
-                                        placeholder="Briefly describe this profile's purpose"
+                                        placeholder={t('profileTab.descriptionPlaceholder')}
                                         style={{ height: '42px', fontSize: '15px' }}
                                     />
                                 </div>
                                 {isAdmin && !tenantId && (
                                     <div style={{ flex: '0 0 250px' }}>
-                                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>Tenant <span style={{ color: 'red' }}>*</span></label>
+                                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>{t('profileTab.tenant')} <span style={{ color: 'red' }}>*</span></label>
                                         <select
                                             className="mgmt-select"
                                             required
@@ -499,7 +499,7 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                             onChange={e => { setEditingProfile({ ...editingProfile, tenant_id: parseInt(e.target.value) }); setHasChanges(true); }}
                                             style={{ width: '100%', height: '42px', fontSize: '15px', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}
                                         >
-                                            <option value="">(Select Tenant)</option>
+                                            <option value="">{t('profileTab.selectTenant')}</option>
                                             {tenants.map(t => (
                                                 <option key={t.id} value={t.id}>{t.company_name}</option>
                                             ))}
@@ -513,7 +513,7 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                 <div className="side-setup-panel">
                                     <div style={{ padding: '20px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                         <i className="fas fa-search-plus" style={{ color: 'var(--primary-600)' }} />
-                                        <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Point Explorer</h4>
+                                        <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>{t('profileTab.pointExplorer')}</h4>
                                     </div>
                                     <div style={{ flex: 1, overflow: 'hidden' }}>
                                         <DataPointSelector
@@ -530,12 +530,12 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                 <div className="center-mapping-panel">
                                     <div style={{ padding: '24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <div>
-                                            <h4 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>Data Mapping & External Field Names</h4>
-                                            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Define how added points will appear in external systems.</p>
+                                            <h4 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>{t('profileTab.dataMappingTitle')}</h4>
+                                            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>{t('profileTab.dataMappingDesc')}</p>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', padding: '12px 20px', background: '#f0f9ff', borderRadius: '12px', border: '1.5px solid #bae6fd' }}>
                                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                <span style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', marginBottom: '2px', textTransform: 'uppercase' }}>Site ID 일괄 Apply</span>
+                                                <span style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', marginBottom: '2px', textTransform: 'uppercase' }}>{t('profileTab.bulkApplySiteId')}</span>
                                                 <input
                                                     type="number"
                                                     className="mgmt-input sm bulk-site-input"
@@ -554,7 +554,7 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                                 onClick={handleBulkSiteIdApply}
                                                 style={{ height: '36px', fontSize: '13px', fontWeight: 700, padding: '0 20px' }}
                                             >
-                                                Apply
+                                                {t('profileTab.applyBtn')}
                                             </button>
                                         </div>
                                     </div>
@@ -562,12 +562,12 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                         <table className="mgmt-table">
                                             <thead>
                                                 <tr>
-                                                    <th style={{ width: '22%' }}>Internal Point Name</th>
-                                                    <th style={{ width: '38%' }}>Mapping Name (TARGET KEY)</th>
+                                                    <th style={{ width: '22%' }}>{t('profileTab.colPointName')}</th>
+                                                    <th style={{ width: '38%' }}>{t('profileTab.colMappingName')}</th>
                                                     <th style={{ width: '100px', textAlign: 'center' }}>SITE ID</th>
                                                     <th style={{ width: '90px', textAlign: 'center' }}>SCALE</th>
                                                     <th style={{ width: '90px', textAlign: 'center' }}>OFFSET</th>
-                                                    <th style={{ width: '60px', textAlign: 'center' }}>Delete</th>
+                                                    <th style={{ width: '60px', textAlign: 'center' }}>{t('profileTab.colDelete')}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -640,32 +640,32 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                 <div className="side-guide-panel">
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px', borderBottom: '2px solid #e2e8f0', paddingBottom: '12px' }}>
                                         <i className="fas fa-book-reader" style={{ color: 'var(--primary-600)', fontSize: '20px' }} />
-                                        <h4 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Engineer's Guide</h4>
+                                        <h4 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>{t('profileTab.guideTitle')}</h4>
                                     </div>
                                     <div style={{ fontSize: '14px', lineHeight: '1.7', display: 'flex', flexDirection: 'column', gap: '24px' }}>
                                         <section>
                                             <div style={{ fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 <span style={{ background: 'var(--primary-100)', color: 'var(--primary-700)', width: '22px', height: '22px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>1</span>
-                                                Profile Definition
+                                                {t('profileTab.guide1Title')}
                                             </div>
-                                            <p style={{ margin: '8px 0 0 30px', color: '#64748b' }}>Serves as a **template** for data collection. Enter an internal management name.</p>
+                                            <p style={{ margin: '8px 0 0 30px', color: '#64748b' }}>{t('profileTab.guide1Desc')}</p>
                                         </section>
                                         <section>
                                             <div style={{ fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 <span style={{ background: 'var(--primary-100)', color: 'var(--primary-700)', width: '22px', height: '22px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>2</span>
-                                                Point Explorer
+                                                {t('profileTab.guide2Title')}
                                             </div>
-                                            <p style={{ margin: '8px 0 0 30px', color: '#64748b' }}>왼쪽 패널에서 필요한 포인트를 선택하여 우측 매핑 리스트에 추가하세요.</p>
+                                            <p style={{ margin: '8px 0 0 30px', color: '#64748b' }}>{t('profileTab.guide2Desc')}</p>
                                         </section>
                                         <section>
                                             <div style={{ fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 <span style={{ background: 'var(--primary-100)', color: 'var(--primary-700)', width: '22px', height: '22px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>3</span>
-                                                매핑 키 설정
+                                                {t('profileTab.guide3Title')}
                                             </div>
-                                            <p style={{ margin: '8px 0 0 30px', color: '#64748b' }}>외부 시스템(AWS S3 등)에서 보여질 **최종 필드 명칭**을 정의합니다.</p>
+                                            <p style={{ margin: '8px 0 0 30px', color: '#64748b' }}>{t('profileTab.guide3Desc')}</p>
                                             <div style={{ margin: '12px 0 0 30px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', fontSize: '12px' }}>
                                                 <i className="fas fa-info-circle" style={{ color: '#0ea5e9', marginRight: '6px' }} />
-                                                **Scale/Offset**: 수집된 원본 수치 데이터를 변환할 때 사용합니다.
+                                                {t('profileTab.guide3ScaleHint')}
                                             </div>
                                         </section>
                                     </div>

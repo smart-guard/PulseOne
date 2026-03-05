@@ -34,64 +34,65 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
 
     const VARIABLE_CATEGORIES = [
         {
-            name: 'Mapping (Target Mapping)',
+            name: tl('templateTab.varCatMapping'),
             items: [
-                { label: 'Mapping Name (TARGET KEY)', value: '{{target_key}}', desc: 'Final name of data configured in the Profile tab' },
-                { label: 'Data Value (VALUE)', value: '{{measured_value}}', desc: 'Actual measured value with Scale/Offset applied' },
-                { label: 'Target Description (DESC)', value: '{{target_description}}', desc: 'Data description set in Profile' }
+                { label: tl('templateTab.varLabelTargetKey'), value: '{{target_key}}', desc: tl('templateTab.varDescTargetKey') },
+                { label: tl('templateTab.varLabelValue'), value: '{{measured_value}}', desc: tl('templateTab.varDescValue') },
+                { label: tl('templateTab.varLabelDesc'), value: '{{target_description}}', desc: tl('templateTab.varDescDesc') }
             ]
         },
         {
-            name: 'Data Attributes (Attributes)',
+            name: tl('templateTab.varCatAttributes'),
             items: [
-                { label: 'Data Type', value: '{{type}}', desc: 'num:number, bit:digital, str:string ({{data_type}} also supported)' },
-                { label: 'Controllable', value: '{{is_control}}', desc: '1:writable, 0:read-only ({{is_writable}} also supported)' }
+                { label: tl('templateTab.varLabelDataType'), value: '{{type}}', desc: tl('templateTab.varDescDataType') },
+                { label: tl('templateTab.varLabelIsControl'), value: '{{is_control}}', desc: tl('templateTab.varDescIsControl') }
             ]
         },
         {
-            name: 'Metadata (Metadata)',
+            name: tl('templateTab.varCatMetadata'),
             items: [
-                { label: 'Site ID', value: '{{site_id}}', desc: 'Standard numeric site ID (Legacy: {{bd}})' },
-                { label: 'Site Name', value: '{{site_name}}', desc: 'Actual site/building name' },
-                { label: 'Device Name', value: '{{device_name}}', desc: 'Actual device name' },
-                { label: 'Point ID', value: '{{point_id}}', desc: 'Original Point ID' },
-                { label: 'Original Name', value: '{{original_name}}', desc: 'Internal original point name in collector' }
+                { label: tl('templateTab.varLabelSiteId'), value: '{{site_id}}', desc: tl('templateTab.varDescSiteId') },
+                { label: tl('templateTab.varLabelSiteName'), value: '{{site_name}}', desc: tl('templateTab.varDescSiteName') },
+                { label: tl('templateTab.varLabelDeviceName'), value: '{{device_name}}', desc: tl('templateTab.varDescDeviceName') },
+                { label: tl('templateTab.varLabelPointId'), value: '{{point_id}}', desc: tl('templateTab.varDescPointId') },
+                { label: tl('templateTab.varLabelOriginalName'), value: '{{original_name}}', desc: tl('templateTab.varDescOriginalName') }
             ]
         },
         {
-            name: 'Status & Alarms (Status)',
+            name: tl('templateTab.varCatStatus'),
             items: [
-                { label: 'Comm Status', value: '{{status_code}}', desc: '0:normal, 1:disconnected' },
-                { label: 'Alarm Level', value: '{{alarm_level}}', desc: '0:normal, 1:caution, 2:warning' },
-                { label: 'Alarm State Name', value: '{{alarm_status}}', desc: 'NORMAL, WARNING, CRITICAL, etc.' }
+                { label: tl('templateTab.varLabelCommStatus'), value: '{{status_code}}', desc: tl('templateTab.varDescCommStatus') },
+                { label: tl('templateTab.varLabelAlarmLevel'), value: '{{alarm_level}}', desc: tl('templateTab.varDescAlarmLevel') },
+                { label: tl('templateTab.varLabelAlarmStatus'), value: '{{alarm_status}}', desc: tl('templateTab.varDescAlarmStatus') }
             ]
         },
         {
-            name: 'Ranges & Limits (Ranges)',
+            name: tl('templateTab.varCatRanges'),
             items: [
-                { label: 'Measure Range (Min)', value: '{{mi|array}}', desc: 'Metering minimum limit (force array)' },
-                { label: 'Measure Range (Max)', value: '{{mx|array}}', desc: 'Metering maximum limit (force array)' },
-                { label: 'Info Limit', value: '{{il}}', desc: 'Information threshold limit' },
-                { label: 'Danger Limit', value: '{{xl}}', desc: 'Danger threshold limit' }
+                { label: tl('templateTab.varLabelRangeMin'), value: '{{mi|array}}', desc: tl('templateTab.varDescRangeMin') },
+                { label: tl('templateTab.varLabelRangeMax'), value: '{{mx|array}}', desc: tl('templateTab.varDescRangeMax') },
+                { label: tl('templateTab.varLabelInfoLimit'), value: '{{il}}', desc: tl('templateTab.varDescInfoLimit') },
+                { label: tl('templateTab.varLabelDangerLimit'), value: '{{xl}}', desc: tl('templateTab.varDescDangerLimit') }
             ]
         },
         {
-            name: 'Timestamp',
+            name: tl('templateTab.varCatTimestamp'),
             items: [
-                { label: 'Standard Time', value: '{{timestamp}}', desc: 'YYYY-MM-DD HH:mm:ss.fff' },
-                { label: 'ISO8601', value: '{{timestamp_iso8601}}', desc: 'Standard datetime format' },
-                { label: 'Unix (ms)', value: '{{timestamp_unix_ms}}', desc: 'Milliseconds since 1970' }
+                { label: tl('templateTab.varLabelStdTime'), value: '{{timestamp}}', desc: 'YYYY-MM-DD HH:mm:ss.fff' },
+                { label: tl('templateTab.varLabelIso8601'), value: '{{timestamp_iso8601}}', desc: tl('templateTab.varDescIso8601') },
+                { label: tl('templateTab.varLabelUnixMs'), value: '{{timestamp_unix_ms}}', desc: tl('templateTab.varDescUnixMs') }
             ]
         },
         {
-            name: 'Smart Logic',
+            name: tl('templateTab.varCatSmartLogic'),
             items: [
-                { label: 'Value Substitution (MAPPING)', value: '{{map:measured_value:on_true:on_false}}', desc: 'Outputs true value if 1, false value if 0. e.g. {map:target_key:A:B}' },
-                { label: 'Digital Invert (INVERT)', value: '{{map:measured_value:0:1}}', desc: 'Invert: 1→0, 0→1' },
-                { label: 'Status Text (TEXT)', value: '{{map:status_code:normal:failure}}', desc: 'Convert numeric status to human-readable text' }
+                { label: tl('templateTab.varLabelMapping'), value: '{{map:measured_value:on_true:on_false}}', desc: tl('templateTab.varDescMapping') },
+                { label: tl('templateTab.varLabelInvert'), value: '{{map:measured_value:0:1}}', desc: tl('templateTab.varDescInvert') },
+                { label: tl('templateTab.varLabelStatusText'), value: '{{map:status_code:normal:failure}}', desc: tl('templateTab.varDescStatusText') }
             ]
         }
     ];
+
 
     const SAMPLE_DATA: Record<string, any> = {
         // New Aliases
@@ -275,6 +276,54 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                     confirmButtonType: 'danger'
                 });
                 return;
+            }
+
+            // [필수값 검증] 템플릿 이름
+            if (!editingTemplate?.name?.trim()) {
+                await confirm({
+                    title: tl('confirm.inputError', { ns: 'dataExport', defaultValue: 'Input Error' }),
+                    message: tl('confirm.templateNameRequired', { ns: 'dataExport', defaultValue: 'Please enter a template name.' }),
+                    showCancelButton: false,
+                    confirmButtonType: 'danger'
+                });
+                return;
+            }
+
+            // [필수값 검증] Admin 모드에서 테넌트 미선택
+            if (isAdmin && !tenantId && !editingTemplate?.tenant_id) {
+                await confirm({
+                    title: tl('confirm.inputError', { ns: 'dataExport', defaultValue: 'Input Error' }),
+                    message: tl('confirm.tenantRequired', { ns: 'dataExport', defaultValue: 'Please select a tenant.' }),
+                    showCancelButton: false,
+                    confirmButtonType: 'danger'
+                });
+                return;
+            }
+
+            // [필수값 검증] 빌더 모드: 유효한 매핑 행이 0개
+            if (editMode === 'simple') {
+                const validRows = simpleMappings.filter(m => m.key.trim() !== '');
+                if (validRows.length === 0) {
+                    await confirm({
+                        title: tl('template.inputError', { ns: 'dataExport', defaultValue: 'Input Error' }),
+                        message: tl('template.jsonKeyRequired', { ns: 'dataExport', defaultValue: 'Please enter at least one JSON key.' }),
+                        showCancelButton: false,
+                        confirmButtonType: 'danger'
+                    });
+                    return;
+                }
+                // [필수값 검증] 키 중복
+                const keys = validRows.map(m => m.key.trim());
+                const duplicates = keys.filter((k, i) => keys.indexOf(k) !== i);
+                if (duplicates.length > 0) {
+                    await confirm({
+                        title: tl('template.inputError', { ns: 'dataExport', defaultValue: 'Input Error' }),
+                        message: `${tl('confirm.jsonInvalid', { ns: 'dataExport', defaultValue: 'Duplicate JSON key found:' })} ${[...new Set(duplicates)].join(', ')}`,
+                        showCancelButton: false,
+                        confirmButtonType: 'danger'
+                    });
+                    return;
+                }
             }
 
             // Simple Mode일 경우 JSON으로 변환
@@ -463,24 +512,11 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                 <button className="btn btn-primary btn-sm" onClick={() => {
                     setEditingTemplate({
                         name: '',
-                        system_type: 'insite',
-                        template_json: '{\n  "bd": {{site_id}},\n  "ty": "{{type}}",\n  "nm": "{{target_key}}",\n  "vl": {{measured_value}},\n  "il": "{{il}}",\n  "xl": "{{xl}}",\n  "mi": {{mi|array}},\n  "mx": {{mx|array}},\n  "tm": "{{timestamp}}",\n  "st": {{status_code}},\n  "al": {{alarm_level}},\n  "des": "{{target_description}}"\n}',
+                        system_type: '',
+                        template_json: '{}',
                         is_active: true
                     });
-                    setSimpleMappings([
-                        { key: 'bd', value: '{{site_id}}' },
-                        { key: 'ty', value: '{{type}}' },
-                        { key: 'nm', value: '{{target_key}}' },
-                        { key: 'vl', value: '{{measured_value}}' },
-                        { key: 'il', value: '{{il}}' },
-                        { key: 'xl', value: '{{xl}}' },
-                        { key: 'mi', value: '{{mi|array}}' },
-                        { key: 'mx', value: '{{mx|array}}' },
-                        { key: 'tm', value: '{{timestamp}}' },
-                        { key: 'st', value: '{{status_code}}' },
-                        { key: 'al', value: '{{alarm_level}}' },
-                        { key: 'des', value: '{{target_description}}' }
-                    ]);
+                    setSimpleMappings([{ key: '', value: '' }]);
                     setEditMode('simple');
                     setIsWrappedInArray(false);
                     setIsModalOpen(true);
@@ -553,7 +589,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                         {templates.length === 0 && !loading && (
                             <tr>
                                 <td colSpan={4} style={{ textAlign: 'center', padding: '40px', color: 'var(--neutral-400)' }}>
-                                    No templates registered.
+                                    {tl('template.noData', { ns: 'dataExport', defaultValue: 'No templates registered.' })}
                                 </td>
                             </tr>
                         )}
@@ -571,7 +607,11 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                     type="button"
                                     className={`mgmt-btn btn-primary btn-sm ${editMode === 'advanced' && !isJsonValid ? 'disabled' : ''}`}
                                     disabled={editMode === 'advanced' && !isJsonValid}
-                                    onClick={(e) => handleSave(e as any)}
+                                    onClick={() => {
+                                        // form.requestSubmit()으로 이중 submit 방지
+                                        const form = document.getElementById('template-save-form') as HTMLFormElement;
+                                        if (form) form.requestSubmit();
+                                    }}
                                     style={{ height: '32px', fontSize: '13px', padding: '0 16px', borderRadius: '6px' }}
                                 >
                                     <i className="fas fa-save" style={{ marginRight: '6px' }} />
@@ -580,20 +620,20 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                 <button className="mgmt-modal-close" onClick={handleCloseModal}>&times;</button>
                             </div>
                         </div>
-                        <form onSubmit={handleSave}>
-                            <div className="mgmt-modal-body" style={{ padding: 0, display: 'flex', height: '750px', overflow: 'hidden' }}>
-                                {/* Sidebar: Explorer & Helpers */}
-                                <div style={{ width: '280px', background: 'var(--neutral-50)', borderRight: '1px solid var(--neutral-200)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+                        <form id="template-save-form" onSubmit={handleSave}>
+                            <div className="mgmt-modal-body" style={{ padding: 0, display: 'flex', height: '780px', overflow: 'hidden' }}>
+                                {/* Sidebar: Explorer & Helpers - 고급 모드에서 숨김 */}
+                                <div style={{ width: editMode === 'advanced' ? '0' : '280px', minWidth: editMode === 'advanced' ? '0' : '280px', background: 'var(--neutral-50)', borderRight: editMode === 'advanced' ? 'none' : '1px solid var(--neutral-200)', display: 'flex', flexDirection: 'column', overflowY: 'auto', overflow: editMode === 'advanced' ? 'hidden' : 'auto', transition: 'width 0.2s ease, min-width 0.2s ease' }}>
                                     <div style={{ padding: '20px' }}>
                                         <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-800)', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <i className="fas fa-database" style={{ color: 'var(--primary-500)' }} />
-                                            Data Explorer
+                                            {tl('template.dataExplorer', { ns: 'dataExport', defaultValue: 'Data Explorer' })}
                                         </div>
 
                                         {/* Recommended Section: Prominent for quick access */}
                                         <div style={{ marginBottom: '20px', padding: '12px', background: 'var(--primary-50)', borderRadius: '10px', border: '1px solid var(--primary-100)' }}>
                                             <div style={{ fontSize: '10px', fontWeight: 800, color: 'var(--primary-700)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                <i className="fas fa-star" /> Recommended
+                                                <i className="fas fa-star" /> {tl('template.recommended', { ns: 'dataExport', defaultValue: 'Recommended' })}
                                             </div>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                                                 <button
@@ -601,18 +641,18 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                     className="mgmt-badge primary"
                                                     style={{ cursor: 'pointer', border: 'none', fontSize: '11px', padding: '5px 10px', borderRadius: '6px', fontWeight: 600, background: 'var(--primary-500)', color: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
                                                     onClick={() => insertAtCursor('{{target_key}}')}
-                                                    title="Mapping Name (TARGET KEY)"
+                                                    title={tl('template.varMappingTitle', { ns: 'dataExport', defaultValue: 'Mapping Name (TARGET KEY)' })}
                                                 >
-                                                    Mapping Name
+                                                    {tl('template.varMapping', { ns: 'dataExport', defaultValue: 'Mapping Name' })}
                                                 </button>
                                                 <button
                                                     type="button"
                                                     className="mgmt-badge primary"
                                                     style={{ cursor: 'pointer', border: 'none', fontSize: '11px', padding: '5px 10px', borderRadius: '6px', fontWeight: 600, background: 'var(--primary-500)', color: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
                                                     onClick={() => insertAtCursor('{{measured_value}}')}
-                                                    title="Data Value (VALUE)"
+                                                    title={tl('template.varDataValueTitle', { ns: 'dataExport', defaultValue: 'Data Value (VALUE)' })}
                                                 >
-                                                    Data Value
+                                                    {tl('template.varDataValue', { ns: 'dataExport', defaultValue: 'Data Value' })}
                                                 </button>
                                             </div>
                                         </div>
@@ -645,27 +685,27 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                         <details style={{ cursor: 'pointer' }}>
                                             <summary style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', display: 'flex', alignItems: 'center', gap: '8px', outline: 'none', marginBottom: '10px' }}>
                                                 <i className="fas fa-magic" />
-                                                <span>Advanced Smart Logic</span>
+                                                <span>{tl('template.advancedLogic', { ns: 'dataExport', defaultValue: 'Advanced Smart Logic' })}</span>
                                                 <i className="fas fa-chevron-down" style={{ fontSize: '10px', marginLeft: 'auto', opacity: 0.5 }} />
                                             </summary>
 
                                             <div className="logic-sidebar-form" style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '10px', background: 'var(--neutral-100)', borderRadius: '8px', marginTop: '5px' }}>
                                                 <div>
-                                                    <label style={{ fontSize: '10px', color: 'var(--neutral-500)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>Target Data</label>
+                                                    <label style={{ fontSize: '10px', color: 'var(--neutral-500)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>{tl('template.targetData', { ns: 'dataExport', defaultValue: 'Target Data' })}</label>
                                                     <select
                                                         className="mgmt-input"
                                                         style={{ height: '32px', fontSize: '12px', padding: '2px 8px', width: '100%' }}
                                                         value={logicSource}
                                                         onChange={e => setLogicSource(e.target.value)}
                                                     >
-                                                        <option value="measured_value">Measured Value (measured_value)</option>
-                                                        <option value="status_code">Comm Status (status_code)</option>
-                                                        <option value="alarm_level">Alarm Level (alarm_level)</option>
+                                                        <option value="measured_value">{tl('template.measuredValue', { ns: 'dataExport', defaultValue: 'Measured Value (measured_value)' })}</option>
+                                                        <option value="status_code">{tl('template.statusCode', { ns: 'dataExport', defaultValue: 'Comm Status (status_code)' })}</option>
+                                                        <option value="alarm_level">{tl('template.alarmLevel', { ns: 'dataExport', defaultValue: 'Alarm Level (alarm_level)' })}</option>
                                                     </select>
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '8px' }}>
                                                     <div style={{ flex: 1 }}>
-                                                        <label style={{ fontSize: '10px', color: 'var(--success-600)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>When True (1)</label>
+                                                        <label style={{ fontSize: '10px', color: 'var(--success-600)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>{tl('template.whenTrue', { ns: 'dataExport', defaultValue: 'When True (1)' })}</label>
                                                         <input
                                                             type="text"
                                                             className="mgmt-input"
@@ -676,7 +716,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                         />
                                                     </div>
                                                     <div style={{ flex: 1 }}>
-                                                        <label style={{ fontSize: '10px', color: 'var(--danger-600)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>When False (0)</label>
+                                                        <label style={{ fontSize: '10px', color: 'var(--danger-600)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>{tl('template.whenFalse', { ns: 'dataExport', defaultValue: 'When False (0)' })}</label>
                                                         <input
                                                             type="text"
                                                             className="mgmt-input"
@@ -696,11 +736,11 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                         insertAtCursor(tag);
                                                     }}
                                                 >
-                                                    Insert Tag
+                                                    {tl('template.insertTag', { ns: 'dataExport', defaultValue: 'Insert Tag' })}
                                                 </button>
 
                                                 <div style={{ marginTop: '10px', borderTop: '1px solid var(--neutral-200)', paddingTop: '10px' }}>
-                                                    <div style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 600, marginBottom: '6px' }}>Format Filter</div>
+                                                    <div style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 600, marginBottom: '6px' }}>{tl('template.formatFilter', { ns: 'dataExport', defaultValue: 'Format Filter' })}</div>
                                                     <button
                                                         type="button"
                                                         className="mgmt-badge primary"
@@ -736,7 +776,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                             }
                                                         }}
                                                     >
-                                                        Force JSON Array (|array)
+                                                        {tl('template.forceArray', { ns: 'dataExport', defaultValue: 'Force JSON Array (|array)' })}
                                                     </button>
                                                 </div>
                                             </div>
@@ -747,21 +787,22 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                 {/* Main Content Area */}
                                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto', background: '#fff' }}>
                                     <div style={{ padding: '25px' }}>
-                                        {/* Name & System Type Row */}
-                                        {/* Focus Guide Banner: Clear 1-2-3 Step Instructions */}
-                                        <div style={{ marginBottom: '25px', padding: '20px', background: 'linear-gradient(135deg, var(--primary-500) 0%, var(--primary-600) 100%)', borderRadius: '12px', color: '#fff', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '20px' }}>
-                                            <div style={{ background: 'rgba(255,255,255,0.2)', width: '50px', height: '50px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', flexShrink: 0 }}>
-                                                ✨
-                                            </div>
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{ fontSize: '14px', fontWeight: 800, marginBottom: '6px', letterSpacing: '-0.02em' }}>Template Creation Guide: Just 3 steps!</div>
-                                                <div style={{ display: 'flex', gap: '15px' }}>
-                                                    <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ background: '#fff', color: 'var(--primary-600)', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>1</span> Select data on the left</div>
-                                                    <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ background: '#fff', color: 'var(--primary-600)', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>2</span> Enter JSON name in the table</div>
-                                                    <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ background: '#fff', color: 'var(--primary-600)', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>3</span> Preview, then Save</div>
+                                        {/* Focus Guide Banner: 빌더 모드에서만 표시 */}
+                                        {editMode === 'simple' && (
+                                            <div style={{ marginBottom: '25px', padding: '20px', background: 'linear-gradient(135deg, var(--primary-500) 0%, var(--primary-600) 100%)', borderRadius: '12px', color: '#fff', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                                                <div style={{ background: 'rgba(255,255,255,0.2)', width: '50px', height: '50px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', flexShrink: 0 }}>
+                                                    ✨
+                                                </div>
+                                                <div style={{ flex: 1 }}>
+                                                    <div style={{ fontSize: '14px', fontWeight: 800, marginBottom: '6px', letterSpacing: '-0.02em' }}>{tl('template.guideTitle', { ns: 'dataExport', defaultValue: 'Template Creation Guide: 3 Steps!' })}</div>
+                                                    <div style={{ display: 'flex', gap: '15px' }}>
+                                                        <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ background: '#fff', color: 'var(--primary-600)', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>1</span> {tl('template.guideStep1', { ns: 'dataExport', defaultValue: 'Select data on the left' })}</div>
+                                                        <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ background: '#fff', color: 'var(--primary-600)', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>2</span> {tl('template.guideStep2', { ns: 'dataExport', defaultValue: 'Enter JSON keys in the table' })}</div>
+                                                        <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ background: '#fff', color: 'var(--primary-600)', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>3</span> {tl('template.guideStep3', { ns: 'dataExport', defaultValue: 'Preview then save' })}</div>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
+                                        )}
                                         <div style={{ padding: '0 0 25px 0' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--neutral-50)', padding: '15px 20px', borderRadius: '12px', border: '1px solid var(--neutral-200)' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -769,8 +810,8 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                         <i className="fas fa-bolt" />
                                                     </div>
                                                     <div>
-                                                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--neutral-800)' }}>Smart Payload Builder</div>
-                                                        <div style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>Paste an existing JSON sample and Auto-converts to PulseOne template.</div>
+                                                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--neutral-800)' }}>{tl('template.smartBuilderTitle', { ns: 'dataExport', defaultValue: 'Smart Payload Builder' })}</div>
+                                                        <div style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>{tl('template.smartBuilderDesc', { ns: 'dataExport', defaultValue: 'Paste an existing JSON sample to automatically convert it to a PulseOne template.' })}</div>
                                                     </div>
                                                 </div>
                                                 <button
@@ -779,7 +820,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                     style={{ height: '36px', fontSize: '12px', width: 'auto', padding: '0 15px', borderColor: 'var(--primary-300)', color: 'var(--primary-600)' }}
                                                     onClick={() => setIsImportVisible(!isImportVisible)}
                                                 >
-                                                    {isImportVisible ? 'Hide' : 'Paste Sample'}
+                                                    {isImportVisible ? tl('template.pasteClose', { ns: 'dataExport', defaultValue: 'Close' }) : tl('template.pasteSample', { ns: 'dataExport', defaultValue: 'Paste Sample' })}
                                                 </button>
                                             </div>
 
@@ -788,13 +829,13 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                     <textarea
                                                         className="mgmt-input"
                                                         style={{ height: '120px', fontFamily: '"Fira Code", monospace', fontSize: '12px', marginBottom: '10px' }}
-                                                        placeholder='Paste your JSON sample here, e.g. [{"bd":9, "ty":"num", ...}]'
+                                                        placeholder={tl('template.samplePlaceholder', { ns: 'dataExport', defaultValue: 'Paste a JSON sample here. e.g. [{"bd":9, "ty":"num", ...}]' })}
                                                         value={sampleInput}
                                                         onChange={e => setSampleInput(e.target.value)}
                                                     />
                                                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                                                         <button type="button" className="mgmt-btn mgmt-btn-outline" style={{ height: '32px', fontSize: '12px', width: '80px' }} onClick={() => setIsImportVisible(false)}>{tl('cancel', { ns: 'common' })}</button>
-                                                        <button type="button" className="mgmt-btn btn-primary" style={{ height: '32px', fontSize: '12px', width: '100px' }} onClick={handleImportFromSample}>Analyze & Apply</button>
+                                                        <button type="button" className="mgmt-btn btn-primary" style={{ height: '32px', fontSize: '12px', width: '100px' }} onClick={handleImportFromSample}>{tl('template.analyzeApply', { ns: 'dataExport', defaultValue: 'Analyze & Apply' })}</button>
                                                     </div>
                                                 </div>
                                             )}
@@ -803,7 +844,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                         {/* Name & System Type Row: Softer Inputs */}
                                         <div style={{ display: 'flex', gap: '20px', marginBottom: '25px' }}>
                                             <div style={{ flex: 2 }}>
-                                                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>Template Name</label>
+                                                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>{tl('template.templateName', { ns: 'dataExport', defaultValue: 'Template Name' })}</label>
                                                 <input
                                                     type="text"
                                                     className="mgmt-input"
@@ -811,23 +852,23 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                     style={{ height: '44px', fontSize: '14px', borderRadius: '10px', background: 'var(--neutral-50)', border: '1px solid var(--neutral-200)' }}
                                                     value={editingTemplate?.name || ''}
                                                     onChange={e => { setEditingTemplate({ ...editingTemplate, name: e.target.value }); setHasChanges(true); }}
-                                                    placeholder="e.g. Standard JSON Payload"
+                                                    placeholder={tl('template.templateNamePlaceholder', { ns: 'dataExport', defaultValue: 'e.g. Standard JSON Payload' })}
                                                 />
                                             </div>
                                             <div style={{ flex: 1 }}>
-                                                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>System Type</label>
+                                                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>{tl('template.systemType', { ns: 'dataExport', defaultValue: 'System Type' })}</label>
                                                 <input
                                                     type="text"
                                                     className="mgmt-input"
                                                     style={{ height: '44px', fontSize: '14px', borderRadius: '10px', background: 'var(--neutral-50)', border: '1px solid var(--neutral-200)' }}
                                                     value={editingTemplate?.system_type || ''}
                                                     onChange={e => { setEditingTemplate({ ...editingTemplate, system_type: e.target.value }); setHasChanges(true); }}
-                                                    placeholder="Insite, AWS, etc."
+                                                    placeholder={tl('template.systemTypePlaceholder', { ns: 'dataExport', defaultValue: 'e.g. Insite, AWS, etc.' })}
                                                 />
                                             </div>
                                             {isAdmin && !tenantId && (
                                                 <div style={{ flex: 1 }}>
-                                                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>Owner Tenant <span style={{ color: 'red' }}>*</span></label>
+                                                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>{tl('template.ownerTenant', { ns: 'dataExport', defaultValue: 'Owner Tenant' })} <span style={{ color: 'red' }}>*</span></label>
                                                     <select
                                                         className="mgmt-select"
                                                         required
@@ -835,7 +876,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                         value={editingTemplate?.tenant_id || ''}
                                                         onChange={e => { setEditingTemplate({ ...editingTemplate, tenant_id: parseInt(e.target.value) }); setHasChanges(true); }}
                                                     >
-                                                        <option value="">(Select Tenant)</option>
+                                                        <option value="">{tl('template.selectTenant', { ns: 'dataExport', defaultValue: '(Select Tenant)' })}</option>
                                                         {tenants.map(t => (
                                                             <option key={t.id} value={t.id}>{t.company_name}</option>
                                                         ))}
@@ -846,7 +887,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
 
                                         {/* Editor Section Header */}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                            <label style={{ margin: 0, fontWeight: 700, fontSize: '13px', color: 'var(--neutral-800)' }}>Payload Editor</label>
+                                            <label style={{ margin: 0, fontWeight: 700, fontSize: '13px', color: 'var(--neutral-800)' }}>{tl('template.payloadEditor', { ns: 'dataExport', defaultValue: 'Payload Editor' })}</label>
                                             <div className="mgmt-toggle-group" style={{ background: 'var(--neutral-100)', padding: '3px', borderRadius: '8px', display: 'flex' }}>
                                                 <button
                                                     type="button"
@@ -859,13 +900,13 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                         setEditMode('simple');
                                                         setIsJsonValid(true);
                                                     }}
-                                                >Builder (Simple)</button>
+                                                >{tl('template.builderMode', { ns: 'dataExport', defaultValue: 'Builder (Simple)' })}</button>
                                                 <button
                                                     type="button"
                                                     className={`mgmt-btn btn-xs ${editMode === 'advanced' ? 'btn-primary' : 'mgmt-btn-flat'}`}
                                                     style={{ height: '28px', fontSize: '11px', padding: '0 12px', borderRadius: '6px', fontWeight: editMode === 'advanced' ? 600 : 400 }}
                                                     onClick={() => setEditMode('advanced')}
-                                                >Code (Advanced)</button>
+                                                >{tl('template.codeMode', { ns: 'dataExport', defaultValue: 'Code (Advanced)' })}</button>
                                             </div>
                                         </div>
 
@@ -874,7 +915,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                             {editMode === 'simple' ? (
                                                 <div style={{ border: '1px solid var(--neutral-200)', borderRadius: '10px', overflow: 'hidden', background: '#fff' }}>
                                                     <div style={{ padding: '10px 15px', background: 'var(--neutral-50)', borderBottom: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--neutral-500)' }}>Builder Settings</span>
+                                                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--neutral-500)' }}>{tl('template.builderSettings', { ns: 'dataExport', defaultValue: 'Builder Settings' })}</span>
                                                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}>
                                                             <input
                                                                 type="checkbox"
@@ -882,14 +923,14 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                                 onChange={e => { setIsWrappedInArray(e.target.checked); setHasChanges(true); }}
                                                                 style={{ width: '14px', height: '14px' }}
                                                             />
-                                                            <span style={{ fontSize: '12px', color: 'var(--neutral-700)', fontWeight: 600 }}>Wrap result in array ([ ])</span>
+                                                            <span style={{ fontSize: '12px', color: 'var(--neutral-700)', fontWeight: 600 }}>{tl('template.wrapInArray', { ns: 'dataExport', defaultValue: 'Wrap result in array ([ ])' })}</span>
                                                         </label>
                                                     </div>
                                                     <table className="mgmt-table" style={{ margin: 0, tableLayout: 'fixed', width: '100%' }}>
                                                         <thead style={{ background: 'var(--neutral-50)' }}>
                                                             <tr>
-                                                                <th style={{ padding: '10px 15px', fontSize: '12px', fontWeight: 600, width: '40%' }}>JSON Key</th>
-                                                                <th style={{ padding: '10px 15px', fontSize: '12px', fontWeight: 600, width: '50%' }}>Data Value (Value)</th>
+                                                                <th style={{ padding: '10px 15px', fontSize: '12px', fontWeight: 600, width: '40%' }}>{tl('template.jsonKey', { ns: 'dataExport', defaultValue: 'JSON Key' })}</th>
+                                                                <th style={{ padding: '10px 15px', fontSize: '12px', fontWeight: 600, width: '50%' }}>{tl('template.dataValue', { ns: 'dataExport', defaultValue: 'Data Value (VALUE)' })}</th>
                                                                 <th style={{ padding: '10px 15px', width: '50px' }}></th>
                                                             </tr>
                                                         </thead>
@@ -936,7 +977,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                             <tr>
                                                                 <td colSpan={3} style={{ padding: '15px' }}>
                                                                     <button type="button" className="mgmt-btn mgmt-btn-outline" style={{ width: '100%', height: '36px', fontSize: '13px', borderStyle: 'dashed', background: 'var(--neutral-50)' }} onClick={() => setSimpleMappings([...simpleMappings, { key: '', value: '' }])}>
-                                                                        <i className="fas fa-plus" style={{ marginRight: '8px' }} /> 필드 추가
+                                                                        <i className="fas fa-plus" style={{ marginRight: '8px' }} /> {tl('template.addField', { ns: 'dataExport', defaultValue: 'Add Field' })}
                                                                     </button>
                                                                 </td>
                                                             </tr>
@@ -966,7 +1007,7 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                             }
                                                         }}
                                                         style={{
-                                                            height: '350px',
+                                                            height: editMode === 'advanced' ? '500px' : '350px',
                                                             fontFamily: '"Fira Code", monospace',
                                                             fontSize: '13px',
                                                             padding: '15px',
@@ -978,34 +1019,36 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                     />
                                                     {!isJsonValid && (
                                                         <div style={{ position: 'absolute', bottom: '15px', right: '15px', background: 'var(--danger-500)', color: '#fff', padding: '4px 10px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
-                                                            JSON 문법 오류
+                                                            {tl('template.jsonSyntaxError', { ns: 'dataExport', defaultValue: 'JSON Syntax Error' })}
                                                         </div>
                                                     )}
                                                 </div>
                                             )}
                                         </div>
 
-                                        {/* Real-time Preview Section */}
-                                        <div>
-                                            <div style={{ fontSize: '13px', color: 'var(--neutral-800)', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-                                                <span>실시간 전송 데이터 미리보기</span>
-                                                <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: isJsonValid ? 'var(--success-100)' : 'var(--danger-100)', color: isJsonValid ? 'var(--success-700)' : 'var(--danger-700)' }}>
-                                                    {isJsonValid ? 'VALID JSON' : 'INVALID'}
-                                                </span>
+                                        {/* Real-time Preview Section - 빌더 모드에서만 표시 */}
+                                        {editMode === 'simple' && (
+                                            <div>
+                                                <div style={{ fontSize: '13px', color: 'var(--neutral-800)', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                                                    <span>{tl('template.realtimePreview', { ns: 'dataExport', defaultValue: 'Real-time Transmission Data Preview' })}</span>
+                                                    <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: isJsonValid ? 'var(--success-100)' : 'var(--danger-100)', color: isJsonValid ? 'var(--success-700)' : 'var(--danger-700)' }}>
+                                                        {isJsonValid ? 'VALID JSON' : 'INVALID'}
+                                                    </span>
+                                                </div>
+                                                <div style={{ background: '#1e272e', borderRadius: '10px', padding: '20px', border: '1px solid #10171d', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.2)' }}>
+                                                    <pre style={{ margin: 0, fontSize: '12px', color: '#55efc4', whiteSpace: 'pre-wrap', lineHeight: '1.6', fontFamily: '"Fira Code", monospace' }}>
+                                                        {getSafePreview(editingTemplate?.template_json, editMode, simpleMappings, isWrappedInArray)}
+                                                    </pre>
+                                                </div>
                                             </div>
-                                            <div style={{ background: '#1e272e', borderRadius: '10px', padding: '20px', border: '1px solid #10171d', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.2)' }}>
-                                                <pre style={{ margin: 0, fontSize: '12px', color: '#55efc4', whiteSpace: 'pre-wrap', lineHeight: '1.6', fontFamily: '"Fira Code", monospace' }}>
-                                                    {getSafePreview(editingTemplate?.template_json, editMode, simpleMappings, isWrappedInArray)}
-                                                </pre>
-                                            </div>
-                                        </div>
+                                        )}
 
                                         {/* Advanced Usage Guide (Collapsed/Small) */}
                                         <div style={{ marginTop: '25px', padding: '12px', background: 'var(--neutral-50)', borderRadius: '8px', border: '1px solid var(--neutral-200)' }}>
-                                            <div style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: 700, marginBottom: '6px' }}>스마트 매핑 ({'{'}map{'}'}) 고급 구문</div>
+                                            <div style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: 700, marginBottom: '6px' }}>{tl('template.smartMapping', { ns: 'dataExport', defaultValue: 'Smart Mapping ({map}) Advanced Syntax' })}</div>
                                             <div style={{ fontSize: '10px', color: 'var(--neutral-500)', lineHeight: '1.5' }}>
-                                                <code>{'{'}{'{'}map:변수명:참값:거짓값{'}'}{'}'}</code> &rarr; 변수가 1(참)이면 참값을, 0(거짓)이면 거짓값을 출력합니다.<br />
-                                                예: <code>{'{'}{'{'}map:alarm_level:ALARM:NORMAL{'}'}{'}'}</code> &rarr; 알람 시 "ALARM", 평상시 "NORMAL" 문자열 출력
+                                                <code>{'{'}{'{'}map:VAR:TRUE_VAL:FALSE_VAL{'}'}{'}'}{'}'}</code> &rarr; outputs TRUE_VAL when 1, FALSE_VAL when 0<br />
+                                                e.g. <code>{'{'}{'{'}map:alarm_level:ALARM:NORMAL{'}'}{'}'}{'}'}</code> &rarr; "ALARM" / "NORMAL"
                                             </div>
                                         </div>
                                     </div>
@@ -1013,13 +1056,13 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                             </div>
                             <div className="mgmt-modal-footer" style={{ padding: '15px 20px', borderTop: '1px solid var(--neutral-200)', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                                 <button type="button" className="mgmt-btn mgmt-btn-outline" style={{ height: '40px', fontSize: '14px', width: '100px' }} onClick={handleCloseModal}>{tl('cancel', { ns: 'common' })}</button>
-                                <button type="submit" className={`mgmt-btn btn-primary ${editMode === 'advanced' && !isJsonValid ? 'disabled' : ''}`} disabled={editMode === 'advanced' && !isJsonValid} style={{ height: '40px', fontSize: '14px', minWidth: '120px' }}>템플릿 Save</button>
+                                <button type="submit" className={`mgmt-btn btn-primary ${editMode === 'advanced' && !isJsonValid ? 'disabled' : ''}`} disabled={editMode === 'advanced' && !isJsonValid} style={{ height: '40px', fontSize: '14px', minWidth: '120px' }}>{tl('template.saveTemplate', { ns: 'dataExport', defaultValue: 'Save Template' })}</button>
                             </div>
                         </form>
                     </div>
                 </div>
             )}
-        </div>
+        </div >
     );
 };
 
