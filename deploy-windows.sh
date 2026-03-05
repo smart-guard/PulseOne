@@ -46,6 +46,7 @@ for arg in "$@"; do
         --db=mariadb)      DB_BUNDLE="mariadb" ;;
         --db=postgresql)   DB_BUNDLE="postgresql" ;;
         --db=all)          DB_BUNDLE="all" ;;
+        --db=mssql)        DB_BUNDLE="mssql" ;;
     esac
 done
 
