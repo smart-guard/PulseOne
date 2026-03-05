@@ -467,24 +467,23 @@ echo   4. MSSQL    (SQL Server - 기존 서버 연결, database.env만 설정)
 PART2MSSQL
         fi
 
-        cat >> "$PACKAGE_DIR/install.bat" << 'PART2D'
+        # DB 선택 프롬프트 — shell에서 문자열 완성 후 한 줄에 기록
+        DB_PROMPT='선택 [1=SQLite'
+        if [ "$DB_BUNDLE" = "mariadb" ]; then
+            DB_PROMPT="${DB_PROMPT}/2=MariaDB"
+        elif [ "$DB_BUNDLE" = "postgresql" ]; then
+            DB_PROMPT="${DB_PROMPT}/3=PostgreSQL"
+        elif [ "$DB_BUNDLE" = "mssql" ]; then
+            DB_PROMPT="${DB_PROMPT}/4=MSSQL"
+        elif [ "$DB_BUNDLE" = "all" ]; then
+            DB_PROMPT="${DB_PROMPT}/2=MariaDB/3=PostgreSQL/4=MSSQL"
+        fi
+        DB_PROMPT="${DB_PROMPT}, 기본값=1]: "
+
+        cat >> "$PACKAGE_DIR/install.bat" << PART2D_EOF
 echo.
 echo ============================================================
-set /p "DB_CHOICE=선택 [1=SQLite"
-PART2D
-
-        if [ "$DB_BUNDLE" = "mariadb" ]; then
-            printf '/2=MariaDB' >> "$PACKAGE_DIR/install.bat"
-        elif [ "$DB_BUNDLE" = "postgresql" ]; then
-            printf '/3=PostgreSQL' >> "$PACKAGE_DIR/install.bat"
-        elif [ "$DB_BUNDLE" = "mssql" ]; then
-            printf '/4=MSSQL' >> "$PACKAGE_DIR/install.bat"
-        elif [ "$DB_BUNDLE" = "all" ]; then
-            printf '/2=MariaDB/3=PostgreSQL/4=MSSQL' >> "$PACKAGE_DIR/install.bat"
-        fi
-
-        cat >> "$PACKAGE_DIR/install.bat" << 'PART2E'
-, 기본값=1]: "
+set /p "DB_CHOICE=${DB_PROMPT}"
 if "%DB_CHOICE%"=="" set DB_CHOICE=1
 if "%DB_CHOICE%"=="1" set "DB_TYPE=SQLITE"
 if "%DB_CHOICE%"=="2" set "DB_TYPE=MARIADB"
@@ -493,7 +492,7 @@ if "%DB_CHOICE%"=="4" set "DB_TYPE=MSSQL"
 if "%DB_TYPE%"=="" set "DB_TYPE=SQLITE"
 echo [DB] 선택된 데이터베이스: %DB_TYPE%
 echo.
-PART2E
+PART2D_EOF
     fi
 
     # ③ 공통 설치 단계 (MSVC, Node.js, InfluxDB, Redis, Mosquitto)
