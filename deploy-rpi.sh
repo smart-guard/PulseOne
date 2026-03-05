@@ -558,12 +558,21 @@ if [ "$DB_TYPE" = "MARIADB" ]; then
         GRANT ALL ON pulseone.* TO 'pulseone'@'localhost'; FLUSH PRIVILEGES;" >/dev/null 2>&1 || true
     cat > "$INSTALL_DIR/config/database.env" << DBENV
 DATABASE_TYPE=MARIADB
-DB_HOST=localhost
-DB_PORT=3306
-DB_NAME=pulseone
-DB_USER=pulseone
-DB_PASSWORD=pulseone123!
-DB_POOL_SIZE=10
+MARIADB_ENABLED=true
+MARIADB_HOST=localhost
+MARIADB_PORT=3306
+MARIADB_DATABASE=pulseone
+MARIADB_USER=pulseone
+MARIADB_PASSWORD=pulseone123!
+MARIADB_POOL_SIZE=10
+MARIADB_CHARSET=utf8mb4
+
+# C++ Collector 호환 (MYSQL_ 접두사)
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_DATABASE=pulseone
+MYSQL_USER=pulseone
+MYSQL_PASSWORD=pulseone123!
 DBENV
     echo "   MariaDB database.env 생성 완료"
 elif [ "$DB_TYPE" = "POSTGRESQL" ]; then
@@ -579,13 +588,14 @@ elif [ "$DB_TYPE" = "POSTGRESQL" ]; then
     sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE pulseone TO pulseone;" >/dev/null 2>&1 || true
     cat > "$INSTALL_DIR/config/database.env" << DBENV
 DATABASE_TYPE=POSTGRESQL
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=pulseone
-DB_USER=pulseone
-DB_PASSWORD=pulseone123!
-DB_POOL_SIZE=10
-DB_SSL=false
+POSTGRES_ENABLED=true
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DATABASE=pulseone
+POSTGRES_USER=pulseone
+POSTGRES_PASSWORD=pulseone123!
+POSTGRES_POOL_SIZE=10
+POSTGRES_SSL=false
 DBENV
     echo "   PostgreSQL database.env 생성 완료"
 else

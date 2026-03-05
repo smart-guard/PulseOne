@@ -627,6 +627,7 @@ goto DB_SQLITE
     echo SQLITE_CACHE_SIZE=2000
     echo SQLITE_BUSY_TIMEOUT_MS=5000
     echo SQLITE_FOREIGN_KEYS=true
+    echo SQLITE_ENABLED=true
 ) > "config\database.env"
 echo    SQLite database.env 생성 완료
 goto DB_DONE
@@ -655,12 +656,21 @@ if exist "mariadb\bin\mysqld.exe" (
     echo    MariaDB PulseOne 데이터베이스/계정 생성 완료
     (
         echo DATABASE_TYPE=MARIADB
-        echo DB_HOST=localhost
-        echo DB_PORT=3306
-        echo DB_NAME=pulseone
-        echo DB_USER=pulseone
-        echo DB_PASSWORD=pulseone123!
-        echo DB_POOL_SIZE=10
+        echo MARIADB_ENABLED=true
+        echo MARIADB_HOST=localhost
+        echo MARIADB_PORT=3306
+        echo MARIADB_DATABASE=pulseone
+        echo MARIADB_USER=pulseone
+        echo MARIADB_PASSWORD=pulseone123!
+        echo MARIADB_POOL_SIZE=10
+        echo MARIADB_CHARSET=utf8mb4
+        echo.
+        echo # C++ Collector 호환 (MYSQL_ 접두사)
+        echo MYSQL_HOST=localhost
+        echo MYSQL_PORT=3306
+        echo MYSQL_DATABASE=pulseone
+        echo MYSQL_USER=pulseone
+        echo MYSQL_PASSWORD=pulseone123!
     ) > "config\database.env"
     echo    MariaDB database.env 생성 완료
 ) else (
@@ -696,13 +706,14 @@ if exist "postgresql\bin\postgres.exe" (
     echo    PostgreSQL PulseOne 데이터베이스/계정 생성 완료
     (
         echo DATABASE_TYPE=POSTGRESQL
-        echo DB_HOST=localhost
-        echo DB_PORT=5432
-        echo DB_NAME=pulseone
-        echo DB_USER=pulseone
-        echo DB_PASSWORD=pulseone123!
-        echo DB_POOL_SIZE=10
-        echo DB_SSL=false
+        echo POSTGRES_ENABLED=true
+        echo POSTGRES_HOST=localhost
+        echo POSTGRES_PORT=5432
+        echo POSTGRES_DATABASE=pulseone
+        echo POSTGRES_USER=pulseone
+        echo POSTGRES_PASSWORD=pulseone123!
+        echo POSTGRES_POOL_SIZE=10
+        echo POSTGRES_SSL=false
     ) > "config\database.env"
     echo    PostgreSQL database.env 생성 완료
 ) else (
