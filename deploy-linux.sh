@@ -555,7 +555,7 @@ if [ "$DB_TYPE" = "MARIADB" ]; then
     systemctl start  mariadb 2>/dev/null || true
     sleep 2
     mysql -u root -e "CREATE DATABASE IF NOT EXISTS pulseone CHARACTER SET utf8mb4; \
-        CREATE USER IF NOT EXISTS 'pulseone'@'localhost' IDENTIFIED BY 'PulseOne123#'; \
+        CREATE USER IF NOT EXISTS 'pulseone'@'localhost' IDENTIFIED BY ''; \
         GRANT ALL ON pulseone.* TO 'pulseone'@'localhost'; FLUSH PRIVILEGES;" >/dev/null 2>&1 || true
     cat > "$INSTALL_DIR/config/database.env" << DBENV
 DATABASE_TYPE=MARIADB
@@ -564,7 +564,7 @@ MARIADB_HOST=localhost
 MARIADB_PORT=3306
 MARIADB_DATABASE=pulseone
 MARIADB_USER=pulseone
-MARIADB_PASSWORD=PulseOne123#
+MARIADB_PASSWORD=
 MARIADB_POOL_SIZE=10
 MARIADB_CHARSET=utf8mb4
 
@@ -573,7 +573,7 @@ MYSQL_HOST=localhost
 MYSQL_PORT=3306
 MYSQL_DATABASE=pulseone
 MYSQL_USER=pulseone
-MYSQL_PASSWORD=PulseOne123#
+MYSQL_PASSWORD=
 DBENV
     echo "   MariaDB database.env 생성 완료"
 
@@ -587,7 +587,7 @@ elif [ "$DB_TYPE" = "POSTGRESQL" ]; then
     systemctl start  postgresql 2>/dev/null || true
     sleep 2
     sudo -u postgres psql -c "CREATE DATABASE pulseone;" >/dev/null 2>&1 || true
-    sudo -u postgres psql -c "CREATE USER pulseone WITH PASSWORD 'PulseOne123#';" >/dev/null 2>&1 || true
+    sudo -u postgres psql -c "CREATE USER pulseone WITH PASSWORD '';" > /dev/null 2>&1 || true
     sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE pulseone TO pulseone;" >/dev/null 2>&1 || true
     cat > "$INSTALL_DIR/config/database.env" << DBENV
 DATABASE_TYPE=POSTGRESQL
@@ -596,7 +596,7 @@ POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DATABASE=pulseone
 POSTGRES_USER=pulseone
-POSTGRES_PASSWORD=PulseOne123#
+POSTGRES_PASSWORD=
 POSTGRES_POOL_SIZE=10
 POSTGRES_SSL=false
 DBENV

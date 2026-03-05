@@ -661,7 +661,7 @@ if exist "mariadb\bin\mysqld.exe" (
     sc start PulseOne-MariaDB >nul 2>&1
     timeout /t 5 /nobreak >nul
     rem DB/계정 생성
-    "mariadb\bin\mysql.exe" -u root -e "CREATE DATABASE IF NOT EXISTS pulseone CHARACTER SET utf8mb4; CREATE USER IF NOT EXISTS 'pulseone'@'localhost' IDENTIFIED BY 'PulseOne123#'; GRANT ALL ON pulseone.* TO 'pulseone'@'localhost'; FLUSH PRIVILEGES;" >nul 2>&1
+    "mariadb\bin\mysql.exe" -u root -e "CREATE DATABASE IF NOT EXISTS pulseone CHARACTER SET utf8mb4; CREATE USER IF NOT EXISTS 'pulseone'@'localhost' IDENTIFIED BY ''; GRANT ALL ON pulseone.* TO 'pulseone'@'localhost'; FLUSH PRIVILEGES;" >nul 2>&1
     echo    MariaDB PulseOne 데이터베이스/계정 생성 완료
     (
         echo DATABASE_TYPE=MARIADB
@@ -670,7 +670,7 @@ if exist "mariadb\bin\mysqld.exe" (
         echo MARIADB_PORT=3306
         echo MARIADB_DATABASE=pulseone
         echo MARIADB_USER=pulseone
-        echo MARIADB_PASSWORD=PulseOne123#
+        echo MARIADB_PASSWORD=
         echo MARIADB_POOL_SIZE=10
         echo MARIADB_CHARSET=utf8mb4
         echo.
@@ -679,7 +679,7 @@ if exist "mariadb\bin\mysqld.exe" (
         echo MYSQL_PORT=3306
         echo MYSQL_DATABASE=pulseone
         echo MYSQL_USER=pulseone
-        echo MYSQL_PASSWORD=PulseOne123#
+        echo MYSQL_PASSWORD=
     ) > "config\database.env"
     echo    MariaDB database.env 생성 완료
 ) else (
@@ -708,9 +708,9 @@ if exist "postgresql\bin\postgres.exe" (
     sc start PulseOne-PostgreSQL >nul 2>&1
     timeout /t 5 /nobreak >nul
     rem DB/계정 생성
-    set "PGPASSWORD=PulseOne123#"
+    set "PGPASSWORD="
     "postgresql\bin\psql.exe" -U postgres -c "CREATE DATABASE pulseone;" >nul 2>&1
-    "postgresql\bin\psql.exe" -U postgres -c "CREATE USER pulseone WITH PASSWORD 'PulseOne123#';" >nul 2>&1
+    "postgresql\bin\psql.exe" -U postgres -c "CREATE USER pulseone WITH PASSWORD '';" >nul 2>&1
     "postgresql\bin\psql.exe" -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE pulseone TO pulseone;" >nul 2>&1
     echo    PostgreSQL PulseOne 데이터베이스/계정 생성 완료
     (
@@ -720,7 +720,7 @@ if exist "postgresql\bin\postgres.exe" (
         echo POSTGRES_PORT=5432
         echo POSTGRES_DATABASE=pulseone
         echo POSTGRES_USER=pulseone
-        echo POSTGRES_PASSWORD=PulseOne123#
+        echo POSTGRES_PASSWORD=
         echo POSTGRES_POOL_SIZE=10
         echo POSTGRES_SSL=false
     ) > "config\database.env"
