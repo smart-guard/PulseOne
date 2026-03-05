@@ -339,8 +339,9 @@ VALUES(2,1,'샘플 S3 버킷','S3',0,
 INSERT INTO export_profile_assignments (id,profile_id,gateway_id,is_active,assigned_at) VALUES(1,1,2,1,datetime('now','localtime'));
 
 -- ──────────────────────────────────────────────
--- sqlite_sequence (autoincrement 시퀀스 초기화)
+-- sqlite_sequence: 자동 삽입된 시퀀스를 정리 후 명시적 값으로 설정
 -- ──────────────────────────────────────────────
+DELETE FROM sqlite_sequence;
 INSERT INTO sqlite_sequence VALUES('schema_versions',1);
 INSERT INTO sqlite_sequence VALUES('tenants',1);
 INSERT INTO sqlite_sequence VALUES('sites',1);
@@ -360,7 +361,4 @@ INSERT INTO sqlite_sequence VALUES('export_profiles',1);
 INSERT INTO sqlite_sequence VALUES('export_targets',2);
 INSERT INTO sqlite_sequence VALUES('export_profile_assignments',1);
 INSERT INTO sqlite_sequence VALUES('users',3);
-INSERT INTO sqlite_sequence VALUES('system_logs',0);
-INSERT INTO sqlite_sequence VALUES('backups',0);
-INSERT INTO sqlite_sequence VALUES('export_logs',0);
-INSERT INTO sqlite_sequence VALUES('alarm_occurrences',0);
+INSERT INTO sqlite_sequence VALUES('system_settings',8);
