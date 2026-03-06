@@ -40,7 +40,7 @@ for arg in "$@"; do
         --skip-gateway)    SKIP_GATEWAY=true ;;
         --skip-backend)    SKIP_BACKEND=true ;;
         --skip-frontend)   SKIP_FRONTEND=true ;;
-        --skip-cpp)        SKIP_SHARED=true; SKIP_COLLECTOR=true; SKIP_GATEWAY=true ;;
+        --skip-cpp)        SKIP_SHARED=true; SKIP_COLLECTOR=true; SKIP_GATEWAY=true; SKIP_MODBUS_SLAVE=true ;;
         --no-package)      NO_PACKAGE=true ;;
         --db=sqlite)       DB_BUNDLE="sqlite" ;;
         --db=mariadb)      DB_BUNDLE="mariadb" ;;
@@ -49,6 +49,8 @@ for arg in "$@"; do
         --db=mssql)        DB_BUNDLE="mssql" ;;
     esac
 done
+
+SKIP_MODBUS_SLAVE=${SKIP_MODBUS_SLAVE:-false}
 
 WIN_BUILDER="pulseone-windows-builder"
 
@@ -155,6 +157,37 @@ if [ -f "$GATEWAY_EXE" ]; then
 fi
 
 # =============================================================================
+# [3.5] Modbus Slave (Windows Cross-Compile)
+# =============================================================================
+MODBUS_EXE="$PROJECT_ROOT/core/modbus-slave/bin-windows/pulseone-modbus-slave.exe"
+if [ "$SKIP_MODBUS_SLAVE" = "false" ] && [ -f "$MODBUS_EXE" ]; then
+    echo "⚡ [3.5] Modbus Slave: 이미 빌드됨 → 스킵"
+    SKIP_MODBUS_SLAVE=true
+fi
+
+if [ "$SKIP_MODBUS_SLAVE" = "false" ]; then
+    echo "🔨 [3.5] Modbus Slave (Windows Cross-Compile) 빌드 중..."
+    (
+        cd "$PROJECT_ROOT/core/modbus-slave"
+        rm -rf build-win bin-windows 2>/dev/null || true
+        make -j4 CROSS_COMPILE_WINDOWS=1 || echo "   ⚠️  Modbus Slave 윈도우 빌드 실패 (라이브러리 미설치 가능성)"
+        if [ -f "bin/pulseone-modbus-slave.exe" ]; then
+            x86_64-w64-mingw32-strip --strip-unneeded bin/pulseone-modbus-slave.exe
+            mkdir -p bin-windows
+            cp bin/pulseone-modbus-slave.exe bin-windows/pulseone-modbus-slave.exe
+        fi
+    )
+    echo "✅ Modbus Slave Windows 빌드 완료"
+else
+    echo "⏭️  [3.5] Modbus Slave 스킵"
+fi
+
+if [ -f "$MODBUS_EXE" ]; then
+    cp "$MODBUS_EXE" "$BIN_DIR/pulseone-modbus-slave.exe"
+    echo "✅ Modbus Slave → $BIN_DIR/ ($(du -sh "$BIN_DIR/pulseone-modbus-slave.exe" | cut -f1))"
+fi
+
+# =============================================================================
 # [4] Backend (pkg → .exe)
 # =============================================================================
 if [ "$SKIP_BACKEND" = "false" ] && [ -f "$BIN_DIR/pulseone-backend.exe" ]; then
@@ -247,6 +280,7 @@ echo "================================================================="
 echo "✅ 빌드 완료: $BIN_DIR"
 echo "   Collector: $(du -sh "$BIN_DIR/pulseone-collector.exe" 2>/dev/null | cut -f1 || echo 'N/A')"
 echo "   Gateway:   $(du -sh "$BIN_DIR/pulseone-export-gateway.exe" 2>/dev/null | cut -f1 || echo 'N/A')"
+echo "   Modbus:    $(du -sh "$BIN_DIR/pulseone-modbus-slave.exe" 2>/dev/null | cut -f1 || echo 'N/A')"
 echo "   Backend:   $(du -sh "$BIN_DIR/pulseone-backend.exe" 2>/dev/null | cut -f1 || echo 'N/A')"
 echo "   Drivers:   $(ls "$BIN_DIR/drivers/"*.dll 2>/dev/null | wc -l | tr -d ' ') DLLs"
 echo "================================================================="
@@ -878,6 +912,35 @@ winsw install  pulseone-gateway.xml
 winsw start    pulseone-gateway.xml
 echo    Gateway 서비스 등록 완료 (자동재시작 설정됨)
 
+if exist "pulseone-modbus-slave.exe" (
+rem Modbus Slave XML
+(
+    echo ^<?xml version="1.0" encoding="UTF-8"?^>
+    echo ^<service^>
+    echo   ^<id^>PulseOne-ModbusSlave^</id^>
+    echo   ^<name^>PulseOne Modbus Slave^</name^>
+    echo   ^<description^>PulseOne Modbus TCP Slave^</description^>
+    echo   ^<executable^>%ROOT%\pulseone-modbus-slave.exe^</executable^>
+    echo   ^<workingdirectory^>%ROOT%^</workingdirectory^>
+    echo   ^<env name="SQLITE_PATH" value="%ROOT%\data\db\pulseone.db"/^>
+    echo   ^<env name="REDIS_PRIMARY_HOST" value="127.0.0.1"/^>
+    echo   ^<env name="REDIS_PRIMARY_PORT" value="6379"/^>
+    echo   ^<startuptype^>Automatic^</startuptype^>
+    echo   ^<onfailure action="restart" delay="5000"/^>
+    echo   ^<onfailure action="restart" delay="15000"/^>
+    echo   ^<onfailure action="restart" delay="30000"/^>
+    echo   ^<resetfailure^>3600^</resetfailure^>
+    echo   ^<log mode="roll"/^>
+    echo ^</service^>
+) > pulseone-modbus-slave.xml
+
+winsw stop     pulseone-modbus-slave.xml 2>nul
+winsw uninstall pulseone-modbus-slave.xml 2>nul
+winsw install  pulseone-modbus-slave.xml
+winsw start    pulseone-modbus-slave.xml
+echo    Modbus Slave 서비스 등록 완료
+)
+
 :NO_WINSW
 
 :: ============================================================
@@ -987,6 +1050,15 @@ if exist "pulseone-export-gateway.exe" (
     echo [INFO] pulseone-export-gateway.exe 없음 - Gateway 미포함 패키지
 )
 
+if exist "pulseone-modbus-slave.exe" (
+    wscript.exe runHidden.vbs "cmd /c cd /d %ROOT% && pulseone-modbus-slave.exe >> %ROOT%\logs\modbus-slave.log 2>&1"
+    timeout /t 2 /nobreak >nul
+    tasklist | findstr /i "pulseone-modbus-slave.exe" >nul 2>&1
+    if errorlevel 1 (echo [WARN] Modbus Slave 시작 후 즉시 종료) else (echo [OK] Modbus Slave started)
+) else (
+    echo [INFO] pulseone-modbus-slave.exe 없음 - Modbus Slave 미포함
+)
+
 echo PulseOne started! Web UI: http://localhost:3000
 popd
 WIN_START
@@ -1016,6 +1088,7 @@ taskkill /F /IM redis-server.exe >nul 2>&1
 taskkill /F /IM mosquitto.exe >nul 2>&1
 taskkill /F /IM pulseone-collector.exe >nul 2>&1
 taskkill /F /IM pulseone-export-gateway.exe >nul 2>&1
+taskkill /F /IM pulseone-modbus-slave.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 
 echo Starting Redis on 127.0.0.1:6379...

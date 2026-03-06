@@ -41,7 +41,7 @@ for arg in "$@"; do
         --skip-gateway)    SKIP_GATEWAY=true ;;
         --skip-backend)    SKIP_BACKEND=true ;;
         --skip-frontend)   SKIP_FRONTEND=true ;;
-        --skip-cpp)        SKIP_COLLECTOR=true; SKIP_GATEWAY=true ;;
+        --skip-cpp)        SKIP_COLLECTOR=true; SKIP_GATEWAY=true; SKIP_MODBUS_SLAVE=true ;;
         --no-package)      NO_PACKAGE=true ;;
         --db=sqlite)       DB_BUNDLE="sqlite" ;;
         --db=mariadb)      DB_BUNDLE="mariadb" ;;
@@ -50,12 +50,14 @@ for arg in "$@"; do
     esac
 done
 
+SKIP_MODBUS_SLAVE=${SKIP_MODBUS_SLAVE:-false}
+
 [ "${SKIP_FRONTEND:-false}" = "true" ] && SKIP_FRONTEND=true
 
 echo "================================================================="
 echo "🍓 PulseOne Raspberry Pi (ARM64) Deploy v$VERSION"
 echo "   arch: $(uname -m)"
-echo "   skip: collector=$SKIP_COLLECTOR  gateway=$SKIP_GATEWAY"
+echo "   skip: collector=$SKIP_COLLECTOR  gateway=$SKIP_GATEWAY  modbus-slave=$SKIP_MODBUS_SLAVE"
 echo "         backend=$SKIP_BACKEND  frontend=$SKIP_FRONTEND"
 echo "   DB bundle: $DB_BUNDLE"
 echo "   output: $BIN_DIR"
@@ -153,6 +155,36 @@ if [ "$SKIP_GATEWAY" = "false" ]; then
     fi
 else
     echo "⏭️  [2/4] Gateway 스킵"
+fi
+
+# =============================================================================
+# [2.5] Modbus Slave ARM64
+# =============================================================================
+if [ "$SKIP_MODBUS_SLAVE" = "false" ] && [ -f "$BIN_DIR/pulseone-modbus-slave" ]; then
+    echo "⚡ [2.5/5] Modbus Slave: 이미 패키징됨 → 스킵"
+    SKIP_MODBUS_SLAVE=true
+fi
+
+if [ "$SKIP_MODBUS_SLAVE" = "false" ]; then
+    echo "🔨 [2.5/5] Modbus Slave ARM64 빌드 중..."
+    (
+        cd "$PROJECT_ROOT/core/modbus-slave"
+        make clean 2>/dev/null || true
+        make -j$(nproc)
+        strip bin/pulseone-modbus-slave 2>/dev/null || true
+    )
+    echo "✅ Modbus Slave ARM64 빌드 완료"
+else
+    echo "⏭️  [2.5/5] Modbus Slave 스킵"
+fi
+
+MODBUS_SLAVE_BIN="$PROJECT_ROOT/core/modbus-slave/bin/pulseone-modbus-slave"
+if [ -f "$MODBUS_SLAVE_BIN" ]; then
+    cp "$MODBUS_SLAVE_BIN" "$BIN_DIR/pulseone-modbus-slave"
+    mkdir -p "$BIN_DIR/scripts"
+    cp "$PROJECT_ROOT/core/modbus-slave/scripts/modbus_launcher.sh" "$BIN_DIR/scripts/" 2>/dev/null || true
+    chmod +x "$BIN_DIR/pulseone-modbus-slave" "$BIN_DIR/scripts/modbus_launcher.sh" 2>/dev/null || true
+    echo "✅ Modbus Slave → $BIN_DIR/ ($(du -sh "$BIN_DIR/pulseone-modbus-slave" | cut -f1))"
 fi
 
 # =============================================================================
@@ -260,10 +292,11 @@ fi
 echo ""
 echo "================================================================="
 echo "✅ ARM64 빌드 완료: $BIN_DIR"
-echo "   Collector: $(du -sh "$BIN_DIR/pulseone-collector" 2>/dev/null | cut -f1 || echo 'N/A')"
-echo "   Gateway:   $(du -sh "$BIN_DIR/pulseone-export-gateway" 2>/dev/null | cut -f1 || echo 'N/A')"
-echo "   Backend:   $(du -sh "$BIN_DIR/pulseone-backend" 2>/dev/null | cut -f1 || echo 'N/A')"
-echo "   Drivers:   $(ls "$BIN_DIR/drivers/"*.so 2>/dev/null | wc -l | tr -d ' ') .so"
+echo "   Collector:    $(du -sh "$BIN_DIR/pulseone-collector" 2>/dev/null | cut -f1 || echo 'N/A')"
+echo "   Gateway:      $(du -sh "$BIN_DIR/pulseone-export-gateway" 2>/dev/null | cut -f1 || echo 'N/A')"
+echo "   Modbus Slave: $(du -sh "$BIN_DIR/pulseone-modbus-slave" 2>/dev/null | cut -f1 || echo 'N/A')"
+echo "   Backend:      $(du -sh "$BIN_DIR/pulseone-backend" 2>/dev/null | cut -f1 || echo 'N/A')"
+echo "   Drivers:      $(ls "$BIN_DIR/drivers/"*.so 2>/dev/null | wc -l | tr -d ' ') .so"
 echo "================================================================="
 
 # =============================================================================
@@ -675,7 +708,30 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now pulseone-backend pulseone-collector pulseone-gateway
+if [ -f "$INSTALL_DIR/pulseone-modbus-slave" ]; then
+cat > /etc/systemd/system/pulseone-modbus-slave.service << EOF
+[Unit]
+Description=PulseOne Modbus Slave
+After=pulseone-backend.service
+Wants=pulseone-backend.service
+[Service]
+ExecStart=$INSTALL_DIR/pulseone-modbus-slave
+WorkingDirectory=$INSTALL_DIR
+Environment=LD_LIBRARY_PATH=/usr/local/lib
+Environment=SQLITE_PATH=$INSTALL_DIR/data/db/pulseone.db
+Environment=REDIS_PRIMARY_HOST=127.0.0.1
+Environment=REDIS_PRIMARY_PORT=6379
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl enable --now pulseone-backend pulseone-collector pulseone-gateway pulseone-modbus-slave
+else
+    systemctl enable --now pulseone-backend pulseone-collector pulseone-gateway
+fi
 
 sleep 3
 echo ""
@@ -695,14 +751,18 @@ systemctl start pulseone-influxdb 2>/dev/null || true
 sleep 2
 systemctl start redis-server 2>/dev/null || systemctl start redis 2>/dev/null || true
 systemctl start mosquitto 2>/dev/null || true
-systemctl start pulseone-backend pulseone-collector pulseone-gateway
+if [ -f "$INSTALL_DIR/pulseone-modbus-slave" ]; then
+    systemctl start pulseone-backend pulseone-collector pulseone-gateway pulseone-modbus-slave
+else
+    systemctl start pulseone-backend pulseone-collector pulseone-gateway
+fi
 echo "✅ PulseOne running. Web UI: http://localhost:3000"
 START_EOF
     chmod +x "$PACKAGE_DIR/start.sh"
 
     cat > "$PACKAGE_DIR/stop.sh" << 'STOP_EOF'
 #!/bin/bash
-systemctl stop pulseone-backend pulseone-collector pulseone-gateway 2>/dev/null || true
+systemctl stop pulseone-backend pulseone-collector pulseone-gateway pulseone-modbus-slave 2>/dev/null || true
 systemctl stop pulseone-influxdb 2>/dev/null || true
 echo "✅ Stopped."
 STOP_EOF
@@ -714,7 +774,7 @@ if [ "$EUID" -ne 0 ]; then exec sudo bash "$0" "$@"; fi
 INSTALL_DIR=$(cd "$(dirname "$0")" && pwd)
 read -p "⚠️  데이터 초기화 (Y/N): " CONFIRM
 if [[ "$CONFIRM" != "Y" && "$CONFIRM" != "y" ]]; then echo "취소."; exit 0; fi
-systemctl stop pulseone-backend pulseone-collector pulseone-gateway pulseone-influxdb 2>/dev/null || true
+systemctl stop pulseone-backend pulseone-collector pulseone-gateway pulseone-modbus-slave pulseone-influxdb 2>/dev/null || true
 sleep 2
 rm -f "$INSTALL_DIR/data/db/pulseone.db"{,-wal,-shm}
 rm -rf "$INSTALL_DIR/data/influxdb/.influxdbv2"
@@ -734,8 +794,8 @@ RESET_EOF
 if [ "$EUID" -ne 0 ]; then exec sudo bash "$0" "$@"; fi
 read -p "⚠️  PulseOne 서비스 제거 (Y/N): " CONFIRM
 if [[ "$CONFIRM" != "Y" && "$CONFIRM" != "y" ]]; then echo "취소."; exit 0; fi
-systemctl stop    pulseone-backend pulseone-collector pulseone-gateway pulseone-influxdb 2>/dev/null || true
-systemctl disable pulseone-backend pulseone-collector pulseone-gateway pulseone-influxdb 2>/dev/null || true
+systemctl stop    pulseone-backend pulseone-collector pulseone-gateway pulseone-modbus-slave pulseone-influxdb 2>/dev/null || true
+systemctl disable pulseone-backend pulseone-collector pulseone-gateway pulseone-modbus-slave pulseone-influxdb 2>/dev/null || true
 rm -f /etc/systemd/system/pulseone-*.service
 systemctl daemon-reload
 echo "✅ PulseOne 제거 완료."
