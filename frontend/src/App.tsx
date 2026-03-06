@@ -34,6 +34,7 @@ import AuditLogPage from './pages/AuditLogPage';
 import DatabaseExplorerPage from './pages/DatabaseExplorer';
 import ConfigEditorPage from './pages/ConfigEditor';
 import ExportGatewaySettings from './pages/ExportGatewaySettings';
+import ModbusSlaveSettings from './pages/ModbusSlaveSettings';
 import ExportHistory from './pages/ExportHistory';
 import RedisManager from './pages/RedisManager';
 import SystemSettings from './pages/SystemSettings';
@@ -117,6 +118,8 @@ const App: React.FC = () => {
                   <Route path="export-gateways" element={<Navigate to="gateways" replace />} />
                   <Route path="export-gateways/:tab" element={<ExportGatewaySettings />} />
                   <Route path="export-history" element={<ExportHistory />} />
+                  <Route path="modbus-slave" element={<Navigate to="devices" replace />} />
+                  <Route path="modbus-slave/:tab" element={<ModbusSlaveSettings />} />
                   <Route path="redis-manager" element={<RedisManager />} />
                   {/* 시스템 하위 경로 기본값 */}
                   <Route index element={<Navigate to="status" replace />} />

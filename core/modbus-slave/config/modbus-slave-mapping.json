@@ -1,0 +1,41 @@
+{
+    "tcp_port": 502,
+    "unit_id": 1,
+    "max_clients": 10,
+    "redis_host": "127.0.0.1",
+    "redis_port": 6379,
+    "redis_channel": "point:update",
+    "mappings": [
+        {
+            "comment": "=== 예시 매핑 — 실제 point_id로 교체하세요 ===",
+            "point_id": 1,
+            "point_name": "온도_1번",
+            "register_type": "HR",
+            "register_address": 100,
+            "data_type": "FLOAT32",
+            "byte_order": "big_endian",
+            "scale_factor": 1.0,
+            "scale_offset": 0.0,
+            "enabled": true
+        },
+        {
+            "point_id": 2,
+            "point_name": "압력_1번",
+            "register_type": "HR",
+            "register_address": 102,
+            "data_type": "FLOAT32",
+            "byte_order": "big_endian",
+            "scale_factor": 1.0,
+            "scale_offset": 0.0,
+            "enabled": true
+        },
+        {
+            "point_id": 3,
+            "point_name": "밸브_개폐",
+            "register_type": "CO",
+            "register_address": 0,
+            "data_type": "BOOLEAN",
+            "enabled": true
+        }
+    ]
+}

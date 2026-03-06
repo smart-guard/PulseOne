@@ -180,6 +180,15 @@ class ProcessService extends BaseService {
                 if (action === 'start') return await crossPlatformManager.startExportGateway(gatewayId);
                 if (action === 'stop') return await crossPlatformManager.stopExportGateway(gatewayId);
                 if (action === 'restart') return await crossPlatformManager.restartExportGateway(gatewayId);
+            } else if (lowerName === 'modbus-slave' || lowerName.startsWith('modbus-slave-')) {
+                let deviceId = null;
+                if (lowerName.startsWith('modbus-slave-')) {
+                    const idPart = lowerName.replace('modbus-slave-', '');
+                    deviceId = idPart === 'default' ? null : parseInt(idPart);
+                }
+                if (action === 'start') return await crossPlatformManager.startModbusSlave(deviceId);
+                if (action === 'stop') return await crossPlatformManager.stopModbusSlave(deviceId);
+                if (action === 'restart') return await crossPlatformManager.restartModbusSlave(deviceId);
             } else if (lowerName === 'redis') {
                 if (action === 'start') return await crossPlatformManager.startRedis();
                 if (action === 'stop') return await crossPlatformManager.stopRedis();

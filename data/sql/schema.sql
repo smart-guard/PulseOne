@@ -2613,3 +2613,51 @@ CREATE TABLE IF NOT EXISTS driver_log_levels (
 
 CREATE INDEX IF NOT EXISTS idx_driver_log_levels_category ON driver_log_levels(category);
 CREATE INDEX IF NOT EXISTS idx_driver_log_levels_updated  ON driver_log_levels(updated_at DESC);
+
+-- =============================================================================
+-- Modbus Slave 디바이스 설정 (고객사/사이트별 격리)
+-- pulseone-modbus-slave Supervisor가 이 테이블을 폴링하여 프로세스 관리
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS modbus_slave_devices (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id    INTEGER NOT NULL,
+    site_id      INTEGER NOT NULL,
+    name         TEXT    NOT NULL,               -- 예: "SCADA 연동 #1"
+    tcp_port     INTEGER NOT NULL DEFAULT 502,
+    unit_id      INTEGER NOT NULL DEFAULT 1,
+    max_clients  INTEGER NOT NULL DEFAULT 10,
+    enabled      INTEGER NOT NULL DEFAULT 1,      -- Supervisor 폴링 대상
+    description  TEXT,
+    created_at   DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at   DATETIME DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    FOREIGN KEY (site_id)   REFERENCES sites(id),
+    UNIQUE (site_id, tcp_port)                   -- 사이트 내 포트 중복 방지
+);
+
+CREATE INDEX IF NOT EXISTS idx_msd_site    ON modbus_slave_devices(site_id, enabled);
+CREATE INDEX IF NOT EXISTS idx_msd_tenant  ON modbus_slave_devices(tenant_id);
+
+-- =============================================================================
+-- Modbus 레지스터 매핑 (어느 포인트 → 어느 레지스터)
+-- device_id 기준으로 Worker가 로드
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS modbus_slave_mappings (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id        INTEGER NOT NULL,           -- modbus_slave_devices.id
+    point_id         INTEGER NOT NULL,           -- device_points.id
+    register_type    TEXT NOT NULL DEFAULT 'HR', -- HR(Holding)/IR(Input)/CO(Coil)/DI(Discrete)
+    register_address INTEGER NOT NULL,           -- 0-based Modbus 주소
+    data_type        TEXT NOT NULL DEFAULT 'FLOAT32', -- FLOAT32/INT32/UINT32/INT16/UINT16/BOOL
+    byte_order       TEXT NOT NULL DEFAULT 'big_endian',
+    scale_factor     REAL NOT NULL DEFAULT 1.0,
+    scale_offset     REAL NOT NULL DEFAULT 0.0,
+    enabled          INTEGER NOT NULL DEFAULT 1,
+    created_at       DATETIME DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (device_id) REFERENCES modbus_slave_devices(id) ON DELETE CASCADE,
+    FOREIGN KEY (point_id)  REFERENCES device_points(id),
+    UNIQUE (device_id, register_type, register_address)  -- 주소 중복 방지
+);
+
+CREATE INDEX IF NOT EXISTS idx_msm_device  ON modbus_slave_mappings(device_id, enabled);
+CREATE INDEX IF NOT EXISTS idx_msm_point   ON modbus_slave_mappings(point_id);

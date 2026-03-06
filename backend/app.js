@@ -896,6 +896,10 @@ app.use('/api/redis', redisRoutes);
 const exportGatewayRoutes = require('./routes/export-gateways');
 app.use('/api/export-gateways', exportGatewayRoutes);
 
+// Modbus Slave API routes
+const modbusSlaveRoutes = require('./routes/modbus-slave');
+app.use('/api/modbus-slave', modbusSlaveRoutes);
+
 logger.system('INFO', '기본 시스템 라우트 등록 완료');
 
 // 장치 관리 라우트 (Device & DataPoint)
