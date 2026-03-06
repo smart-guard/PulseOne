@@ -121,9 +121,16 @@ void MappingConfig::ApplyEnvOverrides(SlaveConfig &config) {
     config.tcp_port = std::atoi(v);
   if (const char *v = std::getenv("MODBUS_SLAVE_UNIT"))
     config.unit_id = static_cast<uint8_t>(std::atoi(v));
-  if (const char *v = std::getenv("REDIS_HOST"))
+  if (const char *v = std::getenv("MODBUS_SLAVE_MAX_CLIENTS"))
+    config.max_clients = std::atoi(v);
+  // Redis: REDIS_PRIMARY_HOST 우선, 없으면 REDIS_HOST
+  if (const char *v = std::getenv("REDIS_PRIMARY_HOST"))
     config.redis_host = v;
-  if (const char *v = std::getenv("REDIS_PORT"))
+  else if (const char *v = std::getenv("REDIS_HOST"))
+    config.redis_host = v;
+  if (const char *v = std::getenv("REDIS_PRIMARY_PORT"))
+    config.redis_port = std::atoi(v);
+  else if (const char *v = std::getenv("REDIS_PORT"))
     config.redis_port = std::atoi(v);
 }
 

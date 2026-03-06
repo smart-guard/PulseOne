@@ -72,6 +72,12 @@ endif
 # nlohmann/json
 HAS_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 
+# SQLite3
+HAS_SQLITE := $(shell pkg-config --exists sqlite3 2>/dev/null && echo "1" || echo "0")
+ifeq ($(HAS_SQLITE),0)
+    HAS_SQLITE := $(shell echo '\#include <sqlite3.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+endif
+
 # =============================================================================
 # 라이브러리 플래그 적용
 # =============================================================================
@@ -107,6 +113,18 @@ else
     $(info ⚠️  nlohmann/json not found — JSON parsing disabled)
 endif
 
+ifeq ($(HAS_SQLITE),1)
+    CXXFLAGS += -DHAS_SQLITE=1
+    ifeq ($(CROSS_COMPILE_WINDOWS),1)
+        LDFLAGS += -lsqlite3
+    else
+        LDFLAGS += $(shell pkg-config --libs sqlite3 2>/dev/null || echo "-lsqlite3")
+    endif
+    $(info ✅ sqlite3 found)
+else
+    $(info ⚠️  sqlite3 not found — DB mode disabled, fallback to DEVICE_IDS env)
+endif
+
 # 시스템 라이브러리
 ifeq ($(IS_WINDOWS),1)
     LDFLAGS += -lpthread -static-libstdc++ -static-libgcc -lws2_32 -lwsock32
@@ -122,7 +140,11 @@ SRCS = src/main.cpp \
        src/RegisterTable.cpp \
        src/ModbusSlaveServer.cpp \
        src/RedisSubscriber.cpp \
-       src/MappingConfig.cpp
+       src/MappingConfig.cpp \
+       src/ClientManager.cpp \
+       src/SlaveStatistics.cpp \
+       src/DbMappingLoader.cpp \
+       src/ModbusSupervisor.cpp
 
 OBJS = $(SRCS:src/%.cpp=$(BUILD_DIR)/%.o)
 
@@ -157,6 +179,7 @@ check-libs:
 	@echo "  HAS_MODBUS  : $(HAS_MODBUS)"
 	@echo "  HAS_HIREDIS : $(HAS_HIREDIS)"
 	@echo "  HAS_JSON    : $(HAS_JSON)"
+	@echo "  HAS_SQLITE  : $(HAS_SQLITE)"
 	@echo "────────────────────────────────────────"
 
 # Windows 크로스 컴파일 단축 명령

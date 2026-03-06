@@ -88,6 +88,7 @@ class CrossPlatformManager {
                     root: projectRoot,
                     collector: customCollectorPath || path.resolve(projectRoot, 'pulseone-collector.exe'),
                     exportGateway: path.resolve(projectRoot, 'pulseone-export-gateway.exe'),
+                    modbusSlave: path.resolve(projectRoot, 'pulseone-modbus-slave.exe'),
                     redis: customRedisPath || path.resolve(projectRoot, 'redis-server.exe'),
                     config: path.join(projectRoot, 'config'),
                     data: path.join(projectRoot, 'data'),
@@ -99,6 +100,7 @@ class CrossPlatformManager {
                     root: projectRoot,
                     collector: customCollectorPath || path.resolve(projectRoot, 'core', 'collector', 'bin', 'pulseone-collector'),
                     exportGateway: path.resolve(projectRoot, 'core', 'export-gateway', 'bin', 'export-gateway'),
+                    modbusSlave: path.resolve(projectRoot, 'core', 'modbus-slave', 'bin', 'pulseone-modbus-slave'),
                     redis: customRedisPath || '/usr/bin/redis-server',
                     config: path.join(projectRoot, 'config'),
                     data: path.join(projectRoot, 'data'),
@@ -110,6 +112,7 @@ class CrossPlatformManager {
                     root: projectRoot,
                     collector: customCollectorPath || path.join(projectRoot, 'core', 'collector', 'bin', 'pulseone-collector'),
                     exportGateway: path.join(projectRoot, 'core', 'export-gateway', 'bin', 'export-gateway'),
+                    modbusSlave: path.join(projectRoot, 'core', 'modbus-slave', 'bin', 'pulseone-modbus-slave'),
                     redis: customRedisPath || '/usr/local/bin/redis-server',
                     config: path.join(projectRoot, 'config'),
                     data: path.join(projectRoot, 'data'),
@@ -123,6 +126,7 @@ class CrossPlatformManager {
                     root: projectRoot,
                     collector: customCollectorPath || path.resolve(projectRoot, 'pulseone-collector.exe'),
                     exportGateway: path.resolve(projectRoot, 'pulseone-export-gateway.exe'),
+                    modbusSlave: path.resolve(projectRoot, 'pulseone-modbus-slave.exe'),
                     redis: customRedisPath || path.resolve(projectRoot, 'redis-server.exe'),
                     config: path.resolve(projectRoot, 'config'),
                     data: path.resolve(projectRoot, 'data'),
@@ -134,6 +138,7 @@ class CrossPlatformManager {
                     root: projectRoot,
                     collector: customCollectorPath || path.resolve(projectRoot, 'core', 'collector', 'bin', 'pulseone-collector'),
                     exportGateway: path.resolve(projectRoot, 'core', 'export-gateway', 'bin', 'export-gateway'),
+                    modbusSlave: path.resolve(projectRoot, 'core', 'modbus-slave', 'bin', 'pulseone-modbus-slave'),
                     redis: customRedisPath || '/usr/bin/redis-server',
                     config: path.join(projectRoot, 'config'),
                     data: path.join(projectRoot, 'data'),
@@ -145,6 +150,7 @@ class CrossPlatformManager {
                     root: projectRoot,
                     collector: customCollectorPath || path.join(projectRoot, 'collector'),
                     exportGateway: path.join(projectRoot, 'export-gateway'),
+                    modbusSlave: path.join(projectRoot, 'modbus-slave'),
                     redis: customRedisPath || '/usr/local/bin/redis-server',
                     config: path.join(projectRoot, 'config'),
                     data: path.join(projectRoot, 'data'),
@@ -365,6 +371,14 @@ class CrossPlatformManager {
                             this.log('DEBUG', `Export Gateway ID 감지: ${processInfo.gatewayId}`, { pid });
                         }
                         processes.exportGateway.push(processInfo);
+                    } else if (command.includes('modbus-slave') || command.includes('pulseone-modbus-slave')) {
+                        const idMatch = command.match(/--device-id[=\s](\d+)/);
+                        if (idMatch) {
+                            processInfo.deviceId = parseInt(idMatch[1]);
+                            this.log('DEBUG', `Modbus Slave ID 감지: ${processInfo.deviceId}`, { pid });
+                        }
+                        if (!processes.modbusSlave) processes.modbusSlave = [];
+                        processes.modbusSlave.push(processInfo);
                     } else if (command.includes('redis-server')) {
                         processes.redis.push(processInfo);
                     }
@@ -513,6 +527,47 @@ class CrossPlatformManager {
         }
 
         services.push(...exportGatewayServices);
+
+        // Modbus Slave Services
+        const modbusSlaveExists = await this.fileExists(this.paths.modbusSlave || '');
+        const modbusSlaveProcesses = processes.modbusSlave || [];
+        const modbusSlaveServices = modbusSlaveProcesses.map((proc, index) => ({
+            name: proc.deviceId !== undefined ? `modbus-slave-${proc.deviceId}` : `modbus-slave-${index}`,
+            displayName: proc.deviceId !== undefined ? `Modbus Slave (ID: ${proc.deviceId})` : 'Modbus Slave',
+            icon: 'fas fa-network-wired',
+            description: `Modbus TCP Slave 서비스 (${this.platform})`,
+            controllable: true,
+            status: 'running',
+            pid: proc.pid,
+            deviceId: proc.deviceId || null,
+            platform: this.platform,
+            executable: path.basename(this.paths.modbusSlave || 'pulseone-modbus-slave'),
+            uptime: this.calculateUptime(proc.startTime),
+            memoryUsage: proc.memory || 'N/A',
+            cpuUsage: proc.cpu || 'N/A',
+            executablePath: this.paths.modbusSlave,
+            exists: modbusSlaveExists
+        }));
+
+        if (modbusSlaveServices.length === 0) {
+            modbusSlaveServices.push({
+                name: 'modbus-slave',
+                displayName: 'Modbus Slave',
+                icon: 'fas fa-network-wired',
+                description: `Modbus TCP Slave 서비스 (${this.platform})`,
+                controllable: true,
+                status: 'stopped',
+                pid: null,
+                platform: this.platform,
+                executable: path.basename(this.paths.modbusSlave || 'pulseone-modbus-slave'),
+                uptime: 'N/A',
+                memoryUsage: 'N/A',
+                cpuUsage: 'N/A',
+                executablePath: this.paths.modbusSlave,
+                exists: modbusSlaveExists
+            });
+        }
+        services.push(...modbusSlaveServices);
 
         // Redis 및 가상 서비스 네트워크 헬스체크 (Docker 환경 대응)
         if (this.isDocker || this.isDevelopment) {
@@ -1132,6 +1187,134 @@ class CrossPlatformManager {
 
         await this.sleep(1000);
         return await this.startExportGateway(gatewayId);
+    }
+
+    // ========================================
+    // 🔌 Modbus Slave 서비스 제어
+    // ========================================
+
+    async startModbusSlave(deviceId = null) {
+        this.log('INFO', 'Modbus Slave 시작 요청', { platform: this.platform, deviceId });
+
+        // Docker: Supervisor가 DB 변경 감지하여 자동 spawn (최대 60초 대기)
+        if (this.isDocker) {
+            return {
+                success: true,
+                message: 'Docker 환경: Modbus Slave Supervisor가 자동으로 디바이스를 시작합니다 (최대 60초 내).',
+                platform: 'docker'
+            };
+        }
+
+        try {
+            const slaveExists = await this.fileExists(this.paths.modbusSlave || '');
+            if (!slaveExists) {
+                return {
+                    success: false,
+                    error: `Modbus Slave 실행파일을 찾을 수 없음: ${this.paths.modbusSlave}`,
+                    platform: this.platform
+                };
+            }
+
+            const processes = await this.getRunningProcesses();
+            const existing = deviceId !== null
+                ? (processes.modbusSlave || []).find(p => p.deviceId === deviceId)
+                : (processes.modbusSlave || [])[0];
+
+            if (existing) {
+                return {
+                    success: false,
+                    error: `Modbus Slave(device-id: ${deviceId || 'supervisor'})가 이미 실행 중입니다 (PID: ${existing.pid})`,
+                    pid: existing.pid
+                };
+            }
+
+            await this.spawnModbusSlave(deviceId);
+            await this.sleep(3000);
+
+            const newProcesses = await this.getRunningProcesses();
+            const newSlave = deviceId !== null
+                ? (newProcesses.modbusSlave || []).find(p => p.deviceId === deviceId)
+                : (newProcesses.modbusSlave || [])[0];
+
+            if (newSlave) {
+                return {
+                    success: true,
+                    message: `Modbus Slave(device-id: ${deviceId || 'supervisor'}) 시작됨`,
+                    pid: newSlave.pid,
+                    deviceId,
+                    platform: this.platform
+                };
+            } else {
+                return { success: false, error: 'Modbus Slave 시작 실패', platform: this.platform };
+            }
+        } catch (error) {
+            return { success: false, error: error.message, platform: this.platform };
+        }
+    }
+
+    async spawnModbusSlave(deviceId = null) {
+        const absolutePath = path.resolve(this.paths.modbusSlave || '');
+        const args = deviceId !== null ? ['--device-id', deviceId.toString()] : [];
+
+        this.log('DEBUG', 'Modbus Slave spawn', { absolutePath, args });
+
+        return spawn(absolutePath, args, {
+            cwd: this.paths.root,
+            detached: true,
+            stdio: 'ignore',
+            env: {
+                ...process.env,
+                TZ: 'Asia/Seoul',
+                REDIS_PRIMARY_HOST: config.get('REDIS_PRIMARY_HOST') || config.get('REDIS_HOST') || 'localhost',
+                SQLITE_PATH: this.paths.sqlite,
+                LD_LIBRARY_PATH: '/usr/local/lib:/usr/lib'
+            }
+        });
+    }
+
+    async stopModbusSlave(deviceId = null) {
+        this.log('INFO', 'Modbus Slave 중지 요청', { deviceId });
+
+        // Docker: enabled=0으로 변경하면 Supervisor가 자동 kill
+        if (this.isDocker) {
+            return {
+                success: true,
+                message: 'Docker 환경: modbus_slave_devices.enabled=0 으로 설정하면 Supervisor가 자동 중지합니다.',
+                platform: 'docker'
+            };
+        }
+
+        try {
+            const processes = await this.getRunningProcesses();
+            const running = deviceId !== null
+                ? (processes.modbusSlave || []).find(p => p.deviceId === deviceId)
+                : (processes.modbusSlave || [])[0];
+
+            if (!running) {
+                return { success: false, error: '실행 중인 Modbus Slave가 없습니다' };
+            }
+
+            await this.execCommand(this.commands.processKill(running.pid));
+            await this.sleep(2000);
+            return { success: true, message: `Modbus Slave(PID: ${running.pid}) 중지됨` };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+
+    async restartModbusSlave(deviceId = null) {
+        this.log('INFO', 'Modbus Slave 재시작 요청', { deviceId });
+
+        if (this.isDocker) {
+            return await this.controlDockerContainer('modbus-slave', 'restart', deviceId);
+        }
+
+        const stopResult = await this.stopModbusSlave(deviceId);
+        if (!stopResult.success && stopResult.error !== '실행 중인 Modbus Slave가 없습니다') {
+            return stopResult;
+        }
+        await this.sleep(1000);
+        return await this.startModbusSlave(deviceId);
     }
 
     // ========================================

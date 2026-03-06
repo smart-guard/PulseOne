@@ -1,0 +1,36 @@
+# =============================================================================
+# core/modbus-slave/Dockerfile.dev
+# export-gateway/Dockerfile.dev 와 동일한 패턴
+# =============================================================================
+FROM gcc:12
+
+# 기본 패키지 설치
+RUN apt-get update && apt-get install -y \
+    cmake make build-essential \
+    libsqlite3-dev sqlite3 \
+    libmodbus-dev \
+    libhiredis-dev \
+    nlohmann-json3-dev \
+    libssl-dev \
+    curl wget git pkg-config \
+    tree htop procps netcat-openbsd \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+# 타임존 설정 (Asia/Seoul)
+RUN ln -snf /usr/share/zoneinfo/Asia/Seoul /etc/localtime && echo "Asia/Seoul" > /etc/timezone
+
+# 컴파일러 환경 설정
+ENV CC=gcc CXX=g++
+ENV CXXFLAGS="-std=c++17 -Wall -Wextra"
+
+WORKDIR /app
+
+# 소스 복사 후 빌드 (volume mount 전에 최초 1회 — 이미지 레이어로 캐시됨)
+COPY core/modbus-slave/ ./core/modbus-slave/
+RUN cd core/modbus-slave && make clean && make -j$(nproc)
+
+# 포트 노출
+EXPOSE 502
+
+CMD ["/bin/bash", "/app/core/modbus-slave/scripts/modbus_launcher.sh"]

@@ -1,16 +1,16 @@
 // =============================================================================
-// core/modbus-slave/include/ModbusSlaveServer.h
-// Modbus TCP 슬레이브 서버 (libmodbus 기반)
+// core/modbus-slave/include/ModbusSlaveServer.h  (v2 — 상업용)
+// ClientManager + SlaveStatistics 통합
 // =============================================================================
 #pragma once
 
+#include "ClientManager.h"
 #include "RegisterTable.h"
+#include "SlaveStatistics.h"
 #include <atomic>
 #include <string>
 #include <thread>
-#include <vector>
 
-// libmodbus 조건부 포함
 #ifdef HAS_MODBUS
 #include <modbus/modbus.h>
 #else
@@ -28,37 +28,34 @@ public:
   ModbusSlaveServer();
   ~ModbusSlaveServer();
 
-  // 서버 시작
-  // port: TCP 포트 (기본 502)
-  // unit_id: Modbus Unit ID (Slave ID, 기본 1)
-  bool Start(RegisterTable &table, int port = 502, uint8_t unit_id = 1,
-             int max_clients = 10);
+  bool Start(RegisterTable &table, ClientManager &client_mgr,
+             SlaveStatistics &stats, int port = 502, uint8_t unit_id = 1,
+             int max_clients = 20);
   void Stop();
 
   bool IsRunning() const { return running_.load(); }
-  int ConnectedClients() const { return connected_clients_.load(); }
+  int ConnectedClients() const {
+    return client_mgr_ ? (int)client_mgr_->CurrentClients() : 0;
+  }
 
 private:
   void ServerLoop();
+  // 클라이언트 IP 추출
+  static std::string GetClientIp(int fd, uint16_t &port);
 
   modbus_t *ctx_ = nullptr;
   modbus_mapping_t *mb_map_ = nullptr;
   RegisterTable *table_ = nullptr;
+  ClientManager *client_mgr_ = nullptr;
+  SlaveStatistics *stats_ = nullptr;
 
   int port_ = 502;
   uint8_t unit_id_ = 1;
-  int max_clients_ = 10;
+  int max_clients_ = 20;
   int server_socket_ = -1;
 
   std::atomic<bool> running_{false};
-  std::atomic<int> connected_clients_{0};
   std::thread server_thread_;
-
-  // 클라이언트 fd 집합
-  std::vector<int> client_fds_;
-
-  // FC05/06/15/16 쓰기 요청 → RegisterTable 콜백
-  void HandleWriteRequest(const uint8_t *query, int rc);
 };
 
 } // namespace ModbusSlave

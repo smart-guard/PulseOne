@@ -171,6 +171,46 @@ services:
     volumes:
       - influxdb_data:/var/lib/influxdb2
 
+  modbus-slave:
+    build:
+      context: ..
+      dockerfile: core/modbus-slave/Dockerfile.dev
+    restart: always
+    ports:
+      - "${MODBUS_SLAVE_PORT:-502}:502"
+    env_file:
+      - ../config/redis.env
+      - ../config/database.env
+    environment:
+      - MODBUS_SLAVE_PORT=502
+      - MODBUS_SLAVE_UNIT=1
+      - MODBUS_SLAVE_MAX_CLIENTS=20
+      - LOG_LEVEL=info
+      - PULSEONE_CONFIG_DIR=/app/config
+      - PULSEONE_DATA_DIR=/app/data
+      - SQLITE_PATH=/app/data/db/pulseone.db
+      - TZ=Asia/Seoul
+      # [Docker Override] redis.env의 127.0.0.1 → Docker 서비스명으로 교체
+      - REDIS_PRIMARY_HOST=redis
+      - REDIS_PRIMARY_PORT=6379
+    volumes:
+      - ../core:/app/core
+      - ../config:/app/config
+      - ../data:/app/data
+      - ../logs:/app/logs
+    depends_on:
+      - redis
+    networks:
+      - pulseone_network
+    healthcheck:
+      # Supervisor 프로세스가 살아있는지 확인 (Worker가 없어도 Supervisor는 항상 실행 중)
+      test: [ "CMD-SHELL", "pgrep -f pulseone-modbus-slave > /dev/null || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    command: /bin/bash -c "chmod +x core/modbus-slave/bin/pulseone-modbus-slave 2>/dev/null; chmod +x core/modbus-slave/scripts/modbus_launcher.sh && ./core/modbus-slave/scripts/modbus_launcher.sh"
+
   export-gateway:
     build:
       context: ..

@@ -189,6 +189,17 @@ export const MainLayout: React.FC = () => {
             </li>
             <li className="menu-item">
               <Link
+                to="/system/modbus-slave"
+                className={`menu-link ${isActiveMenu('/system/modbus-slave') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-network-wired"></i>
+                </div>
+                <span className="menu-title">Modbus Slave</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link
                 to="/system/export-history"
                 className={`menu-link ${isActiveMenu('/system/export-history') ? 'active' : ''}`}
               >
