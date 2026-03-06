@@ -16,9 +16,10 @@ set -e
 #   --skip-shared      shared 재빌드 스킵
 #   --skip-collector   collector 재빌드 스킵
 #   --skip-gateway     gateway 재빌드 스킵
+#   --skip-modbus-slave  modbus-slave 재빌드 스킵
 #   --skip-backend     backend(pkg) 재빌드 스킵
 #   --skip-frontend    frontend 복사 스킵
-#   --skip-cpp         C++ 빌드 전체 스킵
+#   --skip-cpp         C++ 빌드 전체 스킵 (collector+gateway+modbus-slave)
 #   --no-package       패키징 없이 bin-rpi/만 채움
 # =============================================================================
 
@@ -42,6 +43,7 @@ for arg in "$@"; do
         --skip-backend)    SKIP_BACKEND=true ;;
         --skip-frontend)   SKIP_FRONTEND=true ;;
         --skip-cpp)        SKIP_COLLECTOR=true; SKIP_GATEWAY=true; SKIP_MODBUS_SLAVE=true ;;
+        --skip-modbus-slave) SKIP_MODBUS_SLAVE=true ;;
         --no-package)      NO_PACKAGE=true ;;
         --db=sqlite)       DB_BUNDLE="sqlite" ;;
         --db=mariadb)      DB_BUNDLE="mariadb" ;;
@@ -747,6 +749,7 @@ RPIPART5
 
     cat > "$PACKAGE_DIR/start.sh" << 'START_EOF'
 #!/bin/bash
+INSTALL_DIR=$(cd "$(dirname "$0")" && pwd)
 systemctl start pulseone-influxdb 2>/dev/null || true
 sleep 2
 systemctl start redis-server 2>/dev/null || systemctl start redis 2>/dev/null || true
