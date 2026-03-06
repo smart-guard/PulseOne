@@ -160,19 +160,26 @@ class DatabaseInitializer {
 
     /**
      * SQLite 전용 스크립트 실행 (여러 명령 동시 실행)
+     * serialize()로 래핑하여 다른 비동기 쿼리와 충돌 방지
      */
     async executeSQLiteScript(sql) {
         if (!this.connections?.sqlite) {
             throw new Error('SQLite 연결이 없습니다');
         }
 
+        const conn = this.connections.sqlite.connection || this.connections.sqlite;
+
         return new Promise((resolve, reject) => {
-            this.connections.sqlite.exec(sql, (err) => {
-                if (err) reject(err);
-                else resolve();
+            // serialize()로 exec()가 다른 쿼리들과 순서 보장
+            conn.serialize(() => {
+                conn.exec(sql, (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
             });
         });
     }
+
 
     /**
      * PostgreSQL 전용 실행 (연결 객체 사용)

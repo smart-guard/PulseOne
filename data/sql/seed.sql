@@ -243,7 +243,7 @@ VALUES(2,1,'샘플 S3 버킷','S3',0,'[{"bucket_name":"your-bucket-name","Access
 -- ──────────────────────────────────────────────
 -- export_profile_assignments (id=1)
 -- ──────────────────────────────────────────────
-INSERT INTO export_profile_assignments (id,profile_id,gateway_id,is_active,assigned_at) VALUES(1,1,1,1,datetime('now','localtime'));
+INSERT INTO export_profile_assignments (id,profile_id,gateway_id,is_active,assigned_at) VALUES(1,1,2,1,datetime('now','localtime'));
 
 -- ──────────────────────────────────────────────
 -- sqlite_sequence: 삽입 후 정확한 값으로 덮어씀

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const MonitoringService = require('../lib/services/MonitoringService');
+const LogManager = require('../lib/utils/LogManager');
 
 /**
  * GET /api/monitoring/system-metrics
@@ -11,6 +12,7 @@ router.get('/system-metrics', async (req, res) => {
         const result = await MonitoringService.getSystemMetrics();
         res.json(result);
     } catch (error) {
+        LogManager.api('ERROR', '시스템 메트릭 조회 실패', { error: error.message });
         res.status(500).json({
             success: false,
             error: 'Failed to retrieve system metrics',
@@ -28,6 +30,7 @@ router.get('/service-health', async (req, res) => {
         const result = await MonitoringService.getServiceHealth();
         res.json(result);
     } catch (error) {
+        LogManager.api('ERROR', '서비스 헬스체크 실패', { error: error.message });
         res.status(500).json({
             success: false,
             error: 'Failed to check service health',
@@ -45,6 +48,7 @@ router.get('/database-stats', async (req, res) => {
         const result = await MonitoringService.getDatabaseStats();
         res.json(result);
     } catch (error) {
+        LogManager.api('ERROR', 'DB 통계 조회 실패', { error: error.message });
         res.status(500).json({
             success: false,
             error: 'Failed to retrieve database statistics',
@@ -62,6 +66,7 @@ router.get('/performance', async (req, res) => {
         const result = await MonitoringService.getPerformanceMetrics();
         res.json(result);
     } catch (error) {
+        LogManager.api('ERROR', '성능 지표 조회 실패', { error: error.message });
         res.status(500).json({
             success: false,
             error: 'Failed to retrieve performance metrics',
@@ -88,6 +93,7 @@ router.get('/logs', async (req, res) => {
             }
         });
     } catch (error) {
+        LogManager.api('ERROR', '시스템 로그 조회 실패', { error: error.message });
         res.status(500).json({
             success: false,
             error: 'Failed to retrieve system logs',

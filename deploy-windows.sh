@@ -566,8 +566,9 @@ sc query PulseOne-Redis >nul 2>&1
 if errorlevel 1 (
     sc create PulseOne-Redis binPath= "\"%ROOT%\redis\redis-server.exe\" --service-run" start= auto DisplayName= "PulseOne Redis" >nul 2>&1
 )
+sc failure PulseOne-Redis reset= 60 actions= restart/5000/restart/10000/restart/30000 >nul 2>&1
 sc start PulseOne-Redis >nul 2>&1
-echo    Redis 서비스 등록 완료
+echo    Redis 서비스 등록 완료 (자동재시작 설정됨)
 
 :: ============================================================
 :: [5/8] Mosquitto
@@ -590,8 +591,9 @@ sc query PulseOne-MQTT >nul 2>&1
 if errorlevel 1 (
     powershell -Command "New-Service -Name 'PulseOne-MQTT' -BinaryPathName ('%ROOT%\mosquitto\mosquitto.exe -c %ROOT%\mosquitto\mosquitto.conf') -DisplayName 'PulseOne MQTT' -StartupType Automatic" >nul 2>&1
 )
+sc failure PulseOne-MQTT reset= 60 actions= restart/5000/restart/10000/restart/30000 >nul 2>&1
 sc start PulseOne-MQTT >nul 2>&1
-echo    Mosquitto 서비스 등록 완료
+echo    Mosquitto 서비스 등록 완료 (자동재시작 설정됨)
 
 PART3
 
@@ -803,7 +805,12 @@ rem Backend XML
     echo   ^<workingdirectory^>%ROOT%^</workingdirectory^>
     echo   ^<env name="DATA_DIR" value="%ROOT%\data"/^>
     echo   ^<env name="COLLECTOR_LOG_DIR" value="%ROOT%\logs\packets"/^>
-    echo   ^<startarguments^>--auto-init^</startarguments^>
+    echo   ^<startarguments^>--config=%ROOT%\config^</startarguments^>
+    echo   ^<startuptype^>Automatic^</startuptype^>
+    echo   ^<onfailure action="restart" delay="5000"/^>
+    echo   ^<onfailure action="restart" delay="10000"/^>
+    echo   ^<onfailure action="restart" delay="30000"/^>
+    echo   ^<resetfailure^>3600^</resetfailure^>
     echo   ^<log mode="roll"^>^<sizeThreshold^>10240^</sizeThreshold^>^</log^>
     echo ^</service^>
 ) > pulseone-backend.xml
@@ -815,7 +822,7 @@ winsw start    pulseone-backend.xml
 if errorlevel 1 (
     echo    [WARNING] Backend 서비스 시작 실패. start-debug.bat으로 원인 확인.
 ) else (
-    echo    Backend 서비스 등록 완료
+    echo    Backend 서비스 등록 완료 (자동재시작 설정됨)
 )
 
 rem Collector XML — DATABASE_TYPE을 선택한 DB로 주입
@@ -829,6 +836,11 @@ rem Collector XML — DATABASE_TYPE을 선택한 DB로 주입
     echo   ^<workingdirectory^>%ROOT%^</workingdirectory^>
     echo   ^<env name="DATA_DIR" value="%ROOT%\data"/^>
     echo   ^<env name="DATABASE_TYPE" value="%DB_TYPE%"/^>
+    echo   ^<startuptype^>Automatic^</startuptype^>
+    echo   ^<onfailure action="restart" delay="5000"/^>
+    echo   ^<onfailure action="restart" delay="15000"/^>
+    echo   ^<onfailure action="restart" delay="30000"/^>
+    echo   ^<resetfailure^>3600^</resetfailure^>
     echo   ^<log mode="roll"/^>
     echo ^</service^>
 ) > pulseone-collector.xml
@@ -837,7 +849,7 @@ winsw stop     pulseone-collector.xml 2>nul
 winsw uninstall pulseone-collector.xml 2>nul
 winsw install  pulseone-collector.xml
 winsw start    pulseone-collector.xml
-echo    Collector 서비스 등록 완료
+echo    Collector 서비스 등록 완료 (자동재시작 설정됨)
 
 rem Gateway XML
 (
@@ -851,6 +863,11 @@ rem Gateway XML
     echo   ^<env name="DATA_DIR" value="%ROOT%\data"/^>
     echo   ^<env name="DATABASE_TYPE" value="%DB_TYPE%"/^>
     echo   ^<arguments^>--config=%ROOT%\config^</arguments^>
+    echo   ^<startuptype^>Automatic^</startuptype^>
+    echo   ^<onfailure action="restart" delay="5000"/^>
+    echo   ^<onfailure action="restart" delay="15000"/^>
+    echo   ^<onfailure action="restart" delay="30000"/^>
+    echo   ^<resetfailure^>3600^</resetfailure^>
     echo   ^<log mode="roll"/^>
     echo ^</service^>
 ) > pulseone-gateway.xml
@@ -859,7 +876,7 @@ winsw stop     pulseone-gateway.xml 2>nul
 winsw uninstall pulseone-gateway.xml 2>nul
 winsw install  pulseone-gateway.xml
 winsw start    pulseone-gateway.xml
-echo    Gateway 서비스 등록 완료
+echo    Gateway 서비스 등록 완료 (자동재시작 설정됨)
 
 :NO_WINSW
 

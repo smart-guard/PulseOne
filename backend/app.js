@@ -530,6 +530,30 @@ async function initializeSystem() {
         }
 
         logger.system('INFO', '시스템 초기화 완료');
+
+        // ✅ DB 초기화 완전 완료 후 서비스 테이블 보장 (순차 실행으로 SQLITE_BUSY 방지)
+        // fire-and-forget 방식 대신 await으로 직렬 실행하여 락 경쟁 제거
+        logger.database('INFO', 'DB 완전 초기화 후 서비스 테이블 보장 시작...');
+
+        const serviceEnsureTasks = [
+            { name: 'ControlLogService', module: './lib/services/ControlLogService', method: 'ensureTable' },
+            { name: 'ControlSequenceService', module: './lib/services/ControlSequenceService', method: 'ensureTable' },
+            { name: 'ControlTemplateService', module: './lib/services/ControlTemplateService', method: 'ensureTable' },
+        ];
+
+        for (const task of serviceEnsureTasks) {
+            try {
+                const svc = require(task.module);
+                if (svc && typeof svc[task.method] === 'function') {
+                    await svc[task.method]();
+                    logger.database('INFO', `✅ ${task.name}.${task.method}() 완료`);
+                }
+            } catch (e) {
+                logger.database('WARN', `⚠️ ${task.name}.${task.method}() 실패 (무시)`, { error: e.message });
+            }
+        }
+
+        logger.database('INFO', '서비스 테이블 보장 완료');
         app.locals.dbInitialized = true;  // 🔥 DB 완전 초기화 완료 플래그
 
     } catch (error) {
@@ -802,16 +826,17 @@ app.use('/api/audit-logs', auditLogRoutes);
 // 제어 감사 로그 (Control Audit Log)
 app.use('/api/control-logs', require('./routes/control-logs'));
 
-// ControlLogService Redis 구독 초기화 (비동기, non-blocking)
+// ControlLogService Redis 구독 초기화 (ensureTable은 initializeSystem에서 처리됨)
 try {
     const controlLog = require('./lib/services/ControlLogService');
     // Phase 2: Socket.IO 실시간 emit 활성화
     if (io) controlLog.setIo(io);
-    controlLog.ensureTable().then(() => {
+    // Redis 구독 초기화 (DB 테이블은 initializeSystem에서 보장됨)
+    initializationPromise.then(() => {
         controlLog.initialize().then(() => {
             logger.services('INFO', '✅ ControlLogService 초기화 완료 (control:result 구독)');
         }).catch(e => logger.services('WARN', 'ControlLogService Redis 구독 실패', { error: e.message }));
-    }).catch(e => logger.services('WARN', 'ControlLogService DB 테이블 보장 실패', { error: e.message }));
+    }).catch(e => logger.services('WARN', 'ControlLogService DB 초기화 대기 실패', { error: e.message }));
 } catch (e) {
     logger.services('WARN', 'ControlLogService 로드 실패', { error: e.message });
 }
@@ -829,16 +854,12 @@ try {
     logger.services('WARN', 'ControlSchedulerService 로드 실패', { error: e.message });
 }
 
-// ── Phase 4: 제어 시퀀스 서비스 초기화 ─────────────────────────
+// ── Phase 4: 제어 시퀀스 서비스 (ensureTable은 initializeSystem에서 처리됨)
 try {
-    const controlSequence = require('./lib/services/ControlSequenceService');
-    controlSequence.ensureTable().catch(e =>
-        logger.services('WARN', 'ControlSequenceService DB 테이블 보장 실패', { error: e.message })
-    );
     app.use('/api/control-sequences', require('./routes/control-sequences'));
     logger.system('INFO', 'control-sequences 라우트 등록 완료');
 } catch (e) {
-    logger.services('WARN', 'ControlSequenceService 로드 실패', { error: e.message });
+    logger.services('WARN', 'ControlSequenceService 라우트 로드 실패', { error: e.message });
 }
 
 // ── Phase 7: 알림 서비스 io 주입 ────────────────────────────────
@@ -850,16 +871,12 @@ try {
     logger.services('WARN', 'NotificationService 로드 실패', { error: e.message });
 }
 
-// ── Phase 8: 제어 템플릿 ────────────────────────────────────────
+// ── Phase 8: 제어 템플릿 (ensureTable은 initializeSystem에서 처리됨)
 try {
-    const controlTemplate = require('./lib/services/ControlTemplateService');
-    controlTemplate.ensureTable().catch(e =>
-        logger.services('WARN', 'ControlTemplateService DB 테이블 보장 실패', { error: e.message })
-    );
     app.use('/api/control-templates', require('./routes/control-templates'));
     logger.system('INFO', 'control-templates 라우트 등록 완료');
 } catch (e) {
-    logger.services('WARN', 'ControlTemplateService 로드 실패', { error: e.message });
+    logger.services('WARN', 'ControlTemplateService 라우트 로드 실패', { error: e.message });
 }
 
 // 신규 추가: 게이트웨이(Edge Server) 관리
@@ -875,9 +892,9 @@ app.use('/api/export', exportConfigRoutes);
 const redisRoutes = require('./routes/redis');
 app.use('/api/redis', redisRoutes);
 
-// Fix: Frontend expects /api/export-gateways
-const exportGatewaysShim = require('./routes/export-gateways-shim');
-app.use('/api/export-gateways', exportGatewaysShim);
+// Export Gateway API routes
+const exportGatewayRoutes = require('./routes/export-gateways');
+app.use('/api/export-gateways', exportGatewayRoutes);
 
 logger.system('INFO', '기본 시스템 라우트 등록 완료');
 

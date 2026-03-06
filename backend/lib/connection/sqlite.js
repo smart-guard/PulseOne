@@ -140,26 +140,35 @@ class SQLiteConnection {
         // 첫 번째 쿼리보다 반드시 먼저 적용됨을 보장
         this.connection.serialize(() => {
             // busy_timeout을 가장 먼저 — Collector와의 락 충돌 방지
-            this.connection.run(`PRAGMA busy_timeout = ${this.config.timeout}`);
-            this.connection.run(`PRAGMA journal_mode = ${this.config.journalMode}`);
+            this.connection.run(`PRAGMA busy_timeout = ${this.config.timeout || 30000}`);
+
+            // WAL 모드 + NORMAL sync: 쓰기 성능과 내구성 균형
+            // WAL 모드에서 FULL(기본값)은 불필요한 fsync가 많아 락 경쟁 증가
+            this.connection.run(`PRAGMA journal_mode = ${this.config.journalMode || 'WAL'}`);
+            this.connection.run('PRAGMA synchronous = NORMAL');
+
+            // WAL 체크포인트: 1000 페이지마다 자동 체크포인트 (기본값 1000, 명시)
+            // 너무 작으면 체크포인트 중 reader 차단, 너무 크면 WAL 파일 무한 증가
+            this.connection.run('PRAGMA wal_autocheckpoint = 1000');
 
             if (this.config.foreignKeys) {
                 this.connection.run('PRAGMA foreign_keys = ON');
             }
 
             // 성능 최적화
-            this.connection.run(`PRAGMA cache_size = ${this.config.cacheSize}`);
+            this.connection.run(`PRAGMA cache_size = ${this.config.cacheSize || 2000}`);
             this.connection.run('PRAGMA temp_store = memory');
             this.connection.run('PRAGMA mmap_size = 268435456', (err) => {
                 // 모든 PRAGMA 완료 후 resolve
                 if (err) {
                     console.warn('⚠️ SQLite mmap_size PRAGMA 실패 (무시):', err.message);
                 }
-                console.log('✅ SQLite PRAGMA 설정 적용 완료');
+                console.log('✅ SQLite PRAGMA 설정 적용 완료 (WAL+NORMAL+autocheckpoint)');
                 if (onDone) onDone(this.connection);
             });
         });
     }
+
 
     async query(sql, params = []) {
         if (!this.isConnected) {
