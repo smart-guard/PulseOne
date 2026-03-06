@@ -730,6 +730,10 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
+fi
+
+systemctl daemon-reload
+if [ -f "$INSTALL_DIR/pulseone-modbus-slave" ]; then
     systemctl enable --now pulseone-backend pulseone-collector pulseone-gateway pulseone-modbus-slave
 else
     systemctl enable --now pulseone-backend pulseone-collector pulseone-gateway
