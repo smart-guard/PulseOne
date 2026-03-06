@@ -65,7 +65,10 @@ echo "   DB bundle: $DB_BUNDLE"
 echo "   output: $BIN_DIR"
 echo "================================================================="
 
-mkdir -p "$BIN_DIR/drivers" "$BIN_DIR/lib"
+mkdir -p "$BIN_DIR/drivers" "$BIN_DIR/lib" \
+         "$BIN_DIR/data/db" "$BIN_DIR/data/logs" "$BIN_DIR/data/sql" \
+         "$BIN_DIR/data/backup" "$BIN_DIR/data/temp" "$BIN_DIR/data/influxdb" \
+         "$BIN_DIR/config" "$BIN_DIR/logs/packets"
 
 # =============================================================================
 # [1] Shared Libraries — 컨테이너 안에서 직접 make

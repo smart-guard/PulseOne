@@ -29,6 +29,7 @@ TIMESTAMP=${HOST_TIMESTAMP:-$(date '+%Y%m%d_%H%M%S')}
 
 BIN_DIR="$PROJECT_ROOT/bin-rpi"
 
+SKIP_SHARED=false
 SKIP_COLLECTOR=false
 SKIP_GATEWAY=false
 SKIP_BACKEND=false
@@ -67,7 +68,8 @@ echo "================================================================="
 
 mkdir -p "$BIN_DIR/drivers" "$BIN_DIR/lib" "$BIN_DIR/config" \
          "$BIN_DIR/data/db" "$BIN_DIR/data/logs" "$BIN_DIR/data/sql" \
-         "$BIN_DIR/data/backup" "$BIN_DIR/data/temp" "$BIN_DIR/data/influxdb"
+         "$BIN_DIR/data/backup" "$BIN_DIR/data/temp" "$BIN_DIR/data/influxdb" \
+         "$BIN_DIR/logs/packets"
 
 # =============================================================================
 # [0] Shared Libraries — 직접 make (ARM64 컨테이너 안)
@@ -149,14 +151,14 @@ if [ "$SKIP_GATEWAY" = "false" ]; then
         strip bin/export-gateway 2>/dev/null || true
     )
     echo "✅ Gateway ARM64 빌드 완료"
-
-    GATEWAY_BIN="$PROJECT_ROOT/core/export-gateway/bin/export-gateway"
-    if [ -f "$GATEWAY_BIN" ]; then
-        cp "$GATEWAY_BIN" "$BIN_DIR/pulseone-export-gateway"
-        echo "✅ Gateway → $BIN_DIR/ ($(du -sh "$BIN_DIR/pulseone-export-gateway" | cut -f1))"
-    fi
 else
     echo "⏭️  [2/4] Gateway 스킵"
+fi
+
+GATEWAY_BIN="$PROJECT_ROOT/core/export-gateway/bin/export-gateway"
+if [ -f "$GATEWAY_BIN" ]; then
+    cp "$GATEWAY_BIN" "$BIN_DIR/pulseone-export-gateway"
+    echo "✅ Gateway → $BIN_DIR/ ($(du -sh "$BIN_DIR/pulseone-export-gateway" | cut -f1))"
 fi
 
 # =============================================================================
