@@ -912,8 +912,7 @@ winsw install  pulseone-gateway.xml
 winsw start    pulseone-gateway.xml
 echo    Gateway 서비스 등록 완료 (자동재시작 설정됨)
 
-if exist "pulseone-modbus-slave.exe" (
-rem Modbus Slave XML
+if not exist "pulseone-modbus-slave.exe" goto SKIP_MODBUS_WINSW
 (
     echo ^<?xml version="1.0" encoding="UTF-8"?^>
     echo ^<service^>
@@ -933,13 +932,12 @@ rem Modbus Slave XML
     echo   ^<log mode="roll"/^>
     echo ^</service^>
 ) > pulseone-modbus-slave.xml
-
 winsw stop     pulseone-modbus-slave.xml 2>nul
 winsw uninstall pulseone-modbus-slave.xml 2>nul
 winsw install  pulseone-modbus-slave.xml
 winsw start    pulseone-modbus-slave.xml
 echo    Modbus Slave 서비스 등록 완료
-)
+:SKIP_MODBUS_WINSW
 
 :NO_WINSW
 
