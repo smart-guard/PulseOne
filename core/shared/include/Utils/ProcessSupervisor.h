@@ -90,8 +90,8 @@ private:
   std::mutex children_mutex_;
   std::map<int, ChildProcess> children_; // instance_id -> child
 
-  static constexpr int MONITOR_INTERVAL_SEC = 10;
-  static constexpr int RECONCILE_INTERVAL_SEC = 60;
+  static constexpr int MONITOR_INTERVAL_SEC = 5;
+  static constexpr int RECONCILE_INTERVAL_SEC = 5; // 60→5: Stop/Start 즉시 반영
   static constexpr int MAX_RESTART_COUNT = 10;
 };
 

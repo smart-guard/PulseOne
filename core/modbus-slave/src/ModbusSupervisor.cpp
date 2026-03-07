@@ -95,8 +95,9 @@ std::vector<int> ModbusSupervisor::QueryActiveDevices() {
     return ids;
   }
 
-  const char *sql = "SELECT id FROM modbus_slave_devices "
-                    "WHERE enabled = 1 ORDER BY id";
+  const char *sql =
+      "SELECT id FROM modbus_slave_devices "
+      "WHERE enabled = 1 AND COALESCE(is_deleted, 0) = 0 ORDER BY id";
 
   sqlite3_stmt *stmt = nullptr;
   rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
@@ -152,19 +153,23 @@ void ModbusSupervisor::Reconcile(const std::vector<int> &active_ids) {
 void ModbusSupervisor::MonitorChildren() {
   std::lock_guard<std::mutex> lock(children_mutex_);
 
+  std::vector<int> to_remove;
   for (auto &[id, child] : children_) {
     if (!IsChildAlive(child)) {
       if (child.restart_count >= MAX_RESTART_COUNT) {
+        // 재시작 한도 초과: 다음 Reconcile에서 DB로 재등록할 수 있도록
+        // children_에서 제거하면 Reconcile()i에서 신규 spawn으로 보임
         std::cerr << "[ModbusSupervisor] 디바이스 " << id
-                  << " 최대 재시작 초과 — 포기\n";
+                  << " 최대 재시작 초과 — 다음 Reconcile 쪬지로 자동 복구\n";
+        to_remove.push_back(id);
         continue;
       }
+
       std::cout << "[ModbusSupervisor] 디바이스 " << id
                 << " 크래시 감지 → 재시작 (" << child.restart_count + 1
                 << "회)\n";
       child.restart_count++;
 
-      // 재시작
       std::string args = "--device-id=" + std::to_string(id);
 #ifdef _WIN32
       std::string cmd = exe_path_ + " " + args;
@@ -194,6 +199,9 @@ void ModbusSupervisor::MonitorChildren() {
 #endif
     }
   }
+  // 리미트 초과 디바이스 제거 → 후 60초 Reconcile에서 자동 재등록
+  for (int id : to_remove)
+    children_.erase(id);
 }
 
 bool ModbusSupervisor::SpawnChild(int device_id) {

@@ -4,10 +4,15 @@
 // ExportGatewaySettings.tsx 와 동일한 패턴
 // =============================================================================
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Tabs, Tag } from 'antd';
 import { useParams, useNavigate } from 'react-router-dom';
 import DeviceListTab from './modbus-slave/tabs/DeviceListTab';
 import MappingEditorTab from './modbus-slave/tabs/MappingEditorTab';
+import ClientMonitorTab from './modbus-slave/tabs/ClientMonitorTab';
+import AccessLogTab from './modbus-slave/tabs/AccessLogTab';
+import PacketLogTab from './modbus-slave/tabs/PacketLogTab';
+import DashboardTab from './modbus-slave/tabs/DashboardTab';
 import modbusSlaveApi, { ModbusSlaveDevice } from '../api/services/modbusSlaveApi';
 import { SiteApiService } from '../api/services/siteApi';
 import { ManagementLayout } from '../components/common/ManagementLayout';
@@ -18,9 +23,10 @@ import { TenantApiService } from '../api/services/tenantApi';
 import { Site, Tenant } from '../types/common';
 import '../styles/management.css';
 
-const VALID_TABS = ['devices', 'mappings'];
+const VALID_TABS = ['dashboard', 'devices', 'mappings', 'monitor', 'logs', 'packet-logs'];
 
 const ModbusSlaveSettings: React.FC = () => {
+    const { t } = useTranslation('settings');
     const { tab } = useParams<{ tab: string }>();
     const navigate = useNavigate();
     const activeTab = tab && VALID_TABS.includes(tab) ? tab : 'devices';
@@ -100,40 +106,21 @@ const ModbusSlaveSettings: React.FC = () => {
     return (
         <ManagementLayout>
             <PageHeader
-                title="Modbus Slave 관리"
-                description="Modbus TCP Slave 디바이스를 관리하고 레지스터 매핑을 설정합니다"
+                title={t('modbusSlave.title')}
+                description={t('modbusSlave.subtitle')}
                 icon="fas fa-network-wired"
             />
 
-            {/* 요약 카드 — 상단 */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '12px' }}>
-                {[
-                    { label: '전체 디바이스', value: devices.length, icon: 'fa-network-wired', bg: '#eff6ff', fg: '#3b82f6' },
-                    { label: '실행 중', value: runningCount, icon: 'fa-circle', bg: '#f0fdf4', fg: '#16a34a' },
-                    { label: '중지됨', value: stoppedCount, icon: 'fa-stop-circle', bg: '#fafafa', fg: '#94a3b8' },
-                    { label: '매핑 포인트', value: totalMappings, icon: 'fa-th', bg: '#fdf4ff', fg: '#9333ea' },
-                ].map(c => (
-                    <div key={c.label} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <div style={{ width: '44px', height: '44px', background: c.bg, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <i className={`fas ${c.icon}`} style={{ color: c.fg, fontSize: '18px' }} />
-                        </div>
-                        <div>
-                            <div style={{ fontSize: '24px', fontWeight: 800, color: '#1e293b' }}>{c.value}</div>
-                            <div style={{ fontSize: '12px', color: '#64748b' }}>{c.label}</div>
-                        </div>
-                    </div>
-                ))}
-            </div>
 
             {/* 테넌트 / 사이트 필터 — 카드 아래 */}
             <div style={{ marginBottom: '12px' }}>
                 <FilterBar
                     filters={[
                         ...(isAdmin ? [{
-                            label: '테넌트',
+                            label: t('modbusSlave.tenant'),
                             value: currentTenantId ? String(currentTenantId) : 'all',
                             options: [
-                                { label: '전체 테넌트', value: 'all' },
+                                { label: t('modbusSlave.allTenants'), value: 'all' },
                                 ...tenants.map(tn => ({ label: (tn as any).company_name || (tn as any).name, value: String(tn.id) }))
                             ],
                             onChange: (val: string) => {
@@ -146,10 +133,10 @@ const ModbusSlaveSettings: React.FC = () => {
                             }
                         }] : []),
                         {
-                            label: '사이트',
+                            label: t('modbusSlave.site'),
                             value: currentSiteId ? String(currentSiteId) : 'all',
                             options: [
-                                { label: '전체 사이트', value: 'all' },
+                                { label: t('modbusSlave.allSites'), value: 'all' },
                                 ...sites.map(s => ({ label: s.name, value: String(s.id) }))
                             ],
                             onChange: (val: string) => setCurrentSiteId(val === 'all' ? null : Number(val))
@@ -172,40 +159,39 @@ const ModbusSlaveSettings: React.FC = () => {
                 padding: '8px 24px 16px',
                 flex: 1,
                 minHeight: 0,
-                overflow: 'hidden',
+                overflow: 'auto',
             }}>
                 <Tabs
                     activeKey={activeTab}
                     onChange={setActiveTab}
-                    tabBarExtraContent={activeTab === 'mappings' ? (
-                        <div style={{ display: 'flex', gap: 4, alignItems: 'center', paddingRight: 4 }}>
-                            {[
-                                { value: 'HR', full: 'Holding Register (4xxxx)', color: 'blue' },
-                                { value: 'IR', full: 'Input Register (3xxxx)', color: 'green' },
-                                { value: 'CO', full: 'Coil (0xxxx)', color: 'orange' },
-                                { value: 'DI', full: 'Discrete Input (1xxxx)', color: 'purple' },
-                            ].map(rt => (
-                                <Tag key={rt.value} color={rt.color} style={{ margin: 0, fontSize: 11 }}>
-                                    {rt.value}: {rt.full}
-                                </Tag>
-                            ))}
-                        </div>
-                    ) : null}
+                    tabBarStyle={{ position: 'sticky', top: -8, zIndex: 10, background: '#fff', marginLeft: -24, marginRight: -24, paddingLeft: 24, paddingRight: 24, marginBottom: 0 }}
                     items={[
                         {
+                            key: 'dashboard',
+                            label: (
+                                <span>
+                                    <i className="fas fa-tachometer-alt" style={{ marginRight: '6px' }} />
+                                    {t('modbusSlave.tabs.dashboard')}
+                                </span>
+                            ),
+                            children: <div style={{ paddingBottom: 16 }}><DashboardTab devices={devices} /></div>,
+                        },
+                        {
                             key: 'devices',
-                            label: <span><i className="fas fa-network-wired" style={{ marginRight: '6px' }} />디바이스 관리</span>,
+                            label: <span><i className="fas fa-network-wired" style={{ marginRight: '6px' }} />{t('modbusSlave.tabs.devices')}</span>,
                             children: (
-                                <DeviceListTab
-                                    devices={devices}
-                                    loading={loading}
-                                    onRefresh={fetchData}
-                                    sites={sites}
-                                    tenants={tenants}
-                                    isAdmin={isAdmin}
-                                    currentTenantId={currentTenantId}
-                                    onSiteReload={loadSites}
-                                />
+                                <div style={{ paddingBottom: 16 }}>
+                                    <DeviceListTab
+                                        devices={devices}
+                                        loading={loading}
+                                        onRefresh={fetchData}
+                                        sites={sites}
+                                        tenants={tenants}
+                                        isAdmin={isAdmin}
+                                        currentTenantId={currentTenantId}
+                                        onSiteReload={loadSites}
+                                    />
+                                </div>
                             ),
                         },
                         {
@@ -213,10 +199,40 @@ const ModbusSlaveSettings: React.FC = () => {
                             label: (
                                 <span>
                                     <i className="fas fa-th" style={{ marginRight: '6px' }} />
-                                    레지스터 매핑
+                                    {t('modbusSlave.tabs.mappings')}
                                 </span>
                             ),
-                            children: <MappingEditorTab devices={devices} allPoints={allPoints} />,
+                            children: <div style={{ paddingBottom: 16 }}><MappingEditorTab devices={devices} allPoints={allPoints} /></div>,
+                        },
+                        {
+                            key: 'monitor',
+                            label: (
+                                <span>
+                                    <i className="fas fa-satellite-dish" style={{ marginRight: '6px' }} />
+                                    {t('modbusSlave.tabs.monitor')}
+                                </span>
+                            ),
+                            children: <div style={{ paddingBottom: 16 }}><ClientMonitorTab devices={devices} /></div>,
+                        },
+                        {
+                            key: 'logs',
+                            label: (
+                                <span>
+                                    <i className="fas fa-history" style={{ marginRight: '6px' }} />
+                                    {t('modbusSlave.tabs.logs')}
+                                </span>
+                            ),
+                            children: <div style={{ paddingBottom: 16 }}><AccessLogTab devices={devices} /></div>,
+                        },
+                        {
+                            key: 'packet-logs',
+                            label: (
+                                <span>
+                                    <i className="fas fa-terminal" style={{ marginRight: '6px' }} />
+                                    {t('modbusSlave.tabs.packetLogs')}
+                                </span>
+                            ),
+                            children: <div style={{ paddingBottom: 16 }}><PacketLogTab devices={devices} /></div>,
                         },
                     ]}
                 />

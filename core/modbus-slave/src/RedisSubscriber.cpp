@@ -157,25 +157,87 @@ void RedisSubscriber::OnMessage(const std::string &payload) {
 
 void RedisSubscriber::WriteValueToTable(const RegisterMapping &m,
                                         double value) {
-  // 스케일링: 저장값 = (수신값 - offset) / factor
+  // 스케일링: register_raw = (value * scale_factor) + scale_offset
+  // SCADA Master가 역산: value = (raw - offset) / factor
   double raw = value;
   if (m.scale_factor != 0.0)
-    raw = (value - m.scale_offset) / m.scale_factor;
+    raw = value * m.scale_factor + m.scale_offset;
 
   switch (m.register_type) {
-  case RegisterType::HOLDING_REGISTER:
-  case RegisterType::INPUT_REGISTER: {
+  case RegisterType::HOLDING_REGISTER: {
     switch (m.data_type) {
-    case DataType::FLOAT32:
-      table_->SetFloat32(m.address, static_cast<float>(raw), m.big_endian);
+    case DataType::FLOAT32: {
+      float fv = static_cast<float>(raw);
+      uint32_t bits;
+      std::memcpy(&bits, &fv, 4);
+      uint16_t w0, w1;
+      if (m.big_endian) {
+        w0 = static_cast<uint16_t>((bits >> 16) & 0xFFFF); // MSW
+        w1 = static_cast<uint16_t>(bits & 0xFFFF);         // LSW
+      } else {
+        w0 = static_cast<uint16_t>(bits & 0xFFFF);         // LSW
+        w1 = static_cast<uint16_t>((bits >> 16) & 0xFFFF); // MSW
+      }
+      if (m.word_swap)
+        std::swap(w0, w1);
+      table_->SetHoldingRegister(m.address, w0);
+      table_->SetHoldingRegister(m.address + 1, w1);
       break;
-    case DataType::INT32:
-      table_->SetInt32(m.address, static_cast<int32_t>(raw), m.big_endian);
+    }
+    case DataType::FLOAT64: {
+      double v = raw;
+      uint64_t bits;
+      std::memcpy(&bits, &v, 8);
+      uint16_t w[4];
+      if (m.big_endian) {
+        w[0] = static_cast<uint16_t>((bits >> 48) & 0xFFFF);
+        w[1] = static_cast<uint16_t>((bits >> 32) & 0xFFFF);
+        w[2] = static_cast<uint16_t>((bits >> 16) & 0xFFFF);
+        w[3] = static_cast<uint16_t>(bits & 0xFFFF);
+      } else {
+        w[0] = static_cast<uint16_t>(bits & 0xFFFF);
+        w[1] = static_cast<uint16_t>((bits >> 16) & 0xFFFF);
+        w[2] = static_cast<uint16_t>((bits >> 32) & 0xFFFF);
+        w[3] = static_cast<uint16_t>((bits >> 48) & 0xFFFF);
+      }
+      if (m.word_swap) {
+        std::swap(w[0], w[1]);
+        std::swap(w[2], w[3]);
+      }
+      for (int i = 0; i < 4; i++)
+        table_->SetHoldingRegister(m.address + i, w[i]);
       break;
-    case DataType::UINT32:
-      table_->SetUint32(m.address, static_cast<uint32_t>(raw), m.big_endian);
+    }
+    case DataType::INT32: {
+      int32_t iv = static_cast<int32_t>(raw);
+      uint32_t bits;
+      std::memcpy(&bits, &iv, 4);
+      uint16_t w0 = m.big_endian ? static_cast<uint16_t>((bits >> 16) & 0xFFFF)
+                                 : static_cast<uint16_t>(bits & 0xFFFF);
+      uint16_t w1 = m.big_endian ? static_cast<uint16_t>(bits & 0xFFFF)
+                                 : static_cast<uint16_t>((bits >> 16) & 0xFFFF);
+      if (m.word_swap)
+        std::swap(w0, w1);
+      table_->SetHoldingRegister(m.address, w0);
+      table_->SetHoldingRegister(m.address + 1, w1);
       break;
+    }
+    case DataType::UINT32: {
+      uint32_t uv = static_cast<uint32_t>(raw);
+      uint16_t w0 = m.big_endian ? static_cast<uint16_t>((uv >> 16) & 0xFFFF)
+                                 : static_cast<uint16_t>(uv & 0xFFFF);
+      uint16_t w1 = m.big_endian ? static_cast<uint16_t>(uv & 0xFFFF)
+                                 : static_cast<uint16_t>((uv >> 16) & 0xFFFF);
+      if (m.word_swap)
+        std::swap(w0, w1);
+      table_->SetHoldingRegister(m.address, w0);
+      table_->SetHoldingRegister(m.address + 1, w1);
+      break;
+    }
     case DataType::INT16:
+      table_->SetHoldingRegister(
+          m.address, static_cast<uint16_t>(static_cast<int16_t>(raw)));
+      break;
     case DataType::UINT16:
     default:
       table_->SetHoldingRegister(m.address, static_cast<uint16_t>(raw));
@@ -183,9 +245,35 @@ void RedisSubscriber::WriteValueToTable(const RegisterMapping &m,
     }
     break;
   }
+  case RegisterType::INPUT_REGISTER: {
+    switch (m.data_type) {
+    case DataType::FLOAT32: {
+      float fv = static_cast<float>(raw);
+      uint32_t bits;
+      std::memcpy(&bits, &fv, 4);
+      uint16_t w0 = m.big_endian ? static_cast<uint16_t>((bits >> 16) & 0xFFFF)
+                                 : static_cast<uint16_t>(bits & 0xFFFF);
+      uint16_t w1 = m.big_endian ? static_cast<uint16_t>(bits & 0xFFFF)
+                                 : static_cast<uint16_t>((bits >> 16) & 0xFFFF);
+      if (m.word_swap)
+        std::swap(w0, w1);
+      table_->SetInputRegister(m.address, w0);
+      table_->SetInputRegister(m.address + 1, w1);
+      break;
+    }
+    case DataType::INT16:
+    case DataType::UINT16:
+    default:
+      table_->SetInputRegister(m.address, static_cast<uint16_t>(raw));
+      break;
+    }
+    break;
+  }
   case RegisterType::COIL:
-  case RegisterType::DISCRETE_INPUT:
     table_->SetCoil(m.address, raw != 0.0);
+    break;
+  case RegisterType::DISCRETE_INPUT:
+    table_->SetDiscreteInput(m.address, raw != 0.0);
     break;
   }
 }

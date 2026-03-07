@@ -5,12 +5,13 @@
 // - 등록된 매핑 테이블에서 인라인 편집 / 삭제
 // =============================================================================
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     Select, InputNumber, Table, Button, Checkbox, Input,
     Tag, Tooltip, Radio
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import modbusSlaveApi, { ModbusSlaveDevice, ModbusSlaveMapping } from '../../../api/services/modbusSlaveApi';
+import modbusSlaveApi, { ModbusSlaveDevice, ModbusSlaveMapping, RegisterValue } from '../../../api/services/modbusSlaveApi';
 import { DataPoint } from '../../../api/services/exportGatewayApi';
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
 
@@ -57,6 +58,7 @@ const newRow = (overrides: Partial<MappingRow> = {}): MappingRow => ({
 });
 
 const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
+    const { t } = useTranslation('settings');
     const { confirm } = useConfirmContext();
 
     const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
@@ -77,12 +79,17 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
     const [editMode, setEditMode] = useState(false);
     // 편집 취소용 스냅샷 (전체)
     const [rowsSnapshot, setRowsSnapshot] = useState<MappingRow[]>([]);
+    // 실시간 값 취제 (point_id → value)
+    const [registerValues, setRegisterValues] = useState<Map<number, RegisterValue>>(new Map());
 
     // ── 매핑 로드 ────────────────────────────────────────────────────────────
     const loadMappings = useCallback(async (deviceId: number) => {
         setLoading(true);
         try {
-            const res = await modbusSlaveApi.getMappings(deviceId);
+            const [res, rvRes] = await Promise.all([
+                modbusSlaveApi.getMappings(deviceId),
+                modbusSlaveApi.getRegisterValues(deviceId).catch(() => null),
+            ]);
             const data = Array.isArray(res.data) ? res.data
                 : (res.data as any)?.data ?? [];
             setRows((data as ModbusSlaveMapping[]).map(m => ({
@@ -90,6 +97,15 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
                 key: String(m.id),
                 point_label: allPoints.find(p => p.id === m.point_id)?.name,
             })));
+            // 실시간 값 Map 구성
+            if (rvRes?.data) {
+                const rvData = Array.isArray(rvRes.data) ? rvRes.data : (rvRes.data as any)?.data ?? [];
+                const map = new Map<number, RegisterValue>();
+                (rvData as RegisterValue[]).forEach(rv => {
+                    if (rv.point_id != null) map.set(rv.point_id, rv);
+                });
+                setRegisterValues(map);
+            }
             setDirty(false);
         } finally {
             setLoading(false);
@@ -120,9 +136,9 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
     // ── 행 삭제 ──────────────────────────────────────────────────────────────
     const deleteRow = async (key: string) => {
         const ok = await confirm({
-            title: '행 삭제',
-            message: '이 매핑 행을 삭제하시겠습니까?',
-            confirmText: '삭제',
+            title: t('modbusSlave.device.delete'),
+            message: t('modbusSlave.device.delete') + '?',
+            confirmText: t('modbusSlave.device.delete'),
             confirmButtonType: 'danger',
         });
         if (!ok) return;
@@ -164,9 +180,9 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
         if (!selectedDeviceId) return;
 
         const okSave = await confirm({
-            title: '저장',
-            message: `매핑 ${rows.length}개를 저장하시겠습니까?`,
-            confirmText: '저장',
+            title: t('modbusSlave.save'),
+            message: `${t('modbusSlave.registerMapping')} ${rows.length}?`,
+            confirmText: t('modbusSlave.save'),
         });
         if (!okSave) return;
 
@@ -228,22 +244,53 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
     };
 
     // ── 테이블 컬럼 ──────────────────────────────────────────────────────────
+    // SCADA 1-base 주소 계산: 레지스터 타입 prefix + (0-base + 1)
+    const scadaAddressMap: Record<string, number> = { HR: 40001, IR: 30001, CO: 1, DI: 10001 };
+    const scadaAddr = (row: MappingRow) => scadaAddressMap[row.register_type] + row.register_address - 1;
+
+    // 겹침 주소 집합 계산 (같은 register_type+address가 2개 이상)
+    const overlapKeys = new Set<string>();
+    const addrCount = new Map<string, number>();
+    rows.forEach(r => {
+        const k = `${r.register_type}:${r.register_address}`;
+        addrCount.set(k, (addrCount.get(k) ?? 0) + 1);
+    });
+    addrCount.forEach((count, k) => { if (count > 1) overlapKeys.add(k); });
+
     const columns: ColumnsType<MappingRow> = [
         {
-            title: '주소',
+            title: 'Address',
             dataIndex: 'register_address',
-            width: 80,
+            width: 120,
             align: 'center' as const,
-            render: (_, row) => editMode ? (
-                <InputNumber size="small" style={{ width: '100%', textAlign: 'center' }} min={1} max={65535}
-                    value={row.register_address}
-                    onChange={v => updateRow(row.key, 'register_address', v)} />
-            ) : (
-                <span style={{ fontSize: 13 }}>{row.register_address}</span>
-            ),
+            render: (_, row) => {
+                const isOverlap = overlapKeys.has(`${row.register_type}:${row.register_address}`);
+                return editMode ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <InputNumber size="small" style={{ width: '100%', textAlign: 'center', borderColor: isOverlap ? '#ef4444' : undefined }} min={1} max={65535}
+                            value={row.register_address}
+                            onChange={v => updateRow(row.key, 'register_address', v)} />
+                        {isOverlap && (
+                            <span style={{ fontSize: 10, color: '#ef4444', textAlign: 'center' }}>
+                                <i className="fas fa-exclamation-triangle" /> 주소 겹침
+                            </span>
+                        )}
+                    </div>
+                ) : (
+                    <Tooltip title={isOverlap ? '⚠️ 동일 주소가 중복됩니다' : `SCADA: ${scadaAddr(row)}`}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                            <span style={{ fontSize: 13, color: isOverlap ? '#ef4444' : '#1e293b', fontWeight: isOverlap ? 700 : 400 }}>
+                                {row.register_address}
+                                {isOverlap && <i className="fas fa-exclamation-triangle" style={{ color: '#ef4444', marginLeft: 5 }} />}
+                            </span>
+                            <span style={{ fontSize: 10, color: '#94a3b8' }}>SCADA:{scadaAddr(row)}</span>
+                        </div>
+                    </Tooltip>
+                );
+            },
         },
         {
-            title: '레지스터 타입',
+            title: 'Register Type',
             dataIndex: 'register_type',
             width: 120,
             align: 'center' as const,
@@ -257,7 +304,7 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
             ),
         },
         {
-            title: '수집 포인트',
+            title: 'Data Point',
             dataIndex: 'point_id',
             width: 240,
             render: (_, row) => editMode ? (
@@ -276,7 +323,7 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
             ),
         },
         {
-            title: '데이터 타입',
+            title: 'Data Type',
             dataIndex: 'data_type',
             width: 110,
             align: 'center' as const,
@@ -290,7 +337,7 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
             ),
         },
         {
-            title: '바이트순서',
+            title: 'Byte Order',
             dataIndex: 'byte_order',
             width: 130,
             align: 'center' as const,
@@ -304,7 +351,7 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
             ),
         },
         {
-            title: '배율',
+            title: 'Scale',
             dataIndex: 'scale_factor',
             width: 80,
             align: 'center' as const,
@@ -316,7 +363,7 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
             ),
         },
         {
-            title: '오프셋',
+            title: 'Offset',
             dataIndex: 'scale_offset',
             width: 80,
             align: 'center' as const,
@@ -326,6 +373,29 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
             ) : (
                 <span style={{ fontSize: 13 }}>{row.scale_offset}</span>
             ),
+        },
+        {
+            title: <span style={{ fontSize: 11 }}>현재 값</span>,
+            dataIndex: 'current_value',
+            width: 110,
+            align: 'right' as const,
+            render: (_, row) => {
+                if (!row.point_id) return <span style={{ color: '#cbd5e1', fontSize: 11 }}>—</span>;
+                const rv = registerValues.get(row.point_id);
+                if (!rv || rv.value == null) return <span style={{ color: '#94a3b8', fontSize: 11 }}>—</span>;
+                const qual = rv.quality || 'unknown';
+                const qualColor = qual === 'good' ? '#16a34a' : qual === 'unknown' ? '#94a3b8' : '#ef4444';
+                const valStr = typeof rv.value === 'number' ? rv.value.toFixed(3) : String(rv.value);
+                const rawStr = rv.register_raw != null ? `Reg: ${rv.register_raw.toFixed(3)}` : '';
+                const tsStr = rv.value_timestamp ? new Date(rv.value_timestamp).toLocaleTimeString() : '';
+                return (
+                    <Tooltip title={`공학값: ${valStr} | ${rawStr} | 질: ${qual} | ${tsStr}`}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 600, color: qualColor, fontSize: 12 }}>
+                            {valStr}
+                        </span>
+                    </Tooltip>
+                );
+            },
         },
         ...(editMode ? [{
             title: '',
@@ -417,34 +487,50 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
     const selectedDevice = devices.find(d => d.id === selectedDeviceId);
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingTop: '16px' }}>
             {/* 디바이스 선택 헤더 — nowrap, 좁아지면 가로 스크롤 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'nowrap', overflowX: 'auto' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                     <i className="fas fa-th" style={{ color: '#7c3aed' }} />
-                    <strong>레지스터 매핑</strong>
+                    <strong>{t('modbusSlave.registerMapping')}</strong>
                     <Select
                         style={{ width: 220 }}
-                        placeholder="디바이스를 선택하세요"
+                        placeholder={t('modbusSlave.selectDevice')}
                         value={selectedDeviceId}
                         onChange={id => { setSelectedDeviceId(id); setMode('table'); }}
                         options={devices.map(d => ({
                             value: d.id,
-                            label: `${d.name} (포트 :${d.tcp_port})`,
+                            label: `${d.name} (:${d.tcp_port})`,
                         }))}
                     />
                 </div>
                 {/* 선택된 디바이스가 있으면 탭 + 저장 + 범례 인라인 */}
                 {selectedDeviceId && (
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'nowrap', flexShrink: 0, marginLeft: 'auto' }}>
+                        {/* 레전드 */}
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            {[
+                                { value: 'HR', full: 'Holding Register (4xxxx)', bg: '#dbeafe', text: '#1d4ed8' },
+                                { value: 'IR', full: 'Input Register (3xxxx)', bg: '#dcfce7', text: '#15803d' },
+                                { value: 'CO', full: 'Coil (0xxxx)', bg: '#fef9c3', text: '#854d0e' },
+                                { value: 'DI', full: 'Discrete Input (1xxxx)', bg: '#fce7f3', text: '#9d174d' },
+                            ].map(rt => (
+                                <Tooltip key={rt.value} title={`${rt.value}: ${rt.full}`} placement="bottom">
+                                    <span style={{
+                                        fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 6,
+                                        background: rt.bg, color: rt.text, cursor: 'default', whiteSpace: 'nowrap',
+                                    }}>{rt.value}</span>
+                                </Tooltip>
+                            ))}
+                        </div>
                         <Radio.Group value={mode} onChange={e => setMode(e.target.value)}
                             buttonStyle="solid" size="small">
                             <Radio.Button value="table">
-                                <i className="fas fa-list" style={{ marginRight: 4 }} />지정된 매핑 ({rows.length})
+                                <i className="fas fa-list" style={{ marginRight: 4 }} />{t('modbusSlave.tabs.mappings')} ({rows.length})
                             </Radio.Button>
                             {editMode && (
                                 <Radio.Button value="select">
-                                    <i className="fas fa-plus-circle" style={{ marginRight: 4 }} />포인트 추가
+                                    <i className="fas fa-plus-circle" style={{ marginRight: 4 }} />{t('modbusSlave.device.add')}
                                 </Radio.Button>
                             )}
                         </Radio.Group>
@@ -453,14 +539,14 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
                                 <Button size="small"
                                     icon={<i className="fas fa-times" />}
                                     onClick={() => exitEditMode(true)}>
-                                    취소
+                                    {t('modbusSlave.cancel')}
                                 </Button>
                             ) : (
                                 <Button size="small"
                                     icon={<i className="fas fa-edit" />}
                                     onClick={enterEditMode}
                                     style={{ color: '#7c3aed', borderColor: '#7c3aed' }}>
-                                    수정
+                                    {t('modbusSlave.device.edit')}
                                 </Button>
                             )
                         )}
@@ -468,7 +554,7 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
                             <Button type="primary" size="small" disabled={!dirty} loading={saving}
                                 icon={<i className="fas fa-save" />} onClick={handleSave}
                                 style={{ background: dirty ? '#7c3aed' : undefined, borderColor: dirty ? '#7c3aed' : undefined }}>
-                                저장{dirty ? ' *' : ''}
+                                {t('modbusSlave.save')}{dirty ? ' *' : ''}
                             </Button>
                         )}
                         {mode === 'table' && editMode && rows.length > 0 && (
@@ -485,6 +571,87 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
                                 전체 삭제
                             </Button>
                         )}
+                        {/* Export JSON */}
+                        {mode === 'table' && rows.length > 0 && (
+                            <>
+                                <Button size="small" icon={<i className="fas fa-file-export" />}
+                                    onClick={() => {
+                                        const data = JSON.stringify(rows.map(r => ({
+                                            register_type: r.register_type,
+                                            register_address: r.register_address,
+                                            point_id: r.point_id,
+                                            point_label: r.point_label,
+                                            data_type: r.data_type,
+                                            byte_order: r.byte_order,
+                                            scale_factor: r.scale_factor,
+                                            scale_offset: r.scale_offset,
+                                            enabled: r.enabled,
+                                        })), null, 2);
+                                        const blob = new Blob([data], { type: 'application/json' });
+                                        const a = document.createElement('a');
+                                        a.href = URL.createObjectURL(blob);
+                                        a.download = `mapping_${selectedDeviceId}_${new Date().toISOString().slice(0, 10)}.json`;
+                                        a.click(); URL.revokeObjectURL(a.href);
+                                    }}>
+                                    {t('modbusSlave.exportJson')}
+                                </Button>
+                                <Button size="small" icon={<i className="fas fa-file-csv" />}
+                                    onClick={() => {
+                                        const hdr = 'register_type,register_address,point_id,point_name,data_type,byte_order,scale_factor,scale_offset,enabled';
+                                        const csv = rows.map(r => [
+                                            r.register_type, r.register_address, r.point_id,
+                                            `"${(r.point_label || '').replace(/"/g, '""')}"`,
+                                            r.data_type, r.byte_order, r.scale_factor, r.scale_offset, r.enabled,
+                                        ].join(',')).join('\n');
+                                        const blob = new Blob([hdr + '\n' + csv], { type: 'text/csv' });
+                                        const a = document.createElement('a');
+                                        a.href = URL.createObjectURL(blob);
+                                        a.download = `mapping_${selectedDeviceId}_${new Date().toISOString().slice(0, 10)}.csv`;
+                                        a.click(); URL.revokeObjectURL(a.href);
+                                    }}>
+                                    {t('modbusSlave.exportCsv')}
+                                </Button>
+                            </>
+                        )}
+                        {/* Import JSON */}
+                        {mode === 'table' && editMode && (
+                            <label style={{ cursor: 'pointer' }}>
+                                <span style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                                    padding: '3px 8px', border: '1px solid #d9d9d9',
+                                    borderRadius: 6, fontSize: 14, background: '#fff',
+                                    cursor: 'pointer', userSelect: 'none',
+                                }}>
+                                    <i className="fas fa-file-import" />{t('modbusSlave.importMapping')}
+                                </span>
+                                <input type="file" accept=".json" style={{ display: 'none' }}
+                                    onChange={e => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        const reader = new FileReader();
+                                        reader.onload = ev => {
+                                            try {
+                                                const imported = JSON.parse(ev.target?.result as string);
+                                                if (Array.isArray(imported)) {
+                                                    setRows(prev => {
+                                                        const merged = [...prev];
+                                                        imported.forEach((item: any) => {
+                                                            if (!merged.some(r => r.register_type === item.register_type && r.register_address === item.register_address)) {
+                                                                merged.push({ ...item, device_id: selectedDeviceId! });
+                                                            }
+                                                        });
+                                                        return merged;
+                                                    });
+                                                    setDirty(true);
+                                                }
+                                            } catch { alert('Invalid JSON file'); }
+                                        };
+                                        reader.readAsText(file);
+                                        e.target.value = '';
+                                    }}
+                                />
+                            </label>
+                        )}
                     </div>
                 )}
             </div>
@@ -492,7 +659,7 @@ const MappingEditorTab: React.FC<Props> = ({ devices, allPoints }) => {
             {!selectedDeviceId ? (
                 <div style={{ textAlign: 'center', padding: '60px 0', color: '#94a3b8' }}>
                     <i className="fas fa-hand-point-up fa-2x" style={{ display: 'block', marginBottom: 12, opacity: 0.4 }} />
-                    디바이스를 선택하면 레지스터 매핑을 편집할 수 있습니다
+                    {t('modbusSlave.registerMappingPrompt')}
                 </div>
             ) : mode === 'select' ? (
                 /* ── 포인트 선택 패널 (Ant Table) ─────────────────── */

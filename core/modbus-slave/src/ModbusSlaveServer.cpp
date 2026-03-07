@@ -3,10 +3,17 @@
 // ClientManager + SlaveStatistics 통합, IP 추출, 응답시간 측정
 // =============================================================================
 #include "ModbusSlaveServer.h"
+// LogManager는 HAS_SHARED_LIBS일 때 ModbusSlaveServer.h에서 이미 include됨
+#ifndef HAS_SHARED_LIBS
+#include <fstream> // shared 없을 때 fallback 파일 로깅
+#endif
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
+#include <vector>
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -174,13 +181,15 @@ void ModbusSlaveServer::ServerLoop() {
                       RegisterTable::TABLE_SIZE);
           table_->UnlockForModbus();
 
+          // FC 정보 미리 추출 (이중 선언 방지 위해 reply 전에)
+          int header_len = modbus_get_header_length(ctx_);
+          uint8_t fc = query[header_len];
+
           int reply = modbus_reply(ctx_, query, len, mb_map_);
           success = (reply >= 0);
 
-          // FC05/06 역방향 쓰기 처리
+          // FC05/06/15/16 역방향 쓰기 처리 (성공한 경우만)
           if (success) {
-            int header_len = modbus_get_header_length(ctx_);
-            uint8_t fc = query[header_len];
             if (fc == 0x05) { // Write Single Coil
               uint16_t addr =
                   (query[header_len + 1] << 8) | query[header_len + 2];
@@ -192,19 +201,89 @@ void ModbusSlaveServer::ServerLoop() {
               uint16_t val =
                   (query[header_len + 3] << 8) | query[header_len + 4];
               table_->OnExternalRegisterWrite(addr, val);
+            } else if (fc == 0x0F &&
+                       len > header_len + 5) { // Write Multiple Coils
+              uint16_t start =
+                  (query[header_len + 1] << 8) | query[header_len + 2];
+              uint16_t count =
+                  (query[header_len + 3] << 8) | query[header_len + 4];
+              uint8_t byte_count = query[header_len + 5];
+              for (uint16_t i = 0; i < count && (header_len + 6 + i / 8) < len;
+                   i++) {
+                bool val = (query[header_len + 6 + i / 8] >> (i % 8)) & 0x01;
+                table_->OnExternalCoilWrite(start + i, val);
+              }
+              (void)byte_count;
+            } else if (fc == 0x10 &&
+                       len > header_len + 5) { // Write Multiple Registers
+              uint16_t start =
+                  (query[header_len + 1] << 8) | query[header_len + 2];
+              uint16_t count =
+                  (query[header_len + 3] << 8) | query[header_len + 4];
+              for (uint16_t i = 0; i < count; i++) {
+                int off = header_len + 6 + i * 2;
+                if (off + 1 >= len)
+                  break;
+                uint16_t val = (query[off] << 8) | query[off + 1];
+                table_->OnExternalRegisterWrite(start + i, val);
+              }
             }
           }
 
-          // 통계 기록
+          // 통계 기록 (header_len/fc는 위에서 이미 선언됨)
           auto t1 = std::chrono::high_resolution_clock::now();
           uint64_t us =
               std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0)
                   .count();
-          int header_len = modbus_get_header_length(ctx_);
-          uint8_t fc = query[header_len];
           stats_->Record(fc, success, us);
           client_mgr_->OnRequest(fd, fc, success, us);
 
+          // ─── 패킷 로그 (활성화된 경우만)
+          // ─────────────────────────────────────────
+          if (packet_logging_) {
+            std::ostringstream raw_oss;
+            raw_oss << "REQ[" << std::hex << std::uppercase
+                    << std::setfill('0');
+            for (int i = 0; i < len; ++i)
+              raw_oss << std::setw(2) << (int)query[i] << ' ';
+            raw_oss << "]";
+
+            uint16_t start_addr =
+                (len > header_len + 2)
+                    ? ((query[header_len + 1] << 8) | query[header_len + 2])
+                    : 0;
+            uint16_t count =
+                (len > header_len + 4)
+                    ? ((query[header_len + 3] << 8) | query[header_len + 4])
+                    : 0;
+            std::ostringstream dec_oss;
+            dec_oss << std::dec << "FC=" << (int)fc << " addr=" << start_addr
+                    << " count=" << count << " res_us=" << us
+                    << (success ? " OK" : " ERROR");
+
+            std::string client_ip =
+                client_mgr_ ? client_mgr_->GetClientIp(fd) : "unknown";
+
+            std::string driver_name =
+                "modbus-slave_d" + std::to_string(device_id_);
+
+#ifdef HAS_SHARED_LIBS
+            LogManager::getInstance().logPacket(driver_name, client_ip,
+                                                raw_oss.str(), dec_oss.str());
+#else
+            // shared 없을 때 fallback: 직접 파일 기록
+            std::string log_path = "logs/" + driver_name + "_packet.log";
+            std::ofstream ofs(log_path, std::ios::app);
+            if (ofs.is_open()) {
+              auto now_t = std::chrono::system_clock::now();
+              auto tt = std::chrono::system_clock::to_time_t(now_t);
+              std::ostringstream ts;
+              ts << std::put_time(std::localtime(&tt), "%Y-%m-%dT%H:%M:%S");
+              ofs << '[' << ts.str() << "] CLIENT=" << client_ip << ' '
+                  << dec_oss.str() << ' ' << raw_oss.str() << '\n';
+            }
+#endif
+          }
         } else if (len == -1) {
           // 연결 해제
           client_mgr_->OnDisconnect(fd);

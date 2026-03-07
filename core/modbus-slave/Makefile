@@ -1,6 +1,6 @@
 # =============================================================================
 # core/modbus-slave/Makefile
-# pulseone-modbus-slave — Export Gateway와 동일한 구조를 따름
+# pulseone-modbus-slave — export-gateway 동일 패턴
 # =============================================================================
 
 # 플랫폼 감지
@@ -29,7 +29,7 @@ ifeq ($(CROSS_COMPILE_WINDOWS),1)
     MINGW_PREFIX = /usr/x86_64-w64-mingw32
     EXE_SUFFIX   = .exe
     LIB_SUFFIX   = .a
-    CXXFLAGS    += -DWIN32 -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX
+    CXXFLAGS    += -DWIN32 -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DLOGLIB_STATIC
 else ifeq ($(IS_WINDOWS),1)
     EXE_SUFFIX   = .exe
     LIB_SUFFIX   = .a
@@ -42,7 +42,9 @@ endif
 
 # 기본 빌드 플래그
 CXXFLAGS += -std=c++17 -Wall -Wextra -O0
-INCLUDES  = -Iinclude
+
+# 기본 include (shared 없을 때 fallback)
+INCLUDES = -Iinclude -I../shared/include
 
 # 빌드 디렉토리
 ifeq ($(CROSS_COMPILE_WINDOWS),1)
@@ -54,7 +56,34 @@ else
 endif
 
 # =============================================================================
-# 라이브러리 자동 감지
+# shared 라이브러리 감지 (export-gateway 동일 방식)
+# =============================================================================
+
+ifeq ($(CROSS_COMPILE_WINDOWS),1)
+    SHARED_LIB_DIR = ../shared/lib/Windows-Cross
+else
+    SHARED_LIB_DIR = ../shared/lib/Linux
+endif
+SHARED_INCLUDE_DIR = ../shared/include
+SHARED_DIR = ../shared
+
+HAS_SHARED := $(shell [ -d "$(SHARED_LIB_DIR)" ] && [ -f "$(SHARED_LIB_DIR)/libpulseone-common.a" ] && echo "1" || echo "0")
+
+ifeq ($(HAS_SHARED),1)
+    # export-gateway 동일: INCLUDES 완전 재설정 (= 대입)
+    INCLUDES = -I$(SHARED_INCLUDE_DIR) \
+               -I$(SHARED_DIR)/modules/LogLib/include
+    CXXFLAGS += -DHAS_SHARED_LIBS=1
+    $(info ✅ shared 라이브러리 감지 — LogManager 사용)
+else
+    $(info ⚠️  shared 라이브러리 없음 — 기본 include 사용)
+endif
+
+# 자체 include 항상 추가
+INCLUDES += -Iinclude
+
+# =============================================================================
+# 외부 라이브러리 자동 감지
 # =============================================================================
 
 # libmodbus
@@ -125,6 +154,15 @@ else
     $(info ⚠️  sqlite3 not found — DB mode disabled, fallback to DEVICE_IDS env)
 endif
 
+# shared 라이브러리 링크 (export-gateway 동일)
+ifeq ($(HAS_SHARED),1)
+    ifeq ($(CROSS_COMPILE_WINDOWS),1)
+        LDFLAGS += -L$(SHARED_LIB_DIR) -lpulseone-common -lpulseone-security
+    else
+        LDFLAGS += -L$(SHARED_LIB_DIR) -lpulseone-common -lpulseone-security
+    endif
+endif
+
 # 시스템 라이브러리
 ifeq ($(IS_WINDOWS),1)
     LDFLAGS += -lpthread -static-libstdc++ -static-libgcc -lws2_32 -lwsock32
@@ -180,6 +218,7 @@ check-libs:
 	@echo "  HAS_HIREDIS : $(HAS_HIREDIS)"
 	@echo "  HAS_JSON    : $(HAS_JSON)"
 	@echo "  HAS_SQLITE  : $(HAS_SQLITE)"
+	@echo "  HAS_SHARED  : $(HAS_SHARED)"
 	@echo "────────────────────────────────────────"
 
 # Windows 크로스 컴파일 단축 명령

@@ -87,8 +87,14 @@ public:
   uint64_t TotalFailures() const { return total_failures_.load(); }
   double OverallSuccessRate() const;
 
+  // fd → 클라이언트 IP 조회 (패킷 로그 기록용)
+  std::string GetClientIp(int fd) const;
+
   // JSON 직렬화 (백엔드 API 응답용)
   std::string ToJson() const;
+
+  // Redis에 클라이언트 세션 게시 (SETEX modbus:clients:{device_id} 120 {json})
+  void PublishToRedis(const std::string &host, int port, int device_id) const;
 
   // 오래된 IP 통계 정리 (24시간 이상 미접속)
   void Cleanup();

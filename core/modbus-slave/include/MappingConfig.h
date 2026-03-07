@@ -37,8 +37,12 @@ struct RegisterMapping {
   RegisterType register_type = RegisterType::HOLDING_REGISTER;
   uint16_t address = 0;
   DataType data_type = DataType::FLOAT32;
-  bool big_endian = true;
-  double scale_factor = 1.0; // value = raw * factor + offset
+  bool big_endian = true; // byte order within each word
+  bool word_swap =
+      false; // true: 상위/하위 word 교환 (big_endian_swap / little_endian_swap)
+  // scale: register_raw = (collected_value * scale_factor) + scale_offset
+  // SCADA Master가 역산: value = (raw - offset) / factor
+  double scale_factor = 1.0;
   double scale_offset = 0.0;
   bool enabled = true;
 };
@@ -51,6 +55,7 @@ struct SlaveConfig {
   std::string redis_host = "127.0.0.1";
   int redis_port = 6379;
   std::string redis_channel = "point:update"; // Collector가 발행하는 채널
+  bool packet_logging = false;                // 패킷 로그 파일 활성화
   std::vector<RegisterMapping> mappings;
 };
 

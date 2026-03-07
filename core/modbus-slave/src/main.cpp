@@ -76,14 +76,16 @@ static int RunWorker(int device_id, const std::string &db_path) {
       config.redis_port = std::atoi(v2);
   }
 
-  if (mappings.empty()) {
-    // DB 매핑 로드 시도
+  if (mappings.empty() && loaded_from_db) {
+    // LoadDeviceFromDb는 성공했지만 매핑이 없음 (활성화된 매핑 없음)
+    // 이 경우 DbMappingLoader를 사용하되 device_id 필터 적용
     DbMappingLoader db_loader(db_path);
     if (db_loader.IsConnected())
-      mappings = db_loader.Load();
-    if (mappings.empty())
-      mappings = config.mappings;
+      mappings =
+          db_loader.Load(device_id); // device_id 필터 없이 전체 로드 방지
   }
+  if (mappings.empty() && !loaded_from_db)
+    mappings = config.mappings;
 
   std::cout << "  Port     : " << config.tcp_port << "\n";
   std::cout << "  Unit ID  : " << (int)config.unit_id << "\n";
@@ -104,6 +106,7 @@ static int RunWorker(int device_id, const std::string &db_path) {
   }
 
   // 4. Modbus TCP 서버 시작
+  server.SetPacketLogging(config.packet_logging, device_id); // 패킷 로그 설정
   if (!server.Start(table, client_mgr, stats, config.tcp_port, config.unit_id,
                     config.max_clients)) {
     std::cerr << "[Worker] Modbus TCP 서버 시작 실패\n";
@@ -129,6 +132,12 @@ static int RunWorker(int device_id, const std::string &db_path) {
                 << " redis=" << (redis.IsConnected() ? "OK" : "DISC")
                 << " 5min_req=" << ws.requests << " success=" << std::fixed
                 << ws.success_rate * 100.0 << "%\n";
+
+      // Redis에 통계/클라이언트 세션 게시 (백엔드 API가 읽어감)
+      stats.PublishToRedis(config.redis_host, config.redis_port, device_id);
+      client_mgr.PublishToRedis(config.redis_host, config.redis_port,
+                                device_id);
+
       next_status = now + std::chrono::seconds(30);
     }
 
@@ -136,7 +145,7 @@ static int RunWorker(int device_id, const std::string &db_path) {
       DbMappingLoader db_loader(db_path);
       if (db_loader.IsConnected()) {
         std::vector<RegisterMapping> new_mappings = mappings;
-        if (db_loader.Reload(new_mappings)) {
+        if (db_loader.Reload(new_mappings, device_id)) { // device_id 필터 적용
           redis.Stop();
           mappings = new_mappings;
           redis.Start(config.redis_host, config.redis_port, table, mappings);

@@ -7,6 +7,11 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <string>
+
+#ifdef HAVE_REDIS
+#include <hiredis/hiredis.h>
+#endif
 
 namespace PulseOne {
 namespace ModbusSlave {
@@ -235,7 +240,14 @@ std::string ClientManager::ToJson() const {
       << "\"success_rate\":" << std::setprecision(4) << sess.SuccessRate()
       << ","
       << "\"avg_response_us\":" << sess.avg_response_us << ","
-      << "\"fc03_count\":" << sess.fc03_count << "}";
+      << "\"fc01_count\":" << sess.fc01_count << ","
+      << "\"fc02_count\":" << sess.fc02_count << ","
+      << "\"fc03_count\":" << sess.fc03_count << ","
+      << "\"fc04_count\":" << sess.fc04_count << ","
+      << "\"fc05_count\":" << sess.fc05_count << ","
+      << "\"fc06_count\":" << sess.fc06_count << ","
+      << "\"fc15_count\":" << sess.fc15_count << ","
+      << "\"fc16_count\":" << sess.fc16_count << "}";
     first = false;
   }
   j << "]}";
@@ -251,6 +263,37 @@ void ClientManager::Cleanup() {
     else
       ++it;
   }
+}
+
+void ClientManager::PublishToRedis(const std::string &host, int port,
+                                   int device_id) const {
+#ifdef HAVE_REDIS
+  redisContext *rc = redisConnect(host.c_str(), port);
+  if (!rc || rc->err) {
+    if (rc)
+      redisFree(rc);
+    return;
+  }
+  std::string key = "modbus:clients:" + std::to_string(device_id);
+  std::string json = ToJson();
+  redisReply *reply = static_cast<redisReply *>(
+      redisCommand(rc, "SETEX %s 120 %s", key.c_str(), json.c_str()));
+  if (reply)
+    freeReplyObject(reply);
+  redisFree(rc);
+#else
+  (void)host;
+  (void)port;
+  (void)device_id;
+#endif
+}
+
+std::string ClientManager::GetClientIp(int fd) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto it = sessions_.find(fd);
+  if (it != sessions_.end())
+    return it->second.ip;
+  return "unknown";
 }
 
 } // namespace ModbusSlave

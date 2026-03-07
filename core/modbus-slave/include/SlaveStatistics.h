@@ -76,6 +76,10 @@ public:
   // JSON 직렬화
   std::string ToJson() const;
 
+  // Redis에 통계 게시 (SETEX modbus:stats:{device_id} 120 {json})
+  // hiredis 없으면 no-op
+  void PublishToRedis(const std::string &host, int port, int device_id) const;
+
   // 통계 초기화
   void Reset();
 

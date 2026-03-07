@@ -6,6 +6,11 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <string>
+
+#ifdef HAVE_REDIS
+#include <hiredis/hiredis.h>
+#endif
 
 namespace PulseOne {
 namespace ModbusSlave {
@@ -207,6 +212,31 @@ void SlaveStatistics::Reset() {
   min_response_us_.store(UINT64_MAX);
   std::lock_guard<std::mutex> lock(window_mutex_);
   window_buckets_.fill(MinuteBucket{});
+}
+
+void SlaveStatistics::PublishToRedis(const std::string &host, int port,
+                                     int device_id) const {
+#ifdef HAVE_REDIS
+  // 별도 커넥션 생성(구독 컨텍스트와 분리)
+  redisContext *rc = redisConnect(host.c_str(), port);
+  if (!rc || rc->err) {
+    if (rc)
+      redisFree(rc);
+    return;
+  }
+  std::string key = "modbus:stats:" + std::to_string(device_id);
+  std::string json = ToJson();
+  // SETEX key 120 value  (120초 TTL: Worker가 죽으면 자동 만료)
+  redisReply *reply = static_cast<redisReply *>(
+      redisCommand(rc, "SETEX %s 120 %s", key.c_str(), json.c_str()));
+  if (reply)
+    freeReplyObject(reply);
+  redisFree(rc);
+#else
+  (void)host;
+  (void)port;
+  (void)device_id;
+#endif
 }
 
 } // namespace ModbusSlave

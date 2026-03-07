@@ -4,6 +4,10 @@
 // =============================================================================
 #pragma once
 
+#ifdef HAS_SHARED_LIBS
+#include "Logging/LogManager.h"
+#endif
+
 #include "ClientManager.h"
 #include "RegisterTable.h"
 #include "SlaveStatistics.h"
@@ -53,9 +57,18 @@ private:
   uint8_t unit_id_ = 1;
   int max_clients_ = 20;
   int server_socket_ = -1;
+  bool packet_logging_ = false; // 패킷 로그 파일 활성화
+  int device_id_ = 0;           // 로그 파일명에 사용
 
   std::atomic<bool> running_{false};
   std::thread server_thread_;
+
+public:
+  // 시작 전에 호출하여 패킷 로깅 옵션 설정
+  void SetPacketLogging(bool enabled, int device_id = 0) {
+    packet_logging_ = enabled;
+    device_id_ = device_id;
+  }
 };
 
 } // namespace ModbusSlave

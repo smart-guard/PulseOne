@@ -28,7 +28,7 @@ WORKDIR /app
 
 # 소스 복사 후 빌드 (volume mount 전에 최초 1회 — 이미지 레이어로 캐시됨)
 COPY core/modbus-slave/ ./core/modbus-slave/
-RUN cd core/modbus-slave && make clean && make -j$(nproc)
+RUN cd core/modbus-slave && make clean && make -j2
 
 # 포트 노출
 EXPOSE 502

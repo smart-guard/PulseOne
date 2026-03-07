@@ -32,7 +32,7 @@ DbMappingLoader::~DbMappingLoader() {
 #endif
 }
 
-std::vector<RegisterMapping> DbMappingLoader::Load() {
+std::vector<RegisterMapping> DbMappingLoader::Load(int device_id) {
 #ifndef HAS_SQLITE
   return {};
 #else
@@ -42,7 +42,7 @@ std::vector<RegisterMapping> DbMappingLoader::Load() {
       return {};
   }
 
-  auto mappings = QueryMappings();
+  auto mappings = QueryMappings(device_id);
   last_mapping_hash_ = ComputeHash(mappings);
 
   // 마지막 로드 시각 기록
@@ -52,12 +52,16 @@ std::vector<RegisterMapping> DbMappingLoader::Load() {
   ss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
   last_load_time_ = ss.str();
 
-  std::cout << "[DbMappingLoader] 매핑 " << mappings.size() << "개 로드 완료\n";
+  std::cout << "[DbMappingLoader] 매핑 " << mappings.size() << "개 로드 완료"
+            << (device_id ? " (device=" + std::to_string(device_id) + ")"
+                          : " (전체)")
+            << "\n";
   return mappings;
 #endif
 }
 
-bool DbMappingLoader::Reload(std::vector<RegisterMapping> &mappings) {
+bool DbMappingLoader::Reload(std::vector<RegisterMapping> &mappings,
+                             int device_id) {
 #ifndef HAS_SQLITE
   return false;
 #else
@@ -67,7 +71,7 @@ bool DbMappingLoader::Reload(std::vector<RegisterMapping> &mappings) {
       return false;
   }
 
-  auto new_mappings = QueryMappings();
+  auto new_mappings = QueryMappings(device_id);
   size_t new_hash = ComputeHash(new_mappings);
 
   if (new_hash != last_mapping_hash_) {
@@ -107,24 +111,24 @@ void DbMappingLoader::CloseDb() {
   connected_ = false;
 }
 
-std::vector<RegisterMapping> DbMappingLoader::QueryMappings() {
+std::vector<RegisterMapping> DbMappingLoader::QueryMappings(int device_id) {
   std::vector<RegisterMapping> result;
   if (!db_)
     return result;
 
-  // modbus_slave_mappings 테이블 조회
-  // point_id, register_type, register_address, data_type,
-  // byte_order, scale_factor, scale_offset, enabled
-  const char *sql = "SELECT m.id, m.point_id, p.name, m.register_type, "
+  // device_id 필터링 SQL (조건부 WHERE)
+  std::string sql = "SELECT m.id, m.point_id, p.name, m.register_type, "
                     "       m.register_address, m.data_type, m.byte_order, "
                     "       m.scale_factor, m.scale_offset, m.enabled "
                     "FROM modbus_slave_mappings m "
                     "JOIN data_points p ON p.id = m.point_id "
-                    "WHERE m.enabled = 1 "
-                    "ORDER BY m.register_address ASC;";
+                    "WHERE m.enabled = 1";
+  if (device_id > 0)
+    sql += " AND m.device_id = " + std::to_string(device_id);
+  sql += " ORDER BY m.register_address ASC;";
 
   sqlite3_stmt *stmt = nullptr;
-  int rc = sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+  int rc = sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr);
   if (rc != SQLITE_OK) {
     std::cerr << "[DbMappingLoader] SQL 준비 오류: " << sqlite3_errmsg(db_)
               << "\n";
@@ -149,9 +153,19 @@ std::vector<RegisterMapping> DbMappingLoader::QueryMappings() {
         reinterpret_cast<const char *>(sqlite3_column_text(stmt, 5));
     m.data_type = dt ? ParseDataType(dt) : DataType::FLOAT32;
 
+    // byte_order 파싱: big_endian / little_endian / big_endian_swap /
+    // little_endian_swap
     const char *bo =
         reinterpret_cast<const char *>(sqlite3_column_text(stmt, 6));
-    m.big_endian = bo ? (std::string(bo) == "big_endian") : true;
+    if (bo) {
+      std::string bo_str(bo);
+      m.big_endian = (bo_str == "big_endian" || bo_str == "big_endian_swap");
+      m.word_swap =
+          (bo_str == "big_endian_swap" || bo_str == "little_endian_swap");
+    } else {
+      m.big_endian = true;
+      m.word_swap = false;
+    }
 
     m.scale_factor = sqlite3_column_double(stmt, 7);
     m.scale_offset = sqlite3_column_double(stmt, 8);
@@ -201,33 +215,48 @@ bool LoadDeviceFromDb(int device_id, const std::string &db_path,
       sqlite3_open_v2(db_path.c_str(), &db,
                       SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nullptr);
   if (rc != SQLITE_OK) {
-    std::cerr << "[LoadDeviceFromDb] DB 열기 실패: " << db_path << "\n";
+    std::cerr << "[LoadDeviceFromDb] DB 열기 실패 (rc=" << rc
+              << "): " << (db ? sqlite3_errmsg(db) : "unknown")
+              << " path=" << db_path << "\n";
     if (db)
       sqlite3_close(db);
     return false;
   }
 
+  // WAL 모드에서 backend write lock 충돌 시 최대 5초 대기
+  sqlite3_busy_timeout(db, 5000);
+
   // 1. 디바이스 기본 설정 로드
   const char *sql_dev =
-      "SELECT tcp_port, unit_id, max_clients "
+      "SELECT tcp_port, unit_id, max_clients, COALESCE(packet_logging,0) "
       "FROM modbus_slave_devices WHERE id = ? AND enabled = 1 LIMIT 1;";
   sqlite3_stmt *stmt = nullptr;
   bool found = false;
 
   rc = sqlite3_prepare_v2(db, sql_dev, -1, &stmt, nullptr);
-  if (rc == SQLITE_OK) {
-    sqlite3_bind_int(stmt, 1, device_id);
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-      config.tcp_port = sqlite3_column_int(stmt, 0);
-      config.unit_id = static_cast<uint8_t>(sqlite3_column_int(stmt, 1));
-      config.max_clients = sqlite3_column_int(stmt, 2);
-      found = true;
-    }
-    sqlite3_finalize(stmt);
+  if (rc != SQLITE_OK) {
+    std::cerr << "[LoadDeviceFromDb] SQL prepare 오류 (rc=" << rc
+              << "): " << sqlite3_errmsg(db) << "\n";
+    sqlite3_close(db);
+    return false;
   }
+  sqlite3_bind_int(stmt, 1, device_id);
+  int step_rc = sqlite3_step(stmt);
+  if (step_rc == SQLITE_ROW) {
+    config.tcp_port = sqlite3_column_int(stmt, 0);
+    config.unit_id = static_cast<uint8_t>(sqlite3_column_int(stmt, 1));
+    config.max_clients = sqlite3_column_int(stmt, 2);
+    config.packet_logging = (sqlite3_column_int(stmt, 3) != 0);
+    found = true;
+  } else if (step_rc != SQLITE_DONE) {
+    std::cerr << "[LoadDeviceFromDb] SQL step 오류 (rc=" << step_rc
+              << "): " << sqlite3_errmsg(db) << "\n";
+  }
+  sqlite3_finalize(stmt);
 
   if (!found) {
-    std::cerr << "[LoadDeviceFromDb] device_id=" << device_id << " 없음\n";
+    std::cerr << "[LoadDeviceFromDb] device_id=" << device_id
+              << " not found (enabled=1 조건 확인)\n";
     sqlite3_close(db);
     return false;
   }
@@ -270,7 +299,15 @@ bool LoadDeviceFromDb(int device_id, const std::string &db_path,
       m.data_type = dt ? ParseDataType(dt) : DataType::FLOAT32;
       const char *bo =
           reinterpret_cast<const char *>(sqlite3_column_text(stmt, 5));
-      m.big_endian = bo ? (std::string(bo) == "big_endian") : true;
+      if (bo) {
+        std::string bo_str(bo);
+        m.big_endian = (bo_str == "big_endian" || bo_str == "big_endian_swap");
+        m.word_swap =
+            (bo_str == "big_endian_swap" || bo_str == "little_endian_swap");
+      } else {
+        m.big_endian = true;
+        m.word_swap = false;
+      }
       m.scale_factor = sqlite3_column_double(stmt, 6);
       m.scale_offset = sqlite3_column_double(stmt, 7);
       m.enabled = true;

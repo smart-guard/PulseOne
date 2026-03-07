@@ -529,6 +529,16 @@ async function initializeSystem() {
             logger.system('WARN', '자동 초기화 활성화되었으나 DatabaseInitializer 없음');
         }
 
+        // Safe Migration: AUTO_INITIALIZE_ON_START=false여도 항상 실행 (schema drift 보정)
+        if (DatabaseInitializer) {
+            try {
+                const migrator = new DatabaseInitializer(connections);
+                await migrator.runSafeMigrations();
+            } catch (migErr) {
+                logger.system('WARN', 'Safe Migration 실패 (무시)', { error: migErr.message });
+            }
+        }
+
         logger.system('INFO', '시스템 초기화 완료');
 
         // ✅ DB 초기화 완전 완료 후 서비스 테이블 보장 (순차 실행으로 SQLITE_BUSY 방지)

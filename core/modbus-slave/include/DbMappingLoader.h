@@ -21,13 +21,13 @@ public:
   explicit DbMappingLoader(const std::string &db_path);
   ~DbMappingLoader();
 
-  // DB에서 전체 매핑 로드
-  // modbus_slave_mappings 테이블에서 enabled=1인 항목 반환
-  std::vector<RegisterMapping> Load();
+  // DB에서 device_id 기준 매핑 로드
+  // device_id=0 이면 전체(device_id 필터 없음)
+  std::vector<RegisterMapping> Load(int device_id = 0);
 
   // 런타임 재로드 (변경 감지 시 호출)
   // 반환: 매핑이 변경됐으면 true
-  bool Reload(std::vector<RegisterMapping> &mappings);
+  bool Reload(std::vector<RegisterMapping> &mappings, int device_id = 0);
 
   bool IsConnected() const { return connected_; }
 
@@ -46,7 +46,7 @@ private:
   sqlite3 *db_ = nullptr;
   bool OpenDb();
   void CloseDb();
-  std::vector<RegisterMapping> QueryMappings();
+  std::vector<RegisterMapping> QueryMappings(int device_id = 0);
   size_t ComputeHash(const std::vector<RegisterMapping> &m) const;
 #endif
 };

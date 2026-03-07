@@ -97,7 +97,11 @@ SlaveConfig MappingConfig::LoadFromFile(const std::string &path) {
       rm.register_type = ParseRegisterType(m.value("register_type", "HR"));
       rm.address = static_cast<uint16_t>(m.value("register_address", 0));
       rm.data_type = ParseDataType(m.value("data_type", "FLOAT32"));
-      rm.big_endian = (m.value("byte_order", "big_endian") == "big_endian");
+      {
+        std::string bo = m.value("byte_order", "big_endian");
+        rm.big_endian = (bo == "big_endian" || bo == "big_endian_swap");
+        rm.word_swap = (bo == "big_endian_swap" || bo == "little_endian_swap");
+      }
       rm.scale_factor = m.value("scale_factor", 1.0);
       rm.scale_offset = m.value("scale_offset", 0.0);
       rm.enabled = m.value("enabled", true);
