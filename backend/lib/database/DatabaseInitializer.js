@@ -426,12 +426,13 @@ class DatabaseInitializer {
     async doesTableExist(tableName) {
         try {
             switch (this.databaseType) {
-                case 'sqlite':
+                case 'sqlite': {
                     const sqliteResult = await this.querySQL(
                         'SELECT name FROM sqlite_master WHERE type=\'table\' AND name = ?',
                         [tableName]
                     );
                     return sqliteResult.length > 0;
+                }
 
                 case 'postgresql':
                     const pgResult = await this.querySQL(
@@ -447,6 +448,46 @@ class DatabaseInitializer {
                     );
                     return mysqlResult.length > 0;
 
+                default:
+                    return false;
+            }
+        } catch (error) {
+            return false;
+        }
+    }
+
+    /**
+     * 컬럼 존재 확인 (DB 타입별 — PRAGMA 없이 크로스 DB 호환)
+     */
+    async doesColumnExist(tableName, columnName) {
+        try {
+            switch (this.databaseType) {
+                case 'sqlite': {
+                    // sqlite_master의 sql을 파싱하거나 SELECT로 확인
+                    // 가장 안전한 방법: 해당 컬럼만 SELECT해서 에러 여부로 판단
+                    try {
+                        await this.querySQL(`SELECT ${columnName} FROM ${tableName} LIMIT 0`);
+                        return true;
+                    } catch (e) {
+                        return false;
+                    }
+                }
+                case 'postgresql': {
+                    const result = await this.querySQL(
+                        `SELECT column_name FROM information_schema.columns
+                         WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`,
+                        [tableName, columnName]
+                    );
+                    return result.length > 0;
+                }
+                case 'mysql': {
+                    const result = await this.querySQL(
+                        `SELECT column_name FROM information_schema.columns
+                         WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
+                        [tableName, columnName]
+                    );
+                    return result.length > 0;
+                }
                 default:
                     return false;
             }
@@ -497,12 +538,11 @@ class DatabaseInitializer {
 
             this.log('✅ 모든 필수 테이블 존재함');
 
-            // 2.5단계: 특정 테이블의 컬럼 존재 확인 (스키마 변경 대응)
+            // 2.5단계: 특정 테이블의 컬럼 존재 확인 (크로스 DB 호환, PRAGMA 없음)
             if (await this.doesTableExist('virtual_points')) {
                 try {
-                    const columns = await this.querySQL("PRAGMA table_info(virtual_points)");
-                    const hasDescription = columns.some(c => c.name === 'description');
-                    const hasCreatedAt = columns.some(c => c.name === 'created_at');
+                    const hasDescription = await this.doesColumnExist('virtual_points', 'description');
+                    const hasCreatedAt = await this.doesColumnExist('virtual_points', 'created_at');
 
                     if (!hasDescription || !hasCreatedAt) {
                         this.log(`📊 virtual_points 컬럼 누락 (description: ${hasDescription}, created_at: ${hasCreatedAt}) - 초기화 필요`);
@@ -562,10 +602,8 @@ class DatabaseInitializer {
             // ── Modbus Slave ──────────────────────────────────────────────────
             {
                 desc: 'modbus_slave_devices.packet_logging 컬럼',
-                check: async () => {
-                    const cols = await this.querySQL("PRAGMA table_info(modbus_slave_devices)").catch(() => []);
-                    return cols.some(c => c.name === 'packet_logging');
-                },
+                // doesColumnExist: 크로스 DB 호환 (PRAGMA 없음)
+                check: () => this.doesColumnExist('modbus_slave_devices', 'packet_logging'),
                 apply: () => this.executeSQL(
                     "ALTER TABLE modbus_slave_devices ADD COLUMN packet_logging INTEGER NOT NULL DEFAULT 0"
                 ),
@@ -610,10 +648,8 @@ class DatabaseInitializer {
             },
             {
                 desc: 'modbus_slave_devices.is_deleted 컬럼 (소프트 삭제)',
-                check: async () => {
-                    const cols = await this.querySQL("PRAGMA table_info(modbus_slave_devices)").catch(() => []);
-                    return cols.some(c => c.name === 'is_deleted');
-                },
+                // doesColumnExist: 크로스 DB 호환 (PRAGMA 없음)
+                check: () => this.doesColumnExist('modbus_slave_devices', 'is_deleted'),
                 apply: () => this.executeSQL(
                     "ALTER TABLE modbus_slave_devices ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0"
                 ),
@@ -767,9 +803,9 @@ class DatabaseInitializer {
             if (await this.doesTableExist(tableName)) {
                 // 특정 테이블의 경우 스키마 깊이 체크 (v3.0.0 대응)
                 if (tableName === 'virtual_points') {
-                    const columns = await this.querySQL("PRAGMA table_info(virtual_points)");
-                    const hasDescription = columns.some(c => c.name === 'description');
-                    const hasCreatedAt = columns.some(c => c.name === 'created_at');
+                    // doesColumnExist: 크로스 DB 호환 (PRAGMA 없음)
+                    const hasDescription = await this.doesColumnExist('virtual_points', 'description');
+                    const hasCreatedAt = await this.doesColumnExist('virtual_points', 'created_at');
 
                     if (hasDescription && hasCreatedAt) {
                         foundTables++;
