@@ -375,7 +375,8 @@ router.get('/:id/stats', async (req, res) => {
         ModbusSlaveService.snapshotAccessLogs(parseInt(req.params.id), tenantId)
             .catch(e => LogManager.api('WARN', 'Modbus Slave 스냅샷 오류', { error: e.message }));
 
-        res.json({ success: true, data: stats });
+        // handleRequest가 이미 { success, data: {...} } 형태로 반환하므로 그대로 전달
+        res.json(stats);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
