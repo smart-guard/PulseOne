@@ -174,7 +174,7 @@ class PostgresAdapter extends BaseAdapter {
     }
 
     get timestamp() {
-        return "TIMESTAMP DEFAULT (datetime('now', 'localtime'))";
+        return 'TIMESTAMP DEFAULT NOW()';
     }
 
     get boolean() {
@@ -215,7 +215,7 @@ class PostgresAdapter extends BaseAdapter {
 
         // SQLite 파라미터 → PostgreSQL
         let paramCounter = 1;
-        adaptedQuery = adaptedQuery.replace(/\?/g, () => `${paramCounter++}`);
+        adaptedQuery = adaptedQuery.replace(/\?/g, () => `$${paramCounter++}`);
 
         // 대소문자 구분 문자열 비교
         adaptedQuery = adaptedQuery.replace(/LIKE\s+'([^']+)'/gi, 'ILIKE \'$1\'');
@@ -223,6 +223,7 @@ class PostgresAdapter extends BaseAdapter {
         return adaptedQuery;
     }
 }
+
 
 /**
  * MariaDB/MySQL 어댑터
@@ -237,7 +238,7 @@ class MariadbAdapter extends BaseAdapter {
     }
 
     get timestamp() {
-        return "TIMESTAMP DEFAULT (datetime('now', 'localtime'))";
+        return 'TIMESTAMP DEFAULT NOW()';
     }
 
     get boolean() {
