@@ -259,7 +259,7 @@ class BaseRepository {
             'int': 'INTEGER',
             'boolean': 'BOOLEAN',
             'datetime': 'TIMESTAMP',
-            'timestamp': "TIMESTAMP DEFAULT (datetime('now', 'localtime'))"
+            'timestamp': 'TIMESTAMP DEFAULT NOW()'
         };
         return typeMap[fieldType] || fieldType;
     }
@@ -272,7 +272,7 @@ class BaseRepository {
             'int': 'INT',
             'boolean': 'TINYINT(1)',
             'datetime': 'DATETIME',
-            'timestamp': "TIMESTAMP DEFAULT (datetime('now', 'localtime'))"
+            'timestamp': 'TIMESTAMP DEFAULT NOW()'
         };
         return typeMap[fieldType] || fieldType;
     }
