@@ -626,7 +626,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 .where('tenant_id', tenantId || 1)
                 .update({
                     state,
-                    updated_at: this.knex.raw("datetime('now', 'localtime')")
+                    updated_at: this.now()
                 });
 
             if (result > 0) {

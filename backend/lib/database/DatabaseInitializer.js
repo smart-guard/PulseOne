@@ -594,15 +594,15 @@ class DatabaseInitializer {
      * 신규 컬럼/테이블은 여기서 ALTER TABLE / CREATE TABLE IF NOT EXISTS로 처리
      */
     async runSafeMigrations() {
-        if (this.databaseType !== 'sqlite') return; // SQLite 전용 (필요시 확장)
-
         this.log('🔧 Safe Migration 시작 (기존 DB 스키마 보정)...');
+
+        // DB 타입별 DDL 키워드 헬퍼
+        const ddl = this._getMigrationDDL();
 
         const migrations = [
             // ── Modbus Slave ──────────────────────────────────────────────────
             {
                 desc: 'modbus_slave_devices.packet_logging 컬럼',
-                // doesColumnExist: 크로스 DB 호환 (PRAGMA 없음)
                 check: () => this.doesColumnExist('modbus_slave_devices', 'packet_logging'),
                 apply: () => this.executeSQL(
                     "ALTER TABLE modbus_slave_devices ADD COLUMN packet_logging INTEGER NOT NULL DEFAULT 0"
@@ -613,7 +613,7 @@ class DatabaseInitializer {
                 check: () => this.doesTableExist('modbus_slave_access_logs'),
                 apply: () => this.executeSQLScript(`
                     CREATE TABLE IF NOT EXISTS modbus_slave_access_logs (
-                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id              ${ddl.pk},
                         device_id       INTEGER NOT NULL,
                         tenant_id       INTEGER,
                         client_ip       TEXT NOT NULL,
@@ -635,7 +635,7 @@ class DatabaseInitializer {
                         duration_sec    INTEGER DEFAULT 0,
                         success_rate    REAL    DEFAULT 1.0,
                         is_active       INTEGER DEFAULT 1,
-                        recorded_at     TEXT    DEFAULT (datetime('now','localtime')),
+                        recorded_at     ${ddl.tsCol} DEFAULT ${ddl.now},
                         FOREIGN KEY (device_id) REFERENCES modbus_slave_devices(id) ON DELETE CASCADE,
                         FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL
                     );
@@ -648,7 +648,6 @@ class DatabaseInitializer {
             },
             {
                 desc: 'modbus_slave_devices.is_deleted 컬럼 (소프트 삭제)',
-                // doesColumnExist: 크로스 DB 호환 (PRAGMA 없음)
                 check: () => this.doesColumnExist('modbus_slave_devices', 'is_deleted'),
                 apply: () => this.executeSQL(
                     "ALTER TABLE modbus_slave_devices ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0"
@@ -672,6 +671,43 @@ class DatabaseInitializer {
 
         this.log('🔧 Safe Migration 완료');
     }
+
+    /**
+     * Migration DDL 키워드 (DB 타입별)
+     */
+    _getMigrationDDL() {
+        switch (this.databaseType) {
+            case 'postgresql':
+            case 'postgres':
+                return {
+                    pk: 'SERIAL PRIMARY KEY',
+                    tsCol: 'TIMESTAMP',
+                    now: 'NOW()',
+                };
+            case 'mysql':
+            case 'mariadb':
+                return {
+                    pk: 'INT AUTO_INCREMENT PRIMARY KEY',
+                    tsCol: 'DATETIME',
+                    now: 'NOW()',
+                };
+            case 'mssql':
+            case 'sqlserver':
+                return {
+                    pk: 'INT IDENTITY(1,1) PRIMARY KEY',
+                    tsCol: 'DATETIME2',
+                    now: 'GETDATE()',
+                };
+            case 'sqlite':
+            default:
+                return {
+                    pk: 'INTEGER PRIMARY KEY AUTOINCREMENT',
+                    tsCol: 'TEXT',
+                    now: "(datetime('now','localtime'))",
+                };
+        }
+    }
+
 
     async performAutoInitialization() {
         try {

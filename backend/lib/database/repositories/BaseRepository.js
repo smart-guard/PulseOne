@@ -457,7 +457,7 @@ class BaseRepository {
     }
 
     /**
-     * 현재 시간 함수 (DB별)
+     * 현재 시간 함수 (DB별) - raw SQL 문자열 반환
      */
     getCurrentTimestamp() {
         switch (this.dbType) {
@@ -481,6 +481,30 @@ class BaseRepository {
 
             default:
                 return 'NOW()';
+        }
+    }
+
+    /**
+     * 현재 시간 knex raw 헬퍼 — DB 타입별 올바른 now() 표현 반환
+     * 사용: updated_at: this.now()
+     * 기존의 this.now() 대체
+     */
+    now() {
+        switch (this.dbType.toLowerCase()) {
+            case 'sqlite':
+            case 'sqlite3':
+                return this.now();
+            case 'postgresql':
+            case 'postgres':
+                return this.knex.raw('NOW()');
+            case 'mariadb':
+            case 'mysql':
+                return this.knex.raw('NOW()');
+            case 'mssql':
+            case 'sqlserver':
+                return this.knex.raw('GETDATE()');
+            default:
+                return this.knex.fn.now();
         }
     }
 

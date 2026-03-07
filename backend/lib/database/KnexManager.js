@@ -100,6 +100,36 @@ class KnexManager {
     }
 
     /**
+     * DB 타입별 현재 시간 raw 표현 반환
+     * knex.raw("datetime('now','localtime')") 대신 사용 — 크로스 DB 호환
+     *
+     * @param {object} knexInstance - Knex 인스턴스
+     * @returns {object} knex.raw() 또는 knex.fn.now() 결과
+     *
+     * 사용 예:
+     *   updated_at: KnexManager.getInstance().nowRaw(this.knex)
+     */
+    nowRaw(knexInstance) {
+        const type = (this.configManager.get('DATABASE_TYPE', 'sqlite')).toLowerCase();
+        switch (type) {
+            case 'sqlite':
+            case 'sqlite3':
+                // SQLite: localtime으로 로컬 시간 저장
+                return knexInstance.raw("datetime('now', 'localtime')");
+            case 'postgresql':
+            case 'postgres':
+                // PostgreSQL: NOW() AT TIME ZONE 'localtime' 대신 NOW() 사용 (서버 TZ 설정에 의존)
+                return knexInstance.raw('NOW()');
+            case 'mariadb':
+            case 'mysql':
+                return knexInstance.raw('NOW()');
+            default:
+                // 알 수 없는 DB: knex 기본 현재 시간 사용
+                return knexInstance.fn.now();
+        }
+    }
+
+    /**
      * 모든 연결 종료
      */
     async destroyAll() {

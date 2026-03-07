@@ -100,8 +100,8 @@ class ExportTargetRepository extends BaseRepository {
                 batch_size: data.batch_size || 100,
                 execution_delay_ms: data.execution_delay_ms || 0,
                 is_enabled: data.is_enabled !== undefined ? data.is_enabled : 1,
-                created_at: this.knex.raw("datetime('now', 'localtime')"),
-                updated_at: this.knex.raw("datetime('now', 'localtime')")
+                created_at: this.now(),
+                updated_at: this.now()
             };
 
             const [id] = await this.knex(this.tableName).insert(dataToInsert);
@@ -118,7 +118,7 @@ class ExportTargetRepository extends BaseRepository {
     async update(id, data, tenantId = null) {
         try {
             const dataToUpdate = {
-                updated_at: this.knex.raw("datetime('now', 'localtime')")
+                updated_at: this.now()
             };
 
             const allowedFields = ['name', 'target_type', 'type', 'config', 'is_enabled', 'export_mode', 'export_interval', 'batch_size', 'execution_delay_ms'];

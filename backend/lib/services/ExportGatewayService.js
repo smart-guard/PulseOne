@@ -581,7 +581,7 @@ class ExportGatewayService extends BaseService {
             // Reactivate with current tenant/site scoping
             await db('export_profile_assignments')
                 .where('id', existing.id)
-                .update({ is_active: 1, tenant_id: tenantId, site_id: siteId, assigned_at: this.knex.raw("datetime('now', 'localtime')") });
+                .update({ is_active: 1, tenant_id: tenantId, site_id: siteId, assigned_at: this.now() });
         } else {
             // Insert with full tenant/site scoping (columns now exist in schema)
             await db('export_profile_assignments')
@@ -591,7 +591,7 @@ class ExportGatewayService extends BaseService {
                     is_active: 1,
                     tenant_id: tenantId,
                     site_id: siteId,
-                    assigned_at: this.knex.raw("datetime('now', 'localtime')")
+                    assigned_at: this.now()
                 });
         }
 
@@ -612,7 +612,7 @@ class ExportGatewayService extends BaseService {
 
         await query.update({
             is_active: 0,
-            updated_at: this.knex.raw("datetime('now', 'localtime')")
+            updated_at: this.now()
         });
 
         await this.signalTargetReload(tenantId);

@@ -119,30 +119,27 @@ class ProtocolInstanceRepository extends BaseRepository {
     }
 
     /**
-     * 인스턴스 정보 업데이트
+     * 인스턴스 정보 업데이트 (knex 기반 — raw SQL 제거, 크로스 DB 호환)
      */
     async update(id, updateData) {
-        const fields = [];
-        const params = [];
+        const knexData = {};
 
         Object.entries(updateData).forEach(([key, value]) => {
             if (key === 'id') return;
-            fields.push(`${key} = ?`);
             if (key === 'connection_params' && typeof value !== 'string') {
-                params.push(JSON.stringify(value));
+                knexData[key] = JSON.stringify(value);
             } else if (key === 'is_enabled') {
-                params.push(value ? 1 : 0);
+                knexData[key] = value ? 1 : 0;
             } else {
-                params.push(value);
+                knexData[key] = value;
             }
         });
 
-        if (fields.length === 0) return 0;
+        if (Object.keys(knexData).length === 0) return 0;
 
-        params.push(id);
-        const query = `UPDATE ${this.tableName} SET ${fields.join(', ')}, updated_at = (datetime('now', 'localtime')) WHERE id = ?`;
-        const result = await this.executeNonQuery(query, params);
-        return result.changes;
+        knexData.updated_at = this.now();
+
+        return await this.knex(this.tableName).where('id', id).update(knexData);
     }
 }
 
