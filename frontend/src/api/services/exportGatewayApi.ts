@@ -193,6 +193,14 @@ export class ExportGatewayApiService {
         return apiClient.delete<void>(`${this.GATEWAY_URL}/${id}?siteId=${siteId || ''}&tenantId=${tenantId || ''}`);
     }
 
+    static async getDeletedGateways(params: { site_id?: number | null } = {}): Promise<ApiResponse<Gateway[]>> {
+        return apiClient.get<Gateway[]>('/api/export-gateways/deleted', params);
+    }
+
+    static async restoreGateway(id: number): Promise<ApiResponse<any>> {
+        return apiClient.post<any>(`/api/export-gateways/${id}/restore`);
+    }
+
     // -------------------------------------------------------------------------
     // Commands & Deploy
     // -------------------------------------------------------------------------

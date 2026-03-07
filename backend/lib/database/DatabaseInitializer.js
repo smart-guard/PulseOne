@@ -548,6 +548,95 @@ class DatabaseInitializer {
     /**
      * 🔥 핵심: 완전 자동 초기화 (SKIP_IF_INITIALIZED 로직 개선)
      */
+    /**
+     * 🔧 Safe Migration: 기존 DB에 누락된 컬럼/테이블을 안전하게 추가
+     * CREATE TABLE IF NOT EXISTS는 이미 테이블이 있으면 건너뛰므로
+     * 신규 컬럼/테이블은 여기서 ALTER TABLE / CREATE TABLE IF NOT EXISTS로 처리
+     */
+    async runSafeMigrations() {
+        if (this.databaseType !== 'sqlite') return; // SQLite 전용 (필요시 확장)
+
+        this.log('🔧 Safe Migration 시작 (기존 DB 스키마 보정)...');
+
+        const migrations = [
+            // ── Modbus Slave ──────────────────────────────────────────────────
+            {
+                desc: 'modbus_slave_devices.packet_logging 컬럼',
+                check: async () => {
+                    const cols = await this.querySQL("PRAGMA table_info(modbus_slave_devices)").catch(() => []);
+                    return cols.some(c => c.name === 'packet_logging');
+                },
+                apply: () => this.executeSQL(
+                    "ALTER TABLE modbus_slave_devices ADD COLUMN packet_logging INTEGER NOT NULL DEFAULT 0"
+                ),
+            },
+            {
+                desc: 'modbus_slave_access_logs 테이블',
+                check: () => this.doesTableExist('modbus_slave_access_logs'),
+                apply: () => this.executeSQLScript(`
+                    CREATE TABLE IF NOT EXISTS modbus_slave_access_logs (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        device_id       INTEGER NOT NULL,
+                        tenant_id       INTEGER,
+                        client_ip       TEXT NOT NULL,
+                        client_port     INTEGER,
+                        unit_id         INTEGER,
+                        period_start    TEXT NOT NULL,
+                        period_end      TEXT NOT NULL,
+                        total_requests  INTEGER DEFAULT 0,
+                        failed_requests INTEGER DEFAULT 0,
+                        fc01_count      INTEGER DEFAULT 0,
+                        fc02_count      INTEGER DEFAULT 0,
+                        fc03_count      INTEGER DEFAULT 0,
+                        fc04_count      INTEGER DEFAULT 0,
+                        fc05_count      INTEGER DEFAULT 0,
+                        fc06_count      INTEGER DEFAULT 0,
+                        fc15_count      INTEGER DEFAULT 0,
+                        fc16_count      INTEGER DEFAULT 0,
+                        avg_response_us REAL    DEFAULT 0,
+                        duration_sec    INTEGER DEFAULT 0,
+                        success_rate    REAL    DEFAULT 1.0,
+                        is_active       INTEGER DEFAULT 1,
+                        recorded_at     TEXT    DEFAULT (datetime('now','localtime')),
+                        FOREIGN KEY (device_id) REFERENCES modbus_slave_devices(id) ON DELETE CASCADE,
+                        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_msal_device ON modbus_slave_access_logs(device_id, recorded_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_msal_tenant ON modbus_slave_access_logs(tenant_id);
+                    CREATE INDEX IF NOT EXISTS idx_msal_client ON modbus_slave_access_logs(client_ip);
+                    CREATE INDEX IF NOT EXISTS idx_msal_time   ON modbus_slave_access_logs(recorded_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_msal_active ON modbus_slave_access_logs(device_id, is_active);
+                `),
+            },
+            {
+                desc: 'modbus_slave_devices.is_deleted 컬럼 (소프트 삭제)',
+                check: async () => {
+                    const cols = await this.querySQL("PRAGMA table_info(modbus_slave_devices)").catch(() => []);
+                    return cols.some(c => c.name === 'is_deleted');
+                },
+                apply: () => this.executeSQL(
+                    "ALTER TABLE modbus_slave_devices ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0"
+                ),
+            },
+        ];
+
+        for (const m of migrations) {
+            try {
+                const alreadyExists = await m.check();
+                if (alreadyExists) {
+                    this.log(`  ✅ ${m.desc} — 이미 존재함`);
+                } else {
+                    await m.apply();
+                    this.log(`  ✅ ${m.desc} — 추가 완료`);
+                }
+            } catch (err) {
+                this.log(`  ⚠️ ${m.desc} migration 실패: ${err.message}`);
+            }
+        }
+
+        this.log('🔧 Safe Migration 완료');
+    }
+
     async performAutoInitialization() {
         try {
             this.log('🚀 완전 자동 초기화 시작...');
@@ -571,6 +660,8 @@ class DatabaseInitializer {
 
                 if (isAlreadyInitialized) {
                     this.log('✅ 데이터베이스가 이미 완전히 초기화되어 있습니다. 초기화를 건너뜜');
+                    // 기존 DB도 safe migration 적용 (schema drift 보정)
+                    await this.runSafeMigrations();
                     return true;
                 }
 
@@ -615,11 +706,14 @@ class DatabaseInitializer {
         }
     }
 
+
     async autoInitializeIfNeeded() {
         const autoInit = this.config.getBoolean('AUTO_INITIALIZE_ON_START', false);
 
         if (!autoInit) {
             this.log('🔧 데이터베이스 자동 초기화가 비활성화되어 있습니다.');
+            // 초기화를 건너뛰더라도 safe migration은 항상 실행 (schema drift 보정)
+            await this.runSafeMigrations();
             return false;
         }
 

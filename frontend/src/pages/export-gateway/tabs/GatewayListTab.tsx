@@ -43,6 +43,10 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
     const { t } = useTranslation(['dataExport', 'common']);
     const [selectedGateway, setSelectedGateway] = useState<Gateway | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+    const [showDeleted, setShowDeleted] = useState(false);
+    const [deletedGateways, setDeletedGateways] = useState<Gateway[]>([]);
+    const [deletedLoading, setDeletedLoading] = useState(false);
+    const [restoreLoading, setRestoreLoading] = useState<number | null>(null);
 
     const { confirm } = useConfirmContext();
 
@@ -229,6 +233,39 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
         }
     };
 
+    // ── 삭제된 항목 로드 / 복구 ─────────────────────────────────────────────
+    const handleToggleDeleted = async () => {
+        if (!showDeleted) {
+            setDeletedLoading(true);
+            try {
+                const res = await exportGatewayApi.getDeletedGateways({ site_id: siteId });
+                if (res?.success) setDeletedGateways((res as any).data || []);
+            } finally {
+                setDeletedLoading(false);
+            }
+        }
+        setShowDeleted(prev => !prev);
+    };
+
+    const handleRestore = async (gw: Gateway) => {
+        const confirmed = await confirm({
+            title: '삭제된 항목 복구',
+            message: `"${gw.server_name || gw.name}"을(를) 복구하시겠습니까?`,
+            confirmText: '복구',
+            confirmButtonType: 'primary',
+        });
+        if (!confirmed) return;
+        setRestoreLoading(gw.id);
+        try {
+            await exportGatewayApi.restoreGateway(gw.id);
+            const res = await exportGatewayApi.getDeletedGateways({ site_id: siteId });
+            if (res?.success) setDeletedGateways((res as any).data || []);
+            await onRefresh();
+        } finally {
+            setRestoreLoading(null);
+        }
+    };
+
     const displayGateways = gateways;
 
     return (
@@ -236,9 +273,21 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             <div className="gateway-list">
                 <div className="mgmt-header-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
                     <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>{t('labels.registeredGateways', { ns: 'dataExport' })}</h3>
-                    <button className="btn btn-outline btn-sm" onClick={() => onRefresh()}>
-                        <i className="fas fa-sync-alt" /> {t('gwTab.refresh', { ns: 'dataExport' })}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                            className="btn btn-outline btn-sm"
+                            onClick={handleToggleDeleted}
+                            style={{ color: showDeleted ? '#dc2626' : '#64748b', borderColor: showDeleted ? '#dc2626' : '#cbd5e1' }}
+                        >
+                            {deletedLoading
+                                ? <i className="fas fa-spinner fa-spin" />
+                                : <i className={`fas ${showDeleted ? 'fa-eye-slash' : 'fa-trash-restore'}`} />}
+                            {' '}{showDeleted ? '정상 목록 보기' : `삭제된 항목${deletedGateways.length > 0 ? ` (${deletedGateways.length})` : ''}`}
+                        </button>
+                        <button className="btn btn-outline btn-sm" onClick={() => onRefresh()}>
+                            <i className="fas fa-sync-alt" /> {t('gwTab.refresh', { ns: 'dataExport' })}
+                        </button>
+                    </div>
                 </div>
                 {gateways.length === 0 ? (
                     <div className="empty-state" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--neutral-400)' }}>
@@ -379,6 +428,54 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                 onChange={onPageChange}
                 style={{ marginTop: '20px', textAlign: 'center' }}
             />
+
+            {/* ──────── 삭제된 게이트웨이 목록 ──────── */}
+            {showDeleted && (
+                <div style={{ marginTop: 32 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, paddingBottom: 12, borderBottom: '2px dashed #fca5a5' }}>
+                        <i className="fas fa-trash-restore" style={{ color: '#dc2626' }} />
+                        <h4 style={{ margin: 0, color: '#dc2626', fontWeight: 600 }}>삭제된 게이트웨이</h4>
+                        <span style={{ fontSize: 12, color: '#94a3b8' }}>(복구하면 다시 활성화됩니다)</span>
+                    </div>
+                    {deletedGateways.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>
+                            <i className="fas fa-check-circle fa-2x" style={{ marginBottom: 8, display: 'block', color: '#86efac' }} />
+                            삭제된 게이트웨이가 없습니다
+                        </div>
+                    ) : (
+                        <div className="mgmt-grid">
+                            {deletedGateways.map(gw => (
+                                <div key={gw.id} className="mgmt-card" style={{ opacity: 0.8, borderColor: '#fca5a5', background: '#fff5f5' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                                        <div>
+                                            <h4 style={{ margin: 0, fontSize: 15, color: '#374151', textDecoration: 'line-through' }}>{gw.server_name || gw.name}</h4>
+                                            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                                                {gw.ip_address}
+                                            </div>
+                                        </div>
+                                        <span className="badge" style={{ background: '#fee2e2', color: '#dc2626', fontSize: 10 }}>
+                                            <i className="fas fa-trash" style={{ marginRight: 4 }} />삭제됨
+                                        </span>
+                                    </div>
+                                    {gw.description && (
+                                        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>{gw.description}</div>
+                                    )}
+                                    <button
+                                        className="btn btn-primary btn-sm"
+                                        style={{ width: '100%', background: 'linear-gradient(135deg, #16a34a, #15803d)', border: 'none' }}
+                                        onClick={() => handleRestore(gw)}
+                                        disabled={restoreLoading === gw.id}
+                                    >
+                                        {restoreLoading === gw.id
+                                            ? <><i className="fas fa-spinner fa-spin" /> 복구 중...</>
+                                            : <><i className="fas fa-trash-restore" style={{ marginRight: 6 }} />이 게이트웨이 복구</>}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
             <GatewayDetailModal
                 visible={isDetailModalOpen}

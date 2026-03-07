@@ -743,6 +743,45 @@ class ExportGatewayService extends BaseService {
         }, 'DeleteGateway');
     }
 
+    async restoreGateway(id, tenantId) {
+        return await this.handleRequest(async () => {
+            const query = this.knex('edge_servers')
+                .where('id', id)
+                .where('is_deleted', 1)
+                .where('server_type', 'gateway');
+            if (tenantId !== null && tenantId !== undefined) {
+                query.where('tenant_id', tenantId);
+            }
+            const gateway = await query.first();
+            if (!gateway) throw new Error('삭제된 게이트웨이를 찾을 수 없습니다');
+
+            await this.knex('edge_servers').where('id', id).update({
+                is_deleted: 0,
+                is_enabled: 1,
+                updated_at: this.knex.fn.now()
+            });
+
+            return { success: true, message: `게이트웨이 ID ${id} 복구 완료` };
+        }, 'RestoreGateway');
+    }
+
+    async getDeletedGateways(tenantId, siteId = null) {
+        return await this.handleRequest(async () => {
+            let query = this.knex('edge_servers')
+                .where('is_deleted', 1)
+                .where('server_type', 'gateway')
+                .select('*')
+                .orderBy('updated_at', 'desc');
+            if (tenantId !== null && tenantId !== undefined) {
+                query = query.where('tenant_id', tenantId);
+            }
+            if (siteId) {
+                query = query.where('site_id', siteId);
+            }
+            return await query;
+        }, 'GetDeletedGateways');
+    }
+
     async updateGateway(id, data, tenantId, siteId = null) {
         return await this.handleRequest(async () => {
             return await this.gatewayRepository.update(id, data, tenantId, siteId);
@@ -753,7 +792,19 @@ class ExportGatewayService extends BaseService {
         return await this.handleRequest(async () => {
             const gateway = await this.gatewayRepository.findById(id, tenantId);
             if (!gateway) throw new Error('Export Gateway not found');
-            return await ProcessService.controlProcess(`export-gateway-${id}`, 'start');
+
+            // DB is_enabled=1 설정 → C++ Supervisor가 다음 Reconcile 주기에 Worker 시작
+            await this.knex('edge_servers').where('id', id).update({
+                is_enabled: 1,
+                updated_at: this.knex.fn.now()
+            });
+
+            const isDocker = process.env.DOCKER_CONTAINER === 'true';
+            if (!isDocker) {
+                await ProcessService.controlProcess(`export-gateway-${id}`, 'start').catch(() => { });
+            }
+
+            return { success: true, message: `Gateway ${id} 시작 요청 완료 (Supervisor가 곧 처리합니다)` };
         }, 'StartGateway');
     }
 
@@ -761,7 +812,19 @@ class ExportGatewayService extends BaseService {
         return await this.handleRequest(async () => {
             const gateway = await this.gatewayRepository.findById(id, tenantId);
             if (!gateway) throw new Error('Export Gateway not found');
-            return await ProcessService.controlProcess(`export-gateway-${id}`, 'stop');
+
+            // DB is_enabled=0 설정 → C++ Supervisor가 다음 Reconcile 주기에 Worker 종료
+            await this.knex('edge_servers').where('id', id).update({
+                is_enabled: 0,
+                updated_at: this.knex.fn.now()
+            });
+
+            const isDocker = process.env.DOCKER_CONTAINER === 'true';
+            if (!isDocker) {
+                await ProcessService.controlProcess(`export-gateway-${id}`, 'stop').catch(() => { });
+            }
+
+            return { success: true, message: `Gateway ${id} 중지 요청 완료 (Supervisor가 곧 처리합니다)` };
         }, 'StopGateway');
     }
 
@@ -769,9 +832,33 @@ class ExportGatewayService extends BaseService {
         return await this.handleRequest(async () => {
             const gateway = await this.gatewayRepository.findById(id, tenantId);
             if (!gateway) throw new Error('Export Gateway not found');
-            return await ProcessService.controlProcess(`export-gateway-${id}`, 'restart');
+
+            // is_enabled=0 → 3초 후 is_enabled=1 (Supervisor가 stop 후 재시작 처리)
+            await this.knex('edge_servers').where('id', id).update({
+                is_enabled: 0,
+                updated_at: this.knex.fn.now()
+            });
+
+            setTimeout(async () => {
+                try {
+                    await this.knex('edge_servers').where('id', id).update({
+                        is_enabled: 1,
+                        updated_at: this.knex.fn.now()
+                    });
+                } catch (e) {
+                    console.error(`[ExportGatewayService] Restart re-enable 실패 gateway=${id}:`, e.message);
+                }
+            }, 3000);
+
+            const isDocker = process.env.DOCKER_CONTAINER === 'true';
+            if (!isDocker) {
+                await ProcessService.controlProcess(`export-gateway-${id}`, 'restart').catch(() => { });
+            }
+
+            return { success: true, message: `Gateway ${id} 재시작 요청 완료 (Supervisor가 곧 처리합니다)` };
         }, 'RestartGateway');
     }
+
 
     async testTargetConnection(data) {
         return await this.handleRequest(async () => {

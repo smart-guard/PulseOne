@@ -2619,20 +2619,22 @@ CREATE INDEX IF NOT EXISTS idx_driver_log_levels_updated  ON driver_log_levels(u
 -- pulseone-modbus-slave Supervisor가 이 테이블을 폴링하여 프로세스 관리
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS modbus_slave_devices (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id    INTEGER NOT NULL,
-    site_id      INTEGER NOT NULL,
-    name         TEXT    NOT NULL,               -- 예: "SCADA 연동 #1"
-    tcp_port     INTEGER NOT NULL DEFAULT 502,
-    unit_id      INTEGER NOT NULL DEFAULT 1,
-    max_clients  INTEGER NOT NULL DEFAULT 10,
-    enabled      INTEGER NOT NULL DEFAULT 1,      -- Supervisor 폴링 대상
-    description  TEXT,
-    created_at   DATETIME DEFAULT (datetime('now', 'localtime')),
-    updated_at   DATETIME DEFAULT (datetime('now', 'localtime')),
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id        INTEGER NOT NULL,
+    site_id          INTEGER NOT NULL,
+    name             TEXT    NOT NULL,               -- 예: "SCADA 연동 #1"
+    tcp_port         INTEGER NOT NULL DEFAULT 502,
+    unit_id          INTEGER NOT NULL DEFAULT 1,
+    max_clients      INTEGER NOT NULL DEFAULT 10,
+    enabled          INTEGER NOT NULL DEFAULT 1,      -- Supervisor 폴링 대상
+    is_deleted       INTEGER NOT NULL DEFAULT 0,      -- 소프트 삭제 (1=삭제됨, 숨김)
+    description      TEXT,
+    packet_logging   INTEGER NOT NULL DEFAULT 0,      -- 패킷 로그 파일 활성화 (0=끔, 1=켬)
+    created_at       DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at       DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (site_id)   REFERENCES sites(id),
-    UNIQUE (site_id, tcp_port)                   -- 사이트 내 포트 중복 방지
+    UNIQUE (site_id, tcp_port)                       -- 사이트 내 포트 중복 방지
 );
 
 CREATE INDEX IF NOT EXISTS idx_msd_site    ON modbus_slave_devices(site_id, enabled);
@@ -2645,19 +2647,70 @@ CREATE INDEX IF NOT EXISTS idx_msd_tenant  ON modbus_slave_devices(tenant_id);
 CREATE TABLE IF NOT EXISTS modbus_slave_mappings (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     device_id        INTEGER NOT NULL,           -- modbus_slave_devices.id
-    point_id         INTEGER NOT NULL,           -- device_points.id
+    point_id         INTEGER NOT NULL,           -- data_points.id
     register_type    TEXT NOT NULL DEFAULT 'HR', -- HR(Holding)/IR(Input)/CO(Coil)/DI(Discrete)
     register_address INTEGER NOT NULL,           -- 0-based Modbus 주소
     data_type        TEXT NOT NULL DEFAULT 'FLOAT32', -- FLOAT32/INT32/UINT32/INT16/UINT16/BOOL
-    byte_order       TEXT NOT NULL DEFAULT 'big_endian',
+    byte_order       TEXT NOT NULL DEFAULT 'big_endian', -- big_endian/little_endian/big_endian_swap/little_endian_swap
     scale_factor     REAL NOT NULL DEFAULT 1.0,
     scale_offset     REAL NOT NULL DEFAULT 0.0,
     enabled          INTEGER NOT NULL DEFAULT 1,
     created_at       DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (device_id) REFERENCES modbus_slave_devices(id) ON DELETE CASCADE,
-    FOREIGN KEY (point_id)  REFERENCES device_points(id),
+    FOREIGN KEY (point_id)  REFERENCES data_points(id) ON DELETE CASCADE,
     UNIQUE (device_id, register_type, register_address)  -- 주소 중복 방지
 );
 
 CREATE INDEX IF NOT EXISTS idx_msm_device  ON modbus_slave_mappings(device_id, enabled);
 CREATE INDEX IF NOT EXISTS idx_msm_point   ON modbus_slave_mappings(point_id);
+
+-- =============================================================================
+-- Modbus Slave 통신 이력
+-- C++ Worker가 30초마다 Redis(modbus:stats:{id}, modbus:clients:{id})에 게시
+-- 백엔드가 이를 읽어 주기적으로 이 테이블에 집계 레코드 삽입
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS modbus_slave_access_logs (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id           INTEGER NOT NULL,     -- modbus_slave_devices.id
+    tenant_id           INTEGER,
+
+    -- 요청 클라이언트 정보
+    client_ip           TEXT NOT NULL,        -- 요청 클라이언트 IP
+    client_port         INTEGER,              -- 클라이언트 포트
+    unit_id             INTEGER,              -- Modbus Unit ID
+
+    -- 통신 집계 (30초 스냅샷)
+    period_start        TEXT NOT NULL,        -- 집계 시작 시각 ISO8601
+    period_end          TEXT NOT NULL,        -- 집계 종료 시각 ISO8601
+    total_requests      INTEGER DEFAULT 0,    -- 기간 내 총 요청 수
+    failed_requests     INTEGER DEFAULT 0,    -- 기간 내 실패 요청 수
+    fc01_count          INTEGER DEFAULT 0,
+    fc02_count          INTEGER DEFAULT 0,
+    fc03_count          INTEGER DEFAULT 0,    -- Read Holding Registers (가장 많이 사용)
+    fc04_count          INTEGER DEFAULT 0,
+    fc05_count          INTEGER DEFAULT 0,
+    fc06_count          INTEGER DEFAULT 0,
+    fc15_count          INTEGER DEFAULT 0,
+    fc16_count          INTEGER DEFAULT 0,
+
+    -- 성능
+    avg_response_us     REAL DEFAULT 0,       -- 평균 응답시간 (마이크로초)
+    duration_sec        INTEGER DEFAULT 0,    -- 이 클라이언트의 총 접속 시간(초)
+
+    -- 상태
+    success_rate        REAL DEFAULT 1.0,     -- 0.0 ~ 1.0
+    is_active           INTEGER DEFAULT 1,    -- 현재 접속 중: 1, 해제됨: 0
+
+    -- 메타
+    recorded_at         TEXT DEFAULT (datetime('now', 'localtime')),
+
+    FOREIGN KEY (device_id) REFERENCES modbus_slave_devices(id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_msal_device    ON modbus_slave_access_logs(device_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_msal_tenant    ON modbus_slave_access_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_msal_client    ON modbus_slave_access_logs(client_ip);
+CREATE INDEX IF NOT EXISTS idx_msal_time      ON modbus_slave_access_logs(recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_msal_active    ON modbus_slave_access_logs(device_id, is_active);
+

@@ -68,4 +68,34 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+/**
+ * @route GET /api/export-gateways/deleted
+ * @desc 소프트 삭제된 게이트웨이 목록 조회
+ */
+router.get('/deleted', async (req, res) => {
+    try {
+        const tenantId = req.user?.tenant_id || null;
+        const siteId = req.query.site_id || null;
+        const response = await ExportGatewayService.getDeletedGateways(tenantId, siteId);
+        res.json(response);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * @route POST /api/export-gateways/:id/restore
+ * @desc 소프트 삭제된 게이트웨이 복구
+ */
+router.post('/:id/restore', async (req, res) => {
+    try {
+        const tenantId = req.user?.tenant_id || null;
+        const response = await ExportGatewayService.restoreGateway(req.params.id, tenantId);
+        LogManager.api('INFO', `게이트웨이 복구됨: ID ${req.params.id}`);
+        res.json(response);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 module.exports = router;
