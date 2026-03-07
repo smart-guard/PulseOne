@@ -41,7 +41,7 @@ CREATE TABLE tenants (
     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
-    is_deleted BOOLEAN DEFAULT 0,
+    is_deleted INTEGER DEFAULT 0,                 -- 소프트 삭제 (0=정상, 1=삭제)
     
     -- 🔥 제약조건
     CONSTRAINT chk_subscription_plan CHECK (subscription_plan IN ('starter', 'professional', 'enterprise')),
@@ -184,7 +184,7 @@ CREATE TABLE users (
     created_by INTEGER,
     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
-    last_activity DATETIME, is_deleted TINYINT DEFAULT 0,
+    last_activity DATETIME, is_deleted INTEGER DEFAULT 0,  -- 소프트 삭제 (0=정상, 1=삭제)
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id),
@@ -721,7 +721,7 @@ CREATE TABLE data_points (
     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
-    is_deleted BOOLEAN DEFAULT 0, alarm_priority VARCHAR(20) DEFAULT 'medium',
+    is_deleted INTEGER DEFAULT 0, alarm_priority VARCHAR(20) DEFAULT 'medium', -- 소프트 삭제 (0=정상, 1=삭제)
     
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
     
@@ -789,7 +789,7 @@ CREATE TABLE template_devices (
     is_public INTEGER DEFAULT 1,                         -- 시스템 공유 여부
     created_by INTEGER,
     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
-    updated_at DATETIME DEFAULT (datetime('now', 'localtime')), is_deleted TINYINT DEFAULT 0,
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')), is_deleted INTEGER DEFAULT 0, -- 소프트 삭제 (0=정상, 1=삭제)
     FOREIGN KEY (model_id) REFERENCES device_models(id) ON DELETE CASCADE,
     FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT
 );
@@ -895,7 +895,7 @@ CREATE TABLE alarm_rules (
     category VARCHAR(50) DEFAULT NULL,              -- 'process', 'system', 'safety', 'custom', 'general'
     tags TEXT DEFAULT NULL,                         -- JSON 배열 형태 ['tag1', 'tag2', 'tag3']
     
-    is_deleted BOOLEAN DEFAULT 0,
+    is_deleted INTEGER DEFAULT 0,                 -- 소프트 삭제 (0=정상, 1=삭제)
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id)
@@ -1166,7 +1166,7 @@ CREATE TABLE virtual_points (
     low_limit REAL,
     deadband REAL DEFAULT 0.0,
     
-    is_deleted BOOLEAN DEFAULT 0,
+    is_deleted INTEGER DEFAULT 0,                 -- 소프트 삭제 (0=정상, 1=삭제)
     
     -- 🔥 감사 필드
     created_by INTEGER,
@@ -1804,7 +1804,7 @@ CREATE TABLE export_profiles (
     site_id INTEGER,                                     -- NULL = 테넌트 공용, 값 있음 = 사이트 전용
     name VARCHAR(100) NOT NULL UNIQUE,
     description TEXT,
-    is_enabled BOOLEAN DEFAULT 1,
+    is_enabled INTEGER DEFAULT 1,                 -- 활성화 여부 (1=활성, 0=비활성)
     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     created_by VARCHAR(50),
@@ -1821,7 +1821,7 @@ CREATE TABLE export_profile_points (
     point_id INTEGER NOT NULL,
     display_order INTEGER DEFAULT 0,
     display_name VARCHAR(200),
-    is_enabled BOOLEAN DEFAULT 1,
+    is_enabled INTEGER DEFAULT 1,                 -- 활성화 여부 (1=활성, 0=비활성)
     added_at DATETIME DEFAULT (datetime('now', 'localtime')),
     added_by VARCHAR(50),
     
@@ -1835,7 +1835,7 @@ CREATE TABLE protocol_services (
     service_type VARCHAR(20) NOT NULL,
     service_name VARCHAR(100) NOT NULL,
     description TEXT,
-    is_enabled BOOLEAN DEFAULT 1,
+    is_enabled INTEGER DEFAULT 1,                 -- 활성화 여부 (1=활성, 0=비활성)
     config TEXT NOT NULL,
     active_connections INTEGER DEFAULT 0,
     total_requests INTEGER DEFAULT 0,
@@ -1854,7 +1854,7 @@ CREATE TABLE protocol_mappings (
     external_description VARCHAR(500),
     conversion_config TEXT,
     protocol_config TEXT,
-    is_enabled BOOLEAN DEFAULT 1,
+    is_enabled INTEGER DEFAULT 1,                 -- 활성화 여부 (1=활성, 0=비활성)
     read_count INTEGER DEFAULT 0,
     write_count INTEGER DEFAULT 0,
     last_read_at DATETIME,
@@ -1875,7 +1875,7 @@ CREATE TABLE payload_templates (
     system_type VARCHAR(50) NOT NULL,
     description TEXT,
     template_json TEXT NOT NULL,
-    is_active BOOLEAN DEFAULT 1,
+    is_active INTEGER DEFAULT 1,                  -- 활성화 여부 (1=활성, 0=비활성)
     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
@@ -1936,7 +1936,7 @@ CREATE TABLE export_schedules (
     timezone VARCHAR(50) DEFAULT 'UTC',
     data_range VARCHAR(20) DEFAULT 'day',
     lookback_periods INTEGER DEFAULT 1,
-    is_enabled BOOLEAN DEFAULT 1,
+    is_enabled INTEGER DEFAULT 1,                 -- 활성화 여부 (1=활성, 0=비활성)
     last_run_at DATETIME,
     last_status VARCHAR(20),
     next_run_at DATETIME,
@@ -1969,7 +1969,7 @@ CREATE TABLE export_targets (
     name VARCHAR(100) NOT NULL UNIQUE,
     target_type VARCHAR(20) NOT NULL,
     description TEXT,
-    is_enabled BOOLEAN DEFAULT 1,
+    is_enabled INTEGER DEFAULT 1,                 -- 활성화 여부 (1=활성, 0=비활성)
     config TEXT NOT NULL,
     export_mode VARCHAR(20) DEFAULT 'on_change',
     export_interval INTEGER DEFAULT 0,
@@ -1989,7 +1989,7 @@ CREATE TABLE export_target_mappings (
     target_field_name VARCHAR(200),
     target_description VARCHAR(500),
     conversion_config TEXT,
-    is_enabled BOOLEAN DEFAULT 1,
+    is_enabled INTEGER DEFAULT 1,                 -- 활성화 여부 (1=활성, 0=비활성)
     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE,
@@ -2533,7 +2533,7 @@ CREATE TABLE IF NOT EXISTS control_schedules (
     value       TEXT NOT NULL,
     cron_expr   TEXT,
     once_at     DATETIME,
-    enabled     BOOLEAN DEFAULT 1,
+    enabled     INTEGER DEFAULT 1,              -- 활성화 여부 (1=활성, 0=비활성)
     last_run    DATETIME,
     description TEXT,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,

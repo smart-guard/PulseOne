@@ -256,6 +256,10 @@ export interface DashboardOverviewData {
     message_queue?: 'healthy' | 'warning' | 'critical';
   };
   last_updated: string;
+  /** Redis 정상 시 'full', Redis 없을 시 'limited' (OS 프로세스 체크 기반) */
+  monitoring_mode?: 'full' | 'limited';
+  /** Redis 연결 가용 여부 */
+  redis_available?: boolean;
   hierarchy?: {
     id: number;
     name: string;

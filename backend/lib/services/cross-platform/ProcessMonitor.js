@@ -57,7 +57,7 @@ class ProcessMonitor {
             ctx.log('DEBUG', `tasklist 출력 길이: ${stdout.length} 문자`);
 
             const lines = stdout.split('\n').filter(line => line.trim());
-            const processes = { backend: [], collector: [], exportGateway: [], redis: [] };
+            const processes = { backend: [], collector: [], exportGateway: [], redis: [], modbusSlave: [] };
 
             lines.forEach((line, index) => {
                 if (index === 0) return; // 헤더 스킵
@@ -95,6 +95,9 @@ class ProcessMonitor {
                 } else if (lower.includes('pulseone-export-gateway.exe') || lower.includes('export-gateway.exe')) {
                     ctx.log('INFO', `Export Gateway 프로세스 발견: PID ${pid}`);
                     processes.exportGateway.push(processInfo);
+                } else if (lower.includes('pulseone-modbus-slave.exe') || lower.includes('modbus-slave.exe')) {
+                    ctx.log('INFO', `Modbus Slave 프로세스 발견: PID ${pid}`);
+                    processes.modbusSlave.push(processInfo);
                 }
             });
 
@@ -115,7 +118,7 @@ class ProcessMonitor {
                 const collectorCheck = await ctx.execCommand('tasklist | findstr /i "collector pulseone-collector"');
                 const redisCheck = await ctx.execCommand('tasklist | findstr /i "redis-server"');
 
-                const processes = { backend: [], collector: [], redis: [], exportGateway: [] };
+                const processes = { backend: [], collector: [], redis: [], exportGateway: [], modbusSlave: [] };
 
                 if (collectorCheck.stdout.trim()) {
                     ctx.log('INFO', 'Collector 프로세스 발견 (폴백)');

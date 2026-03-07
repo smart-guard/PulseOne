@@ -171,15 +171,22 @@ class ServiceStateManager {
             for (const service of services) {
                 if (service.status !== 'stopped') continue;
 
-                const baseName = service.name.split('-')[0].toLowerCase();
+                // service.name 예시: 'collector', 'collector-1', 'export-gateway', 'export-gateway-2', 'modbus-slave', 'redis'
+                // Docker 컨테이너 이름과 매핑 시 전체 서비스 기반 패턴으로 매칭
+                const svcName = service.name.toLowerCase();
+                const getSearchPattern = (n) => {
+                    if (n.startsWith('export-gateway')) return ['export-gateway', 'win-gateway', 'gateway'];
+                    if (n.startsWith('modbus-slave')) return ['modbus-slave', 'modbus_slave'];
+                    if (n.startsWith('collector')) return ['collector'];
+                    if (n.startsWith('redis')) return ['redis'];
+                    if (n.startsWith('backend')) return ['backend'];
+                    return [n.split('-')[0]];
+                };
+                const searchPatterns = getSearchPattern(svcName);
+
                 const container = dockerInfo.find(c => {
                     const names = c.Names.map(n => n.replace(/^\//, '').toLowerCase());
-                    return names.some(name => {
-                        if (baseName === 'export') {
-                            return name.includes('export-gateway') || name.includes('win-gateway') || name.includes('gateway');
-                        }
-                        return name.includes(baseName);
-                    });
+                    return names.some(name => searchPatterns.some(pat => name.includes(pat)));
                 });
 
                 if (container) {

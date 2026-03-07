@@ -142,7 +142,14 @@ class DashboardService extends BaseService {
             }));
 
             // 1c. 활성 상태 보정 (Local Process OR DB Heartbeat OR Redis Heartbeat)
-            const redis = await redisClient.getRedisClient();
+            let redis = null;
+            let redisAvailable = false;
+            try {
+                redis = await redisClient.getRedisClient();
+                redisAvailable = !!redis;
+            } catch (e) {
+                // Redis 장애 시 null-safe fallback — 대시보드 동작에 영향 없음
+            }
             const now = new Date();
             const finalizedCollectors = await Promise.all(collectorsWithDevices.map(async (collector) => {
                 const es = edgeServers.find(s => s.id === collector.collectorId);
@@ -357,12 +364,18 @@ class DashboardService extends BaseService {
                 health_status: {
                     overall: services.filter(s => s.status === 'running').length >= Math.ceil(services.length * 0.8) ? 'healthy' : 'degraded',
                     database: services.find(s => s.name === 'database')?.status === 'running' ? 'healthy' : 'warning',
-                    redis: services.find(s => s.name === 'redis')?.status === 'running' ? 'healthy' : 'critical',
+                    // Redis는 optional 서비스 — 없어도 시스템 critical 아님
+                    redis: redisAvailable
+                        ? (services.find(s => s.name === 'redis')?.status === 'running' ? 'healthy' : 'warning')
+                        : 'warning',
                     collector: services.find(s => s.name.startsWith('collector'))?.status === 'running' ? 'healthy' : 'warning',
                     gateway: services.find(s => s.name.startsWith('export-gateway'))?.status === 'running' ? 'healthy' : 'warning',
                     network: 'healthy',
                     storage: 'healthy'
                 },
+                // 모니터링 모드: full(Redis 정상) / limited(Redis 없음, OS 프로세스 체크 기반)
+                monitoring_mode: redisAvailable ? 'full' : 'limited',
+                redis_available: redisAvailable,
                 communication_status: {
                     upstream: {
                         total_devices: deviceStats.total,
@@ -479,6 +492,13 @@ class DashboardService extends BaseService {
                 this._getProcessMetrics()
             ]);
 
+            // Redis 연결 상태 확인 (optional 서비스)
+            let redisHealthy = false;
+            try {
+                const r = await redisClient.getRedisClient();
+                redisHealthy = !!r;
+            } catch (e) { /* Redis 없어도 health check 실패 아님 */ }
+
             return {
                 overall_status: health.overall || 'unknown',
                 components: {
@@ -491,8 +511,10 @@ class DashboardService extends BaseService {
                     database: {
                         status: health.services?.database?.status === 'running' ? 'healthy' : 'unhealthy'
                     },
+                    // Redis는 optional — 없어도 'warning'(unhealthy 아님)
                     redis: {
-                        status: health.services?.redis?.status === 'running' ? 'healthy' : 'unhealthy'
+                        status: redisHealthy ? 'healthy' : 'warning',
+                        optional: true
                     },
                     collector: {
                         status: health.services?.collector?.status === 'running' ? 'healthy' : 'unknown'
@@ -503,6 +525,8 @@ class DashboardService extends BaseService {
                     ...systemInfo
                 },
                 services: health.services || {},
+                monitoring_mode: redisHealthy ? 'full' : 'limited',
+                redis_available: redisHealthy,
                 last_check: new Date().toISOString()
             };
         }, 'DashboardService.getSystemHealth');

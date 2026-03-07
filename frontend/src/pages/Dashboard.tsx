@@ -342,6 +342,8 @@ const Dashboard: React.FC = () => {
   // 성공 메시지 상태
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
+  // Redis 모니터링 모드 ('full' | 'limited')
+  const [monitoringMode, setMonitoringMode] = useState<'full' | 'limited' | null>(null);
 
   // 유틸리티 함수
   const formatUptime = (seconds: number) => {
@@ -381,6 +383,8 @@ const Dashboard: React.FC = () => {
         // 백엔드 데이터를 프런트엔드 형식에 맞게 변환 및 보정
         const transformedData = transformApiDataToDashboard(response.data);
         setDashboardData(transformedData);
+        // Redis 모니터링 모드 업데이트
+        setMonitoringMode(response.data.monitoring_mode || 'full');
         setConnectionStatus('connected');
         setConsecutiveErrors(0);
         console.log('✅ 대시보드 통합 데이터 로드 및 변환 완료');
@@ -478,7 +482,8 @@ const Dashboard: React.FC = () => {
       health_status: {
         overall: apiData.health_status?.overall || 'degraded',
         database: apiData.health_status?.database || 'warning',
-        redis: apiData.health_status?.redis || 'critical',
+        // Redis는 optional — fallback을 'warning'으로 (critical 아님)
+        redis: apiData.health_status?.redis || 'warning',
         collector: apiData.health_status?.collector || 'warning',
         gateway: apiData.health_status?.gateway || 'warning',
         network: apiData.health_status?.network || 'healthy',
@@ -909,6 +914,29 @@ const Dashboard: React.FC = () => {
 
       {/* 확인 다이얼로그 */}
       <ConfirmDialog config={confirmModal} />
+
+      {/* ⚠️ Redis 없음 — 제한적 모니터링 배너 */}
+      {monitoringMode === 'limited' && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+          border: '1px solid #f59e0b',
+          borderRadius: '10px',
+          padding: '10px 16px',
+          marginBottom: '16px',
+          fontSize: '13px',
+          color: '#92400e',
+          fontWeight: '500'
+        }}>
+          <span style={{ fontSize: '16px' }}>⚠️</span>
+          <span>
+            <strong>제한적 모니터링 모드</strong> — Redis 연결 불가.
+            서비스 상태는 OS 프로세스 체크 기반으로 표시됩니다. 실시간 하트비트는 비활성.
+          </span>
+        </div>
+      )}
 
       {/* Operations Dashboard 헤더 */}
       <div style={{
