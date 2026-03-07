@@ -173,7 +173,7 @@ class ModbusSlaveService extends BaseService {
             if (data.description !== undefined) updateData.description = data.description;
             if (data.packet_logging !== undefined)
                 updateData.packet_logging = data.packet_logging ? 1 : 0;
-            updateData.updated_at = this.knex.raw("datetime('now', 'localtime')");
+            updateData.updated_at = this.knex.fn.now();
 
             await this.knex('modbus_slave_devices').where('id', id).update(updateData);
 
