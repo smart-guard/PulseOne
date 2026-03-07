@@ -221,3 +221,4 @@ data/logs/
 data/temp/
 data/db/*.db-shm
 data/db/*.db-wal
+backend/lib/services/crossPlatformManager.backup.js
