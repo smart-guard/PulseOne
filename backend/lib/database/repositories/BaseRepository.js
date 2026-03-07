@@ -493,7 +493,7 @@ class BaseRepository {
         switch (this.dbType.toLowerCase()) {
             case 'sqlite':
             case 'sqlite3':
-                return this.now();
+                return this.knex.raw("datetime('now', 'localtime')");
             case 'postgresql':
             case 'postgres':
                 return this.knex.raw('NOW()');
@@ -504,7 +504,7 @@ class BaseRepository {
             case 'sqlserver':
                 return this.knex.raw('GETDATE()');
             default:
-                return this.knex.fn.now();
+                return this.knex.raw('NOW()');
         }
     }
 

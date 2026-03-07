@@ -114,18 +114,18 @@ class KnexManager {
         switch (type) {
             case 'sqlite':
             case 'sqlite3':
-                // SQLite: localtime으로 로컬 시간 저장
                 return knexInstance.raw("datetime('now', 'localtime')");
             case 'postgresql':
             case 'postgres':
-                // PostgreSQL: NOW() AT TIME ZONE 'localtime' 대신 NOW() 사용 (서버 TZ 설정에 의존)
                 return knexInstance.raw('NOW()');
             case 'mariadb':
             case 'mysql':
                 return knexInstance.raw('NOW()');
+            case 'mssql':
+            case 'sqlserver':
+                return knexInstance.raw('GETDATE()');
             default:
-                // 알 수 없는 DB: knex 기본 현재 시간 사용
-                return knexInstance.fn.now();
+                return knexInstance.raw('NOW()');
         }
     }
 

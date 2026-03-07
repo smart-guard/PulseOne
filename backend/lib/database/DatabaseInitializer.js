@@ -442,6 +442,7 @@ class DatabaseInitializer {
                     return pgResult.length > 0;
 
                 case 'mysql':
+                case 'mariadb':
                     const mysqlResult = await this.querySQL(
                         'SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
                         [tableName]
@@ -480,7 +481,8 @@ class DatabaseInitializer {
                     );
                     return result.length > 0;
                 }
-                case 'mysql': {
+                case 'mysql':
+                case 'mariadb': {
                     const result = await this.querySQL(
                         `SELECT column_name FROM information_schema.columns
                          WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
