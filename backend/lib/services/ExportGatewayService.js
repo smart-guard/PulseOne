@@ -48,6 +48,11 @@ class ExportGatewayService extends BaseService {
         return KnexManager.getInstance().getKnex();
     }
 
+    /** DB 타입별 현재시간 knex raw — this.knex.raw("datetime(...)") 대체 */
+    now() {
+        return KnexManager.getInstance().nowRaw(this.knex);
+    }
+
     // =========================================================================
     // Export Profile Management
     // =========================================================================
